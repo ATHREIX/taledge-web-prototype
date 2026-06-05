@@ -5,19 +5,18 @@ date: "June 2026"
 ---
 
 <style>
-  body { font-family: 'Inter', -apple-system, sans-serif; color: #0f172a; line-height: 1.6; max-width: 900px; margin: 0 auto; background-color: #fafafa; }
-  h1 { color: #1e1b4b; border-bottom: 3px solid #10b981; padding-bottom: 15px; font-size: 2.2rem; text-align: center; }
-  h2 { color: #047857; border-bottom: 1px solid #d1fae5; padding-bottom: 5px; margin-top: 40px; }
-  h3 { color: #065f46; margin-top: 25px; font-weight: 700;}
-  pre { background-color: #1e293b; color: #f8fafc; padding: 15px; border-radius: 8px; font-size: 0.85rem; overflow-x: auto; border: 1px solid #334155; }
-  code { font-family: 'Fira Code', monospace; color: #6ee7b7; }
-  p { color: #334155; font-size: 1.05rem; }
-  .highlight { background-color: #ecfdf5; border-left: 4px solid #10b981; padding: 15px; border-radius: 4px; margin: 20px 0; }
-  table { width: 100%; border-collapse: collapse; margin: 25px 0; background-color: #ffffff; box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1); border-radius: 8px; overflow: hidden; }
-  th { background-color: #f8fafc; color: #0f172a; font-weight: 700; text-align: left; padding: 14px 16px; border-bottom: 2px solid #cbd5e1; }
-  td { padding: 14px 16px; border-bottom: 1px solid #f1f5f9; color: #475569; }
-  .tag { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; background-color: #fee2e2; color: #e11d48; }
-  .page-break { page-break-before: always; }
+  body { font-family: 'Inter', -apple-system, sans-serif; color: #000000; line-height: 1.6; max-width: 900px; margin: 0 auto; background-color: #ffffff; }
+  h1 { color: #000000; border-bottom: 3px solid #000000; padding-bottom: 15px; font-size: 2.2rem; text-align: center; }
+  h2 { color: #000000; border-bottom: 1px solid #000000; padding-bottom: 5px; margin-top: 40px; }
+  h3 { color: #000000; margin-top: 25px; font-weight: 700;}
+  pre { background-color: #f0f0f0; color: #000000; padding: 15px; border-radius: 4px; font-size: 0.85rem; overflow-x: auto; border: 1px solid #000000; }
+  code { font-family: 'Fira Code', monospace; color: #000000; font-weight: bold; }
+  p { color: #000000; font-size: 1.05rem; }
+  .highlight { background-color: #ffffff; border-left: 4px solid #000000; padding: 15px; border-radius: 0px; margin: 20px 0; border: 1px solid #000000; }
+  table { width: 100%; border-collapse: collapse; margin: 25px 0; background-color: #ffffff; border: 1px solid #000000; }
+  th { background-color: #f0f0f0; color: #000000; font-weight: 700; text-align: left; padding: 14px 16px; border-bottom: 2px solid #000000; border-right: 1px solid #000000; }
+  td { padding: 14px 16px; border-bottom: 1px solid #000000; border-right: 1px solid #000000; color: #000000; }
+  .tag { display: inline-block; padding: 4px 12px; font-size: 0.8rem; font-weight: 700; background-color: #000000; color: #ffffff; border: 1px solid #000000; text-transform: uppercase; }
 </style>
 
 # Algorithmic Scoring & Fit Probability Matrix
@@ -55,8 +54,6 @@ The technical execution matrix utilizes deterministic parsing of the transcript 
 - **Hint Dependency Score ($L_h$):** A reductive score based on the raw count of hints required to proceed. Hint requests on fundamental topics invoke a heavier penalty than hints on deep edge-cases.
 - **Consistency Score ($L_c$):** Measurement of performance decay over the session duration, tracking cognitive stamina.
 
-<div class="page-break"></div>
-
 ## 2. Vector B: Resume & Profile Feature Matrix (Weight: 15%)
 This matrix validates the initial ATS ingestion payload against the absolute requirements of the Job Description (JD).
 
@@ -75,8 +72,6 @@ This matrix validates the initial ATS ingestion payload against the absolute req
 - **Education Tier Score ($A_t$):** Organizational tier multiplier based on university pedigree indices.
 - **Resume Clarity Score ($Q_c$):** Checks for optimal structural readability and formatting heuristics.
 - **Resume Specificity Score ($Q_s$):** A ratio metric dividing quantified achievement clauses by total vague/fluff clauses.
-
-<div class="page-break"></div>
 
 ## 3. Vector C: DNLA Social Competence Foundation (Weight: 20%)
 Integrated via enterprise API endpoints from Germany, this establishes the psychometric baseline of the candidate.
@@ -107,8 +102,6 @@ The LLM Behavioural Analyst explicitly tests the DNLA baseline against conversat
 - **Resume Alignment Score ($F_r$):** Do the verbal anecdotes exactly match the chronologies and claims written in the resume payload?
 - **Internal Consistency Score ($F_c$):** Real-time monitoring for conversational contradictions across different responses in the same session.
 - **Collaboration Signal Score ($F_s$):** Evaluation of empathy and perspective-taking when describing cross-functional conflicts.
-
-<div class="page-break"></div>
 
 ## 5. Vector E: Cross-Component Red Flags & Heuristics
 The final computational pass. The engine identifies mathematical disconnects between the aforementioned vectors. These are fatal anomalies that heavily suppress the final Success Probability calculation.
