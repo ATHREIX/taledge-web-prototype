@@ -1,17 +1,17 @@
 ---
-title: "Taledge Success Intelligence: Architecture & AI Scoring Algorithm"
-author: "Taledge Engineering Team"
+title: "Taledge Success Intelligence: Human Capital Assessment & Algorithmic Scoring"
+author: "Taledge Strategy & Intelligence Division"
 date: "June 2026"
 ---
 
 <style>
   body {
-    font-family: 'Inter', -apple-system, sans-serif;
+    font-family: 'Inter', 'Segoe UI', sans-serif;
     color: #1e293b;
-    line-height: 1.6;
+    line-height: 1.7;
     margin: 40px auto;
     max-width: 900px;
-    background-color: #f8fafc;
+    background-color: #ffffff;
   }
   h1 {
     color: #0f172a;
@@ -19,20 +19,20 @@ date: "June 2026"
     font-weight: 900;
     text-align: center;
     margin-bottom: 10px;
-    border-bottom: 4px solid #4f46e5;
+    border-bottom: 4px solid #2563eb;
     padding-bottom: 20px;
   }
   h2 {
-    color: #4f46e5;
+    color: #2563eb;
     font-size: 1.8rem;
     font-weight: 800;
-    margin-top: 40px;
+    margin-top: 50px;
     border-bottom: 2px solid #e2e8f0;
     padding-bottom: 8px;
   }
   h3 {
     color: #334155;
-    font-size: 1.4rem;
+    font-size: 1.3rem;
     font-weight: 700;
     margin-top: 30px;
   }
@@ -41,43 +41,40 @@ date: "June 2026"
     color: #475569;
   }
   .highlight-box {
-    background: linear-gradient(135deg, #e0e7ff 0%, #f3e8ff 100%);
-    border-left: 5px solid #4f46e5;
-    padding: 20px;
-    margin: 20px 0;
+    background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+    border-left: 5px solid #2563eb;
+    padding: 25px;
+    margin: 25px 0;
     border-radius: 8px;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
   }
   table {
     width: 100%;
     border-collapse: collapse;
-    margin: 25px 0;
+    margin: 30px 0;
     background-color: #ffffff;
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
     border-radius: 8px;
     overflow: hidden;
   }
   th {
-    background-color: #f1f5f9;
-    color: #334155;
+    background-color: #f8fafc;
+    color: #0f172a;
     font-weight: 700;
     text-align: left;
-    padding: 14px 16px;
-    border-bottom: 2px solid #e2e8f0;
+    padding: 16px;
+    border-bottom: 2px solid #cbd5e1;
   }
   td {
-    padding: 14px 16px;
+    padding: 16px;
     border-bottom: 1px solid #f1f5f9;
     color: #475569;
   }
-  tr:last-child td {
-    border-bottom: none;
-  }
   .tag {
     display: inline-block;
-    padding: 4px 10px;
+    padding: 4px 12px;
     border-radius: 20px;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     font-weight: 700;
     background-color: #fee2e2;
     color: #e11d48;
@@ -87,93 +84,88 @@ date: "June 2026"
   }
 </style>
 
-# Taledge AI Intelligence: Core Architecture & Scoring
+# Human Capital Intelligence: Assessment Architecture
 
 <div class="highlight-box">
-<strong>Confidential & Proprietary</strong><br>
-This document outlines the ultra-complex, world-class algorithmic foundation of the Taledge Dual-Track Success Intelligence Platform. It details the adversarial AI interviewer methodology, cognitive load mapping, and the exact multi-layered calculation of the Fit Score and Success Probability.
+<strong>Executive Summary</strong><br>
+This document outlines the evaluation methodology of the Taledge Success Intelligence Platform. Designed for Human Resource leadership and strategic talent acquisition, the platform moves beyond traditional interviewing by leveraging a world-class, multi-dimensional cognitive and psychometric evaluation engine. It eliminates human bias while quantifying the exact probability of a candidate's long-term organizational success.
 </div>
 
-## 1. The Interaction Flow: Continuous Evaluation Loop
+## 1. The Interaction Flow: Continuous Behavioral Evaluation
 
-The Taledge AI Interviewer is not a static Q&A bot. It operates as an **Adversarial Engineering Leader** (in Technical Mode) and an **Elite Behavioural Psychologist** (in Behavioural Mode). The interaction is continuous, dynamic, and adaptive.
+The Taledge Assessment Engine acts as an elite, impartial organizational leader. It engages candidates in a dynamic, continuous conversation that adapts in real-time to their psychological state, communication style, and technical depth.
 
-### 1.1 Context Payload & Initialization
-Before the interview begins, the frontend compiles a rigid JSON context payload derived from the candidate's parsed resume, target role, and identified academic/project history.
+### 1.1 Contextual Baseline Generation
+Before the interaction begins, the system constructs a highly personalized "baseline matrix." This matrix ingests the candidate's professional history, claimed competencies, and the exact strategic requirements of the target role within the organization.
 
-### 1.2 The Adversarial Prompt Engine
-The AI is instructed strictly through dynamic role-based prompting. It possesses multilingual abilities (English, Hindi, Hinglish) and adapts instantly.
-- **Cognitive Load Stress-Testing:** If a candidate answers a standard technical question perfectly, the AI instantly increases cognitive load by combining concepts or introducing edge-case system failure states to test their working memory.
-- **DNLA Psychometric Probing:** In the behavioural phase, the AI actively bypasses generic STAR (Situation, Task, Action, Result) answers to probe emotional regulation, ethical boundaries, and defensive mechanism triggers.
+### 1.2 The Adversarial & Psychometric Probing Engine
+The interaction is not a static list of questions. It utilizes a proprietary dynamic probing methodology across multiple languages and cultural contexts.
+- **Cognitive Load Stress-Testing:** When a candidate answers a standard question fluently, the engine dynamically introduces complex, multi-constraint scenarios or failure states. This measures their working memory, adaptability, and cognitive threshold under simulated organizational stress.
+- **Advanced Psychometric Mapping:** In behavioural phases, the engine bypasses rehearsed "STAR method" answers. It actively challenges the candidate's narrative to evaluate emotional regulation, structural integrity, and accountability vs. blame distribution when discussing failures.
 
-### 1.3 Execution Pipeline
-1. **Real-time STT:** Browser-native Webkit SpeechRecognition transcribes the candidate's speech.
-2. **LLM Routing:** The transcription is passed to the Taledge API (`/api/interview/voice/route.ts`), which interfaces with OpenRouter to process the transcript through the adversarial persona.
-3. **Real-time TTS:** The generated text is vocalized back to the candidate via the browser's native `SpeechSynthesis`.
-4. **Proctoring Overlay:** Background listeners track `visibilitychange` events to detect window-switching, applying immediate cheating penalties and logging violation counts.
-
-<div class="page-break"></div>
-
-## 2. The Fit Score & Success Probability Calculation
-
-The ultimate output of the platform is the **Success Potential Score (0-100%)**. This is calculated mathematically across 5 distinct feature matrices evaluated by the LLM post-interview.
-
-### Matrix 1: Technical Interview Signals
-
-| Competency Domain | Extracted AI Metric | Description / Proxy Measure |
-|---|---|---|
-| **Accuracy & Coverage** | Tech Accuracy Score | Percentage of core domain questions answered correctly. |
-| | Difficulty Weighted Accuracy | Weighted correctness (harder questions carry exponential weight). |
-| **Problem Solving Depth** | Solution Correctness | Binary mapping of full vs. partial solution. |
-| | Approach Structure | Logic decomposition and solution construction pipeline. |
-| | Multi-Approach Capability | Did the candidate proactively propose alternative solutions? |
-| **Thinking Quality** | Reasoning Clarity | NLP scoring of explanation clarity. |
-| | Conceptual Correctness | Even if the final answer failed, were the underlying mechanisms correct? |
-| | Error Recovery | Ability to detect and correct their own mistakes under pressure. |
-| **Coding Quality** | Efficiency & Correctness | Algorithmic Big-O evaluation and clean code principles. |
-| **Micro-Expression Proxies** | Response Latency | Average hesitation time before answering (proxy for confidence). |
-| | Latency Variance | Guessing vs. active deep thinking mapping. |
-| | Hint Dependency | Frequency of required hints for complex architectures. |
-
-### Matrix 2: Resume & Profile Features
-
-| Competency Domain | Extracted AI Metric | Description / Proxy Measure |
-|---|---|---|
-| **Skill Mapping** | Skill Match Score | Cosine similarity between parsed resume skills and Job Description. |
-| | Core Skill Percentage | Percentage of non-negotiable required skills present. |
-| **Project Reality Index**| Project Relevance | Solving a real-world enterprise problem vs. generic academic project. |
-| | Impact Quantification | Hard outcomes, user scale, and latency improvements over vague claims. |
-| **Academic Signals** | Academic Consistency | Longitudinal grades trend. |
+### 1.3 Execution & Integrity Pipeline
+1. **Real-time Auditory Processing:** The candidate's spoken responses are instantly analyzed for linguistic markers, tone, and pacing.
+2. **Semantic & Psychometric Routing:** The linguistic data is processed through advanced behavioural models to formulate an immediate, personalized follow-up query that probes deeper into identified competency gaps.
+3. **Conversational Synthesis:** The engine responds with a natural, human-like voice, maintaining the flow of a high-level executive interview.
+4. **Behavioral Integrity Overlay:** Background environmental monitoring tracks visual and physical anomalies (e.g., eye movement drift, multi-tasking, hesitation patterns) to ensure absolute assessment integrity and measure confidence.
 
 <div class="page-break"></div>
 
-### Matrix 3: DNLA Social Competence Assessment
-Imported via APIs from Germany, the DNLA report serves as the baseline psychological profile.
-- **Achievement Dynamics:** Drive, Motivation, Self-confidence.
-- **Interpersonal Relations:** Empathy, Assertiveness, Sociability.
-- **Will to Succeed:** Systematic mentality, Initiative.
-- **Stress Capacity:** Feedback reaction, Resilience under pressure, Outlook.
+## 2. The Multi-Dimensional Success Calculation
 
-### Matrix 4: Behavioural Interview Features
-The AI conducts a targeted interview designed to validate the DNLA baseline against actual anecdotal stress-testing.
+The ultimate output of the platform is the **Success Potential Score (0-100%)**. This is not a generalized rating; it is a mathematical aggregation of 5 distinct evaluation matrices designed to predict long-term retention and performance.
 
-| Competency Domain | Extracted AI Metric | Description / Proxy Measure |
+### Matrix 1: Cognitive & Execution Signals (Technical/Domain)
+This matrix evaluates the candidate's ability to execute complex tasks within their domain.
+
+| Competency Domain | Evaluated Metric | Organizational Implication |
 |---|---|---|
-| **Communication** | Clarity & Structure | STAR approach adherence and calibrated verbosity (too short vs. rambling). |
-| **Content Quality** | Relevance & Specificity | Did the response answer the intent? Real examples vs. generalized fluff. |
-| **Ownership & Attitude** | Blame vs. Accountability | "I" vs "Team" vs "Them" linguistic indexing when discussing failures. |
-| **Consistency Checks** | Internal Consistency | Identifying contradictions across responses and alignment with resume claims. |
-| **Cultural Fit** | Collaboration Signal | Perspective-taking and stakeholder map understanding. |
+| **Accuracy & Coverage** | Domain Competence Score | Measures depth of knowledge against role requirements. |
+| | Difficulty Weighted Accuracy | Tracks performance explicitly under high-complexity questions. |
+| **Problem Solving Depth** | Structural Decomposition | Can the candidate break down vague problems into executable steps? |
+| | Multi-Approach Capability | Identifies rigid thinkers vs. adaptable problem solvers. |
+| **Thinking Quality** | Reasoning Clarity | Measures how effectively they can explain complex logic to stakeholders. |
+| | Error Recovery Capability | How well does the candidate detect and correct their own mistakes under pressure? |
+| **Micro-Expression Proxies** | Hesitation & Latency Variance | Maps response timing to differentiate between deep conceptual thinking and knowledge gaps. |
 
-### Matrix 5: Cross-Component Features (The Red Flags)
-The final validation layer cross-references data across all 4 previous matrices to identify fatal hiring risks.
+### Matrix 2: Historical & Profile Alignment
+This matrix cross-references the candidate's stated history against the empirical data gathered during the interview.
 
-| Cross-Component Metric | Warning Condition | System Action |
+| Competency Domain | Evaluated Metric | Organizational Implication |
 |---|---|---|
-| **Tech vs. Resume Gap** | High resume claims but low technical interview performance. | <span class="tag">RED FLAG</span> |
-| **Confidence vs. Accuracy** | High confidence linguistic markers with low actual accuracy (Overconfidence). | <span class="tag">RED FLAG</span> |
-| **Behaviour vs. DNLA** | Claimed personality traits in DNLA do not match interview actions. | Score Penalty |
+| **Capability Mapping** | Trajectory Alignment | Measures how closely their past trajectory aligns with the future demands of the role. |
+| **Execution Reality Index**| Impact Quantification | Differentiates between candidates who led outcomes vs. those who were merely present. |
+| **Information Density** | Substantive Communication | Analyzes their historical documentation for clarity vs. "fluff." |
 
-## 3. Final Aggregation
+<div class="page-break"></div>
 
-The final Fit Score is an algorithmic synthesis of the above 5 matrices. By combining the rigid diagnostic power of German psychometrics (DNLA) with an Adversarial AI technical evaluation, the Taledge platform achieves what no other system can: **a truly holistic, deeply human, yet computationally flawless measure of success probability.**
+### Matrix 3: DNLA Social & Emotional Competence
+Leveraging world-class psychometric benchmarking (imported from standardized European frameworks), this establishes the foundational personality profile.
+
+- **Achievement Dynamics:** Drive, intrinsic motivation, and self-confidence.
+- **Interpersonal Relations:** Empathy, assertiveness, and cross-functional sociability.
+- **Will to Succeed:** Systematic mentality and proactive initiative.
+- **Stress Capacity:** Resilience under organizational pressure, reaction to critical feedback, and overall outlook.
+
+### Matrix 4: Behavioral Interview Validation
+The engine conducts targeted conversational validation to ensure the psychometric profile matches real-world action.
+
+| Competency Domain | Evaluated Metric | Organizational Implication |
+|---|---|---|
+| **Communication Quality** | Structural Adherence | Ability to remain concise and impactful during high-stakes communication. |
+| **Ownership & Attitude** | Blame vs. Accountability Index | Tracks linguistic usage ("I" vs "Team" vs "Them") to identify lack of accountability. |
+| **Integrity Checks** | Narrative Consistency | Identifies contradictions across multiple conversational threads. |
+| **Strategic Empathy** | Stakeholder Awareness | Measures ability to view problems from multiple organizational perspectives. |
+
+### Matrix 5: Cross-Component Features (Risk Identification)
+The final validation layer cross-references data across the entire ecosystem to flag critical hiring risks before an offer is made.
+
+| Risk Metric | Warning Condition | System Identification |
+|---|---|---|
+| **The Execution Gap** | High historical claims but low cognitive/domain performance in real-time. | <span class="tag">HIGH RISK</span> |
+| **The Arrogance Trap** | High confidence linguistic markers paired with low actual accuracy. | <span class="tag">HIGH RISK</span> |
+| **Psychometric Misalignment** | Claimed personality traits do not match the behavioral cues exhibited during stress-testing. | Score Suppression |
+
+## 3. Executive Summary of Aggregation
+
+The final Success Potential Score is a synthesized evaluation of these 5 matrices. By combining rigorous behavioral psychology, cognitive load testing, and empirical historical analysis, the Taledge platform provides HR Leadership with a truly holistic, deeply analytical, and bias-free measure of a candidate's future organizational success.
