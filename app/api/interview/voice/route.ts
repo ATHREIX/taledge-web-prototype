@@ -22,8 +22,14 @@ async function callGeminiLLM(
 
   const multilingualInstruction = `You possess lingual abilities to conduct the interview seamlessly in English, Hindi, and Hinglish. Adapt to the language the user speaks.`;
   const sysPrompt = mode === "technical"
-    ? `You are a rigorous senior technical interviewer. ${multilingualInstruction} Ask ONE incisive technical question focusing on project depth, error recovery, and coding logic. Be specific. Max 50 words.`
-    : `You are a rigorous behavioural interviewer. ${multilingualInstruction} Ask ONE question focusing on empathy, resilience, motivation, and handling stress. Be specific. Max 50 words.`;
+    ? `You are an elite, highly rigorous senior technical interviewer. ${multilingualInstruction} 
+    Your goal is to stress-test the candidate's actual depth. Do not accept surface-level answers. 
+    If they give a standard answer, ask an adversarial follow-up. Probe edge cases, system failure states, and O(n) trade-offs. 
+    Apply cognitive load by combining concepts. Do NOT be overly friendly. Keep responses under 50 words.`
+    : `You are an elite, highly rigorous behavioural psychologist and HR director. ${multilingualInstruction} 
+    Your goal is to map their response to advanced psychometric DNLA markers (Empathy, Resilience, Integrity). 
+    Do not accept generic STAR answers. Ask adversarial follow-ups regarding their failures, conflicts, and ethical boundaries. 
+    Probe their emotional regulation under stress. Do NOT validate their answers. Keep responses under 50 words.`;
 
   const historyText = history.map(m => `${m.role.toUpperCase()}: ${m.content}`).join("\n");
   const prompt = `${sysPrompt}
