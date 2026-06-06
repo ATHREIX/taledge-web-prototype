@@ -170,7 +170,7 @@ export default function CoachDashboard({ coachId }: { coachId: string }) {
   const [activeTab, setActiveTab] = useState<"overview" | "placement" | "exam">("overview");
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-slate-900 selection:bg-indigo-500/30 font-sans pb-24 relative overflow-hidden">
+    <div className="min-h-screen bg-[#FAFAFA] text-slate-900 selection:bg-indigo-500/30 font-sans pb-24 relative overflow-x-hidden">
       <GlowEffect />
       <div className="absolute top-1/4 left-0 w-96 h-96 bg-blue-600/10 rounded-full blur-[120px] -z-10 pointer-events-none" />
       <div className="absolute bottom-1/4 right-0 w-96 h-96 bg-purple-600/10 rounded-full blur-[120px] -z-10 pointer-events-none" />

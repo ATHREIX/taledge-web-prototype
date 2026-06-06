@@ -15,7 +15,7 @@ export default async function Development({
   if (!s) notFound();
 
   return (
-    <div className="relative overflow-hidden">
+    <div className="relative overflow-x-hidden">
       
       {/* Jaw-dropping animated background */}
       <div className="fixed inset-0 -z-20 min-h-screen bg-slate-50 overflow-hidden pointer-events-none">
@@ -56,7 +56,7 @@ export default async function Development({
             })}
           </div>
 
-          <h1 className="mt-7 max-w-4xl text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight font-bold tracking-tight leading-[1.1] text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
+          <h1 className="mt-7 max-w-4xl text-3xl sm:text-4xl md:text-5xl font-black tracking-tight leading-[1.1] text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
             Closing the gap to {s.targetRole}
           </h1>
           <p className="mt-4 max-w-2xl text-sm text-slate-500 sm:text-base">
@@ -119,7 +119,7 @@ export default async function Development({
               <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-500 uppercase rounded-full bg-indigo-50/50 border border-indigo-200/50 backdrop-blur-md shadow-sm">
                 <FlowIcon /> The Pathway
               </div>
-              <h2 className="mt-4 text-lg font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm sm:text-xl sm:text-5xl md:text-6xl font-extrabold tracking-tight">
+              <h2 className="mt-4 text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
                 Learning pathway
               </h2>
               <p className="mt-2 text-sm text-slate-500">
@@ -173,7 +173,7 @@ export default async function Development({
               <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-500 uppercase rounded-full bg-indigo-50/50 border border-indigo-200/50 backdrop-blur-md shadow-sm">
                 <SwitchIcon /> Phase 02 Preview
               </div>
-              <h2 className="mt-4 text-lg font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm sm:text-xl sm:text-5xl md:text-6xl font-extrabold tracking-tight">
+              <h2 className="mt-4 text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
                 Role transition
               </h2>
               <p className="mt-2 text-sm text-slate-500">
@@ -224,7 +224,7 @@ export default async function Development({
               <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-500 uppercase rounded-full bg-indigo-50/50 border border-indigo-200/50 backdrop-blur-md shadow-sm">
                 <MentorIcon /> The Coaches
               </div>
-              <h2 className="mt-4 text-lg font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm sm:text-xl sm:text-5xl md:text-6xl font-extrabold tracking-tight">
+              <h2 className="mt-4 text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
                 Matched coaches
               </h2>
             </div>
@@ -257,7 +257,7 @@ export default async function Development({
             <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-500 uppercase rounded-full bg-indigo-50/50 border border-indigo-200/50 backdrop-blur-md shadow-sm">
               <ChartIcon /> The Trend
             </div>
-            <h2 className="mt-4 text-lg font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm sm:text-xl sm:text-5xl md:text-6xl font-extrabold tracking-tight">
+            <h2 className="mt-4 text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
               Progress so far
             </h2>
           </div>

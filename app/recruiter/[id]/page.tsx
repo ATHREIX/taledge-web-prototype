@@ -125,7 +125,7 @@ export default function Recruiter() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-100/50 via-slate-50 to-purple-100/50 font-sans text-slate-900 selection:bg-indigo-500/30 relative overflow-hidden pb-32">
+    <div className="min-h-screen bg-slate-50/50 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-100/50 via-slate-50 to-purple-100/50 font-sans text-slate-900 selection:bg-indigo-500/30 relative overflow-x-hidden pb-32">
       {/* Animated Abstract Background Elements */}
       <motion.div 
         animate={{ scale: [1, 1.2, 1], rotate: [0, 90, 0] }} 

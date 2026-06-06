@@ -146,9 +146,9 @@ export default function Onboarding() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 selection:bg-indigo-500/20 overflow-hidden relative font-sans">
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 selection:bg-indigo-500/20 overflow-x-hidden relative font-sans">
       {/* Dynamic Background */}
-      <div className="absolute inset-0 pointer-events-none z-0">
+      <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
         {/* Crisp Checkered Grid Pattern */}
         <div 
           className="absolute inset-0 opacity-40"
@@ -234,7 +234,7 @@ export default function Onboarding() {
                   initial="initial"
                   animate="animate"
                   exit="exit"
-                  className="w-full bg-white/50 backdrop-blur-2xl border border-white/60 rounded-[2.5rem] p-8 sm:p-12 shadow-2xl shadow-indigo-500/10 relative overflow-hidden"
+                  className="w-full bg-white/50 backdrop-blur-2xl border border-white/60 rounded-3xl lg:rounded-[2.5rem] p-5 sm:p-8 lg:p-12 shadow-2xl shadow-indigo-500/10 relative overflow-hidden"
                 >
                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-sky-500 opacity-80" />
                   
@@ -370,7 +370,7 @@ export default function Onboarding() {
                   initial="initial"
                   animate="animate"
                   exit="exit"
-                  className="w-full bg-white/50 backdrop-blur-2xl border border-white/60 rounded-[2.5rem] p-8 sm:p-12 shadow-2xl shadow-indigo-500/10 relative overflow-hidden"
+                  className="w-full bg-white/50 backdrop-blur-2xl border border-white/60 rounded-3xl lg:rounded-[2.5rem] p-5 sm:p-8 lg:p-12 shadow-2xl shadow-indigo-500/10 relative overflow-hidden"
                 >
                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-sky-500 to-indigo-500 opacity-80" />
                   
@@ -426,7 +426,7 @@ export default function Onboarding() {
                   initial="initial"
                   animate="animate"
                   exit="exit"
-                  className="w-full bg-white/50 backdrop-blur-2xl border border-white/60 rounded-[2.5rem] p-8 sm:p-12 shadow-2xl shadow-indigo-500/10 relative overflow-hidden"
+                  className="w-full bg-white/50 backdrop-blur-2xl border border-white/60 rounded-3xl lg:rounded-[2.5rem] p-5 sm:p-8 lg:p-12 shadow-2xl shadow-indigo-500/10 relative overflow-hidden"
                 >
                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-sky-500 opacity-80" />
                   
@@ -492,7 +492,7 @@ export default function Onboarding() {
                   initial="initial"
                   animate="animate"
                   exit="exit"
-                  className="w-full bg-white/50 backdrop-blur-2xl border border-white/60 rounded-[2.5rem] p-10 sm:p-16 shadow-2xl shadow-indigo-500/10 relative overflow-hidden text-center"
+                  className="w-full bg-white/50 backdrop-blur-2xl border border-white/60 rounded-3xl lg:rounded-[2.5rem] p-6 sm:p-10 lg:p-16 shadow-2xl shadow-indigo-500/10 relative overflow-hidden text-center"
                 >
                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 to-indigo-500 opacity-80" />
                   

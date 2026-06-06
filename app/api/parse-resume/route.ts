@@ -144,6 +144,7 @@ Return strictly valid JSON. No prose before or after.`;
     const { parsed, model } = await generateGeminiJson<Parsed>(apiKey, prompt, {
       maxOutputTokens: 1500,
       temperature: 0.1,
+      model: "gemini-2.5-flash-lite"
     });
 
     if (parsed.is_resume === false) {

@@ -32,7 +32,7 @@ export default function ExamClient({
   progress,
 }: any) {
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-slate-800 font-sans selection:bg-purple-500/30 overflow-hidden relative">
+    <div className="min-h-screen bg-[#FAFAFA] text-slate-800 font-sans selection:bg-purple-500/30 overflow-x-hidden relative">
       {/* Animated Background Orbs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <motion.div

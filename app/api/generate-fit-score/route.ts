@@ -97,24 +97,24 @@ function normalizeDnla(value: unknown): DnlaItem[] {
 
 const RUBRIC = {
   technical: {
-    "Accuracy & Coverage": ["Tech accuracy score", "Difficulty-weighted accuracy"],
-    "Problem-solving depth": ["Solution correctness", "Approach structure", "Multi-approach capability"],
-    "Thinking quality": ["Reasoning clarity", "Conceptual correctness", "Error recovery"],
-    "Coding": ["Code correctness", "Code efficiency", "Code readability"],
-    "Behavioural signals during tech": ["Response latency", "Latency variance", "Hint dependency (lower = better)", "Consistency"],
+    "Cognitive Load Capacity": ["Multi-constraint problem solving", "Working memory retention (tracking multi-part questions)"],
+    "Adversarial Tech Resilience": ["Defense of architecture under cross-examination", "Yielding vs. Defending logic"],
+    "Systems Architecture Depth": ["O(n) trade-off awareness", "Failure-state edge case identification", "Microservice anti-patterns"],
+    "Code Quality & Pragmatism": ["Algorithmic efficiency", "Clean code principles", "Over-engineering avoidance"],
+    "Micro-Expression Proxies (Tech)": ["Latency variance (hesitation detection)", "Hint dependency penalty", "Confidence consistency"],
   },
   resume: {
-    "Skill matching": ["Skill match score (vs JD)", "Core skill percentage"],
-    "Project quality": ["Project relevance", "Project complexity", "Project impact"],
-    "Academic signals": ["Academic consistency", "Education tier"],
-    "Resume quality": ["Resume clarity", "Resume specificity"],
+    "Skill Mapping Matrix": ["JD overlap percentage", "Core vs Tangential skill dilution"],
+    "Project Reality Index": ["Complexity vs Claim alignment", "Impact quantification index"],
+    "Academic Trajectory": ["Tier multiplier", "Pedigree consistency"],
+    "Information Density": ["Fluff-to-substance ratio", "Clarity metric"],
   },
   behavioural: {
-    "Communication": ["Communication clarity", "Structured answer (STAR)", "Verbosity (calibrated)"],
-    "Content quality": ["Relevance to question", "Specificity (vs general)", "Impact orientation"],
-    "Ownership & attitude": ["Ownership score", "Blame vs accountability"],
-    "Consistency": ["Resume alignment", "Internal consistency"],
-    "Cultural fit indicators": ["Collaboration signal", "Initiative score", "Ethical alignment"],
+    "Advanced Psychometrics (DNLA)": ["Emotional regulation under adversarial questioning", "Cognitive dissonance detection", "Dark Triad suppression"],
+    "Conflict Resolution Depth": ["Blame distribution index", "De-escalation strategy map", "Post-mortem accountability"],
+    "Linguistic Biomarkers": ["Defensive mechanism triggers", "Pronoun usage (I vs We indexing)", "Calibrated verbosity"],
+    "Strategic Empathy": ["Perspective taking metrics", "Stakeholder map understanding"],
+    "Growth & Neuroplasticity": ["Feedback assimilation rate", "Fixed vs Growth mindset indicators"],
   },
 } as const;
 
@@ -189,7 +189,15 @@ You will receive:
 - Technical Interview transcript
 - Behavioural Interview transcript
 
-Your task is to compute every sub-score (0-100 scale) by grounding it in **specific evidence** from the transcripts and resume. Where evidence is thin or contradictory, score in the 30-55 range and call that out in the verdict. Do not invent capabilities.
+CRITICAL GROUNDING RULES:
+1. Every sub-score MUST be grounded in **specific evidence** from the transcripts and resume. Quote the candidate's exact words when justifying scores.
+2. Where evidence is thin or contradictory, score in the 30-55 range and call that out in the verdict.
+3. Do NOT invent capabilities the candidate did not demonstrate.
+4. Do NOT give generous scores without evidence. If the candidate gave a one-word answer, score that dimension low.
+5. The narrative MUST reference at least 2 specific things the candidate said (paraphrased or quoted).
+6. If a transcript section says "(no responses)", score all related dimensions at 0 and state "No evidence captured."
+
+Your task is to compute every sub-score (0-100 scale) with brutal honesty grounded in the actual evidence provided below.
 
 Candidate: ${body.candidateName}
 Target role: ${body.targetRole}

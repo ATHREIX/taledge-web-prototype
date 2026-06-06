@@ -1,0 +1,1 @@
+John Doe\njohn.doe@example.com\nUniversity of Technology\nFinal Year B.Tech CS\nSoftware Engineer\nSkills: React, Node.js, TypeScript\nProjects:\n- AI Chatbot using OpenAI\n- E-commerce website using Next.js

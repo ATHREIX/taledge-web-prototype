@@ -92,7 +92,7 @@ export default async function InstitutePage({
   const examAnalytics = isExam ? buildExamAnalytics(inst, examAspirants) : null;
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#FAFAFA] text-slate-700 font-sans selection:bg-fuchsia-500/30 selection:text-fuchsia-100">
+    <div className="relative min-h-screen overflow-x-hidden bg-[#FAFAFA] text-slate-700 font-sans selection:bg-fuchsia-500/30 selection:text-fuchsia-100">
       {/* Animated Background Mesh */}
       <MotionDiv animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.5, 0.3] }} transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }} className="absolute top-[-20%] left-[-10%] w-[60vw] h-[60vw] rounded-full bg-violet-900/30 blur-[140px] mix-blend-screen pointer-events-none" />
       <MotionDiv animate={{ scale: [1, 1.2, 1], opacity: [0.2, 0.4, 0.2] }} transition={{ duration: 15, repeat: Infinity, ease: "easeInOut", delay: 2 }} className="absolute bottom-[-20%] right-[-10%] w-[60vw] h-[60vw] rounded-full bg-fuchsia-900/30 blur-[140px] mix-blend-screen pointer-events-none" />

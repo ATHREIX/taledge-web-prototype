@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSession, updateSession } from "@/lib/session-store";
+import { generateGeminiTTS, getGeminiApiKey } from "@/lib/gemini";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -16,12 +17,13 @@ function generateSessionId(): string {
   return `vs_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function firstQuestion(mode: Body["mode"], role: string): string {
+function firstQuestion(mode: Body["mode"], role: string, resumeSummary?: string): string {
+  const resumeContext = resumeSummary ? ` I noticed from your resume that you have experience with: ${resumeSummary}.` : "";
   if (mode === "technical") {
-    return `Walk me through one project or problem that best proves your readiness for ${role}. Focus on the architecture, trade-offs, and the hardest decision you made.`;
+    return `Hello! Welcome to your TalEdge Technical Assessment for the ${role} position.${resumeContext} Before we dive into the architecture, could you please state your full name and tell me what your preferred programming language is for this interview?`;
   }
 
-  return `Tell me about a time you received difficult feedback or faced a setback. What happened, what did you do, and what changed afterwards?`;
+  return `Hello! Welcome to your TalEdge Behavioural Assessment for the ${role} position.${resumeContext} To get us started, could you please state your full name and tell me a little bit about your current professional background?`;
 }
 
 export async function POST(req: NextRequest) {
@@ -57,7 +59,16 @@ export async function POST(req: NextRequest) {
     mode: resolvedMode,
     resumeSummary: body.resumeSummary,
   });
-  const question = firstQuestion(resolvedMode, body.role);
+  const question = firstQuestion(resolvedMode, body.role, body.resumeSummary);
+  
+  let audioBase64 = "";
+  try {
+    const apiKey = getGeminiApiKey();
+    if (apiKey) audioBase64 = await generateGeminiTTS(apiKey, question);
+  } catch (ttsErr) {
+    console.error("TTS generation failed:", ttsErr);
+  }
+
   updateSession(session.sessionId, {
     transcript: [{ timestamp: Date.now(), role: "assistant", content: question }],
   });
@@ -66,6 +77,7 @@ export async function POST(req: NextRequest) {
     ok: true,
     sessionId: session.sessionId,
     firstQuestion: question,
+    audioBase64,
     message: "Session created.",
     mode: session.mode,
   });

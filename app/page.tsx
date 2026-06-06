@@ -92,10 +92,10 @@ const itemVariants: Variants = {
 
 export default function Home() {
   return (
-    <div className="relative h-screen w-screen bg-[#F8FAFC] text-slate-900 overflow-hidden font-sans selection:bg-indigo-500/20 flex flex-col justify-between">
+    <div className="relative min-h-screen w-full bg-[#F8FAFC] text-slate-900 overflow-x-hidden font-sans selection:bg-indigo-500/20 flex flex-col justify-between">
       
       {/* Sharp Grid Background & Soft Orbs */}
-      <div className="absolute inset-0 z-0 pointer-events-none">
+      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
         {/* Crisp Checkered Grid Pattern */}
         <div 
           className="absolute inset-0 opacity-40"
@@ -120,7 +120,7 @@ export default function Home() {
         />
       </div>
 
-      <div className="relative z-10 w-full max-w-[90rem] mx-auto px-8 lg:px-16 flex-1 flex flex-col justify-center h-full">
+      <div className="relative z-10 w-full max-w-[90rem] mx-auto px-8 lg:px-16 flex-1 flex flex-col justify-center py-12 lg:py-20">
         <motion.div
           variants={containerVariants}
           initial="hidden"
@@ -140,7 +140,7 @@ export default function Home() {
 
             <motion.h1 
               variants={itemVariants}
-              className="text-5xl sm:text-6xl lg:text-[5.5rem] font-black tracking-tighter leading-[1.05] text-slate-900 drop-shadow-sm"
+              className="text-3xl sm:text-4xl md:text-5xl lg:text-5xl xl:text-6xl font-black tracking-tighter leading-[1.05] text-slate-900 drop-shadow-sm"
             >
               Dual-track <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-sky-500 drop-shadow-sm">
@@ -148,7 +148,7 @@ export default function Home() {
               </span>
             </motion.h1>
 
-            <motion.p variants={itemVariants} className="mt-8 max-w-xl text-xl text-slate-600 leading-relaxed font-medium">
+            <motion.p variants={itemVariants} className="mt-8 max-w-xl text-base sm:text-lg text-slate-600 leading-relaxed font-medium">
               Taledge measures, predicts, and improves outcomes across placement
               readiness and competitive exam preparation by combining AI evaluation,
               DNLA-ready psychometrics, and human intervention.
@@ -266,7 +266,7 @@ export default function Home() {
       </div>
       
       {/* Footer */}
-      <div className="absolute bottom-6 w-full z-10 flex justify-center pointer-events-none">
+      <div className="w-full z-10 flex justify-center py-6 pointer-events-none relative mt-auto">
          <motion.div 
             initial={{ opacity: 0 }} 
             animate={{ opacity: 1 }} 

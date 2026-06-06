@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateGeminiContent, getGeminiApiKey } from "@/lib/gemini";
+import { generateGeminiContent, getGeminiApiKey, generateGeminiTTS } from "@/lib/gemini";
 import { getSession, updateSession } from "@/lib/session-store";
 
 export const runtime = "nodejs";
@@ -22,8 +22,18 @@ async function callGeminiLLM(
 
   const multilingualInstruction = `You possess lingual abilities to conduct the interview seamlessly in English, Hindi, and Hinglish. Adapt to the language the user speaks.`;
   const sysPrompt = mode === "technical"
-    ? `You are a rigorous senior technical interviewer. ${multilingualInstruction} Ask ONE incisive technical question focusing on project depth, error recovery, and coding logic. Be specific. Max 50 words.`
-    : `You are a rigorous behavioural interviewer. ${multilingualInstruction} Ask ONE question focusing on empathy, resilience, motivation, and handling stress. Be specific. Max 50 words.`;
+    ? `You are an elite, highly rigorous senior technical interviewer. ${multilingualInstruction} 
+    Your goal is to stress-test the candidate's actual depth based strictly on their resume context. Do not accept surface-level answers. 
+    Review their Resume Context provided below. 
+    First, critically evaluate the candidate's previous answer. If they were incorrect or surface-level, call it out briefly.
+    Then, formulate your next question. If their answer was incomplete, ask an adversarial follow-up. Probe edge cases, system failure states, and O(n) trade-offs. 
+    Apply cognitive load by combining concepts. Do NOT be overly friendly. Keep responses under 50 words.`
+    : `You are an elite, highly rigorous behavioural psychologist and HR director. ${multilingualInstruction} 
+    Your goal is to map their response to advanced psychometric DNLA markers (Empathy, Resilience, Integrity). 
+    Review their Resume Context provided below. 
+    First, evaluate the candidate's previous answer. Did they demonstrate the required depth?
+    Then, formulate your next question targeting their specific past experiences and skills. Do not accept generic STAR answers. Ask adversarial follow-ups regarding their failures, conflicts, and ethical boundaries. 
+    Probe their emotional regulation under stress. Do NOT validate generic answers. Keep responses under 50 words.`;
 
   const historyText = history.map(m => `${m.role.toUpperCase()}: ${m.content}`).join("\n");
   const prompt = `${sysPrompt}
@@ -41,7 +51,7 @@ Ask the next question.`;
 
   try {
     const result = await generateGeminiContent(apiKey, prompt, {
-      maxOutputTokens: 180,
+      maxOutputTokens: 250,
       temperature: 0.7,
     });
     const question = result.text.trim();
@@ -90,24 +100,32 @@ export async function POST(req: NextRequest) {
     }
 
     session.transcript.push({ timestamp: Date.now(), role: "user", content: transcript.trim() });
-    const isDone = session.turnIndex >= 3;
+    const isDone = session.turnIndex >= 6;
 
     const history = session.transcript
       .filter(t => t.role === "user" || t.role === "assistant")
       .map(t => ({ role: t.role as "assistant" | "user", content: t.content }));
 
     let nextQuestion = "";
+    let audioBase64 = "";
     if (!isDone) {
       const next = await callGeminiLLM(
         session.role,
         session.resumeSummary,
-        history.slice(0, -1),
+        history,
         transcript.trim(),
         session.mode,
         session.turnIndex + 1
       );
       nextQuestion = next.question;
       session.transcript.push({ timestamp: Date.now(), role: "assistant", content: nextQuestion });
+
+      try {
+        const apiKey = getGeminiApiKey();
+        if (apiKey) audioBase64 = await generateGeminiTTS(apiKey, nextQuestion);
+      } catch (ttsErr) {
+        console.error("Voice TTS generation failed:", ttsErr);
+      }
     }
 
     updateSession(sessionId, {
@@ -121,6 +139,7 @@ export async function POST(req: NextRequest) {
       sessionId,
       transcript,
       nextQuestion,
+      audioBase64,
       isDone,
       turnIndex: session.turnIndex + 1,
     });

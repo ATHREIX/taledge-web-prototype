@@ -11,6 +11,7 @@ type GenerateOptions = {
   temperature?: number;
   maxOutputTokens?: number;
   responseMimeType?: "application/json" | "text/plain";
+  model?: string;
 };
 
 export function getGeminiApiKey() {
@@ -40,9 +41,7 @@ export async function generateGeminiContent(
   prompt: string,
   options: GenerateOptions = {}
 ) {
-  const openRouterKey = process.env.OPENROUTER_API_KEY;
-  
-  // Convert Gemini parts to a single string for OpenRouter simplicity
+  // Convert Gemini parts to a single string for Gemini API
   const additionalText = (options.parts || [])
     .filter(p => "text" in p)
     .map(p => (p as { text: string }).text)
@@ -50,37 +49,52 @@ export async function generateGeminiContent(
   
   const fullContent = additionalText ? prompt + "\n" + additionalText : prompt;
 
-  const response = await fetch(
-    "https://openrouter.ai/api/v1/chat/completions",
-    {
+  const modelToUse = options.model || GEMINI_TEXT_MODEL;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent`;
+
+  let response: Response | null = null;
+  let lastErrorText = "";
+  const maxRetries = 3;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    response = await fetch(url, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${openRouterKey}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://taledge.com",
-        "X-Title": "TalEdge Platform"
+        "x-goog-api-key": apiKey
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [{ role: "user", content: fullContent }],
-        temperature: options.temperature ?? 0.2,
-        ...(options.responseMimeType === "application/json"
-            ? { response_format: { type: "json_object" } }
+        contents: [{ parts: [{ text: fullContent }] }],
+        generationConfig: {
+          temperature: options.temperature ?? 0.2,
+          ...(options.responseMimeType === "application/json"
+            ? { responseMimeType: "application/json" }
             : {})
+        }
       })
-    }
-  );
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw Object.assign(new Error("AI service unavailable via OpenRouter."), {
-      status: response.status,
-      upstreamError: errorText.slice(0, 300),
+    if (response.ok) break;
+
+    lastErrorText = await response.text();
+    if (response.status === 503 && attempt < maxRetries) {
+      // Exponential backoff: 2s, 4s, 8s
+      await new Promise(resolve => setTimeout(resolve, 2000 * Math.pow(2, attempt)));
+      continue;
+    }
+    
+    break; // Break on non-503 errors or if out of retries
+  }
+
+  if (!response || !response.ok) {
+    throw Object.assign(new Error("AI service unavailable via Google Gemini API."), {
+      status: response?.status || 500,
+      upstreamError: lastErrorText.slice(0, 300),
     });
   }
 
   const data = await response.json();
-  const text: string = data?.choices?.[0]?.message?.content ?? "";
+  const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
   return { text, model: GEMINI_TEXT_MODEL };
 }
 
@@ -101,4 +115,25 @@ export async function generateGeminiJson<T = any>(
     });
   }
   return { parsed: parsed as T, ...result };
+}
+export async function generateGeminiTTS(apiKey: string, text: string): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: "Read the following text exactly aloud:\n\n" + text }] }],
+      generationConfig: { responseModalities: ["AUDIO"] }
+    })
+  });
+  if (!response.ok) {
+    throw new Error(`Gemini TTS API error: ${response.status} ${response.statusText}`);
+  }
+  const data = await response.json();
+  try {
+    return data.candidates[0].content.parts[0].inlineData.data;
+  } catch (e) {
+    console.error("Failed to extract TTS audio data", JSON.stringify(data).substring(0, 500));
+    return "";
+  }
 }

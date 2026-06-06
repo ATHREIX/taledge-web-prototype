@@ -19,7 +19,7 @@ const itemVariants = {
 
 export default function CoachDashboard() {
   return (
-    <div className="relative min-h-screen bg-slate-50 text-slate-900 overflow-hidden font-sans selection:bg-emerald-500/20 flex flex-col">
+    <div className="relative min-h-screen bg-slate-50 text-slate-900 overflow-x-hidden font-sans selection:bg-emerald-500/20 flex flex-col">
       
       {/* Background */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">

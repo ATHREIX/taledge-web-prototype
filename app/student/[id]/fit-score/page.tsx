@@ -159,7 +159,7 @@ export default function FitScorePage() {
   }, [id]);
 
   return (
-    <div className="relative overflow-hidden">
+    <div className="relative overflow-x-hidden">
       
       {/* Jaw-dropping animated background */}
       <div className="fixed inset-0 -z-20 min-h-screen bg-slate-50 overflow-hidden pointer-events-none">
@@ -202,7 +202,7 @@ export default function FitScorePage() {
             })}
           </div>
 
-          <h1 className="mt-7 max-w-4xl text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight font-bold tracking-tight leading-[1.1] text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
+          <h1 className="mt-7 max-w-4xl text-3xl sm:text-4xl md:text-5xl font-black tracking-tight leading-[1.1] text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
             Structured feedback report for {s.name.split(" ")[0]}
           </h1>
           <p className="mt-4 max-w-2xl text-sm text-slate-500 sm:text-base">
@@ -299,7 +299,7 @@ export default function FitScorePage() {
               <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-500 uppercase rounded-full bg-indigo-50/50 border border-indigo-200/50 backdrop-blur-md shadow-sm">
                 <BrainIcon /> Component 03
               </div>
-              <h2 className="mt-4 text-lg font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm sm:text-xl sm:text-5xl md:text-6xl font-extrabold tracking-tight">
+              <h2 className="mt-4 text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
                 DNLA Social Competence
               </h2>
               <p className="mt-2 max-w-2xl text-sm text-slate-500">
@@ -339,7 +339,7 @@ export default function FitScorePage() {
               <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-500 uppercase rounded-full bg-indigo-50/50 border border-indigo-200/50 backdrop-blur-md shadow-sm">
                 <FlagIcon /> Component 05
               </div>
-              <h2 className="mt-4 text-lg font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm sm:text-xl sm:text-5xl md:text-6xl font-extrabold tracking-tight">
+              <h2 className="mt-4 text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
                 Cross-component features
               </h2>
               <p className="mt-2 max-w-2xl text-sm text-slate-500">
@@ -388,7 +388,7 @@ export default function FitScorePage() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="max-w-xl">
                 <div className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">Decision point · Per PRD §4.3</div>
-                <h2 className="mt-2 text-lg font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm sm:text-xl sm:text-5xl md:text-6xl font-extrabold tracking-tight">
+                <h2 className="mt-2 text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
                   Publish your Fit Score or reattempt the assessment
                 </h2>
                 <p className="mt-2 text-sm text-slate-500">
@@ -545,7 +545,7 @@ function RubricSection({
           <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-500 uppercase rounded-full bg-indigo-50/50 border border-indigo-200/50 backdrop-blur-md shadow-sm">
             <CheckCircle /> {tag}
           </div>
-          <h2 className="mt-4 text-lg font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm sm:text-xl sm:text-5xl md:text-6xl font-extrabold tracking-tight">
+          <h2 className="mt-4 text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
             {title}
           </h2>
           <p className="mt-2 max-w-2xl text-sm text-slate-500">{desc}</p>

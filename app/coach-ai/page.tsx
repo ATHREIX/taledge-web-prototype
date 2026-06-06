@@ -54,7 +54,7 @@ function CoachAIPhaseTwo() {
   }, []);
 
   return (
-    <div className="relative min-h-screen w-full bg-[#FAFAFA] text-slate-900 selection:bg-indigo-500/30 overflow-hidden font-sans">
+    <div className="relative min-h-screen w-full bg-[#FAFAFA] text-slate-900 selection:bg-indigo-500/30 overflow-x-hidden font-sans">
       {/* Dynamic Background Orbs */}
       <motion.div 
         animate={{

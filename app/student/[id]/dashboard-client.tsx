@@ -24,7 +24,7 @@ export default function DashboardClient({ student }: { student: Student }) {
   const behavScore = student?.fit?.behavioural || 65;
 
   return (
-    <div className="relative overflow-hidden min-h-screen">
+    <div className="relative overflow-x-hidden min-h-screen">
       {/* Animated background */}
       <div className="fixed inset-0 -z-20 min-h-screen bg-slate-50 overflow-hidden pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-400/20 blur-[120px] animate-pulse" style={{ animationDuration: '8s' }} />
@@ -43,7 +43,7 @@ export default function DashboardClient({ student }: { student: Student }) {
           <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-600 uppercase rounded-full bg-indigo-50/80 border border-indigo-200/50 backdrop-blur-md shadow-sm mb-4">
             <TrendingUp size={14} /> Analytics Dashboard
           </div>
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight leading-[1.1] text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight leading-[1.1] text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
             Development & Analytics
           </h1>
           <p className="mt-4 max-w-2xl text-sm text-slate-600 sm:text-base">
@@ -74,8 +74,8 @@ export default function DashboardClient({ student }: { student: Student }) {
                 {/* Labels */}
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 px-3 py-1 bg-white/60 backdrop-blur-sm rounded-full text-[10px] font-extrabold text-slate-500 uppercase tracking-widest shadow-sm border border-white/50">High Tech</div>
                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1 bg-white/60 backdrop-blur-sm rounded-full text-[10px] font-extrabold text-slate-500 uppercase tracking-widest shadow-sm border border-white/50">Low Tech</div>
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 -rotate-90 px-3 py-1 bg-white/60 backdrop-blur-sm rounded-full text-[10px] font-extrabold text-slate-500 uppercase tracking-widest shadow-sm border border-white/50 origin-center z-10">Low Behav</div>
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 rotate-90 px-3 py-1 bg-white/60 backdrop-blur-sm rounded-full text-[10px] font-extrabold text-slate-500 uppercase tracking-widest shadow-sm border border-white/50 origin-center z-10">High Behav</div>
+                <div className="absolute left-1 sm:left-4 top-1/2 -translate-y-1/2 -rotate-90 px-1.5 py-0.5 sm:px-3 sm:py-1 bg-white/60 backdrop-blur-sm rounded-full text-[8px] sm:text-[10px] font-extrabold text-slate-500 uppercase tracking-widest shadow-sm border border-white/50 origin-center z-10">Low Behav</div>
+                <div className="absolute right-1 sm:right-4 top-1/2 -translate-y-1/2 rotate-90 px-1.5 py-0.5 sm:px-3 sm:py-1 bg-white/60 backdrop-blur-sm rounded-full text-[8px] sm:text-[10px] font-extrabold text-slate-500 uppercase tracking-widest shadow-sm border border-white/50 origin-center z-10">High Behav</div>
                 
                 {/* Quadrant Backgrounds */}
                 <div className="absolute top-0 left-1/2 w-1/2 h-1/2 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 backdrop-blur-[2px] transition-colors hover:bg-emerald-500/20" />
