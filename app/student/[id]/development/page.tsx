@@ -28,32 +28,11 @@ export default async function Development({
         <div className="container mx-auto max-w-7xl px-5 sm:px-8">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-500 uppercase rounded-full bg-indigo-50/50 border border-indigo-200/50 backdrop-blur-md shadow-sm animate-fade-in">
-              <SparkIcon /> Step 06 of 06 · Development Pathway
+              <SparkIcon /> Development Pathway
             </div>
             <Link href={`/student/${s.id}`} className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold text-slate-700 transition-all duration-300 bg-white/40 border border-white/40 rounded-2xl hover:bg-white/80 hover:shadow-lg hover:shadow-slate-200/20 hover:-translate-y-0.5 active:scale-95 backdrop-blur-md !py-2 text-xs">
               <ArrowLeft /> Back
             </Link>
-          </div>
-
-          {/* Sequence rail */}
-          <div className="mt-5 flex flex-wrap items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider">
-            {["Profile", "Technical", "DNLA", "Behavioural", "Fit Score", "Pathway"].map((label, i) => {
-              const state = i < 5 ? "done" : "active";
-              return (
-                <div key={label} className="flex items-center gap-1.5">
-                  <span
-                    className={
-                      state === "done"
-                        ? "rounded-full bg-ink-900 px-2.5 py-1 text-white"
-                        : "rounded-full border border-ink-900 bg-white px-2.5 py-1 text-ink-900"
-                    }
-                  >
-                    0{i + 1} · {label}
-                  </span>
-                  {i < 5 && <span className="text-slate-300">·</span>}
-                </div>
-              );
-            })}
           </div>
 
           <h1 className="mt-7 max-w-4xl text-3xl sm:text-4xl md:text-5xl font-black tracking-tight leading-[1.1] text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">

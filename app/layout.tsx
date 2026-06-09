@@ -27,19 +27,22 @@ export const metadata: Metadata = {
     "Measuring, predicting, and improving human potential across careers and competitive pursuits.",
 };
  
+import { AuthProvider } from "@/components/AuthProvider";
+
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
-    <html
-      lang="en"
-      className={`${inter.variable} ${serif.variable} ${mono.variable}`}
-    >
-      <body className="font-sans antialiased">
-        <Nav />
-        <main className="relative">{children}</main>
+    <html lang="en">
+      <body className={`${inter.variable} ${serif.variable} ${mono.variable} antialiased bg-slate-50 text-slate-900 min-h-screen flex flex-col`}>
+        <AuthProvider>
+          <Nav />
+          <main className="flex-1">
+            {children}
+          </main>
+        </AuthProvider>
       </body>
     </html>
   );

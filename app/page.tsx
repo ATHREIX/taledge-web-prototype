@@ -12,14 +12,14 @@ const tracks = [
     initial: "P",
     title: "Placement Success",
     desc: "Resume context, technical interview, behavioural interview, Fit Score, coaching pathway.",
-    href: "/onboarding",
+    href: "/login",
     tag: "Track 01",
   },
   {
     initial: "E",
     title: "Competitive Exam Success",
     desc: "Exam context mapping, Success Potential, non-clinical risk signals, counselling plan.",
-    href: "/onboarding",
+    href: "/login",
     tag: "Track 02",
   },
 ];

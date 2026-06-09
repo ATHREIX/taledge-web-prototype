@@ -47,7 +47,7 @@ export default function DnlaReport() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-8">
           <div>
             <div className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
-              Step 03 - DNLA Import
+              DNLA Import
             </div>
             <h1 className="mt-3 text-3xl font-black tracking-tight">
               DNLA integration pending

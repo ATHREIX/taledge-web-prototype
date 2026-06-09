@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSession, updateSession } from "@/lib/session-store";
-import { generateGeminiTTS, getGeminiApiKey } from "@/lib/gemini";
+import { generateGeminiTTS, getGeminiApiKey, generateGeminiContent } from "@/lib/gemini";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 type Body = {
   studentId: string;
+  candidateName?: string;
   role: string;
   mode?: "technical" | "behavioural";
   stage?: 1 | 2;
@@ -17,13 +18,25 @@ function generateSessionId(): string {
   return `vs_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function firstQuestion(mode: Body["mode"], role: string, resumeSummary?: string): string {
-  const resumeContext = resumeSummary ? ` I noticed from your resume that you have experience with: ${resumeSummary}.` : "";
-  if (mode === "technical") {
-    return `Hello! Welcome to your TalEdge Technical Assessment for the ${role} position.${resumeContext} Before we dive into the architecture, could you please state your full name and tell me what your preferred programming language is for this interview?`;
+async function generateFirstQuestion(apiKey: string, mode: Body["mode"], role: string, resumeSummary?: string, candidateName?: string): Promise<string> {
+  const nameToUse = candidateName && candidateName !== "Candidate" ? candidateName : "the candidate";
+  const prompt = mode === "technical"
+    ? `You are a strict but professional technical interviewer. The candidate is applying for the ${role} position. Their name is ${nameToUse}.
+Generate a simple, welcoming opening question about their target role. For example, ask them to briefly introduce themselves and explain why they are interested in the ${role} position, or what their general placement goals are. Do NOT ask any specific technical questions or anything about their past projects/resume yet. CRITICAL: You MUST explicitly greet them by their name (Hello ${nameToUse}) and welcome them to the interview for the ${role} position. Keep it to 2 sentences. Ask EXACTLY ONE short question.`
+    : `You are a strict but professional behavioural interviewer. The candidate is applying for the ${role} position. Their name is ${nameToUse}.
+Generate a simple, welcoming opening question about their target role. For example, ask them to briefly introduce themselves and explain why they are interested in the ${role} position. Do NOT ask a complex behavioural question or ask about their past projects/resume yet. CRITICAL: You MUST explicitly greet them by their name (Hello ${nameToUse}) and welcome them to the interview for the ${role} position. Keep it to 2 sentences. Ask EXACTLY ONE short question.`;
+
+  if (!apiKey) {
+    return `Hello! Welcome to your TalEdge ${mode === "technical" ? "Technical" : "Behavioural"} Assessment for the ${role} position. To start, please state your full name and introduce yourself briefly based on your resume.`;
   }
 
-  return `Hello! Welcome to your TalEdge Behavioural Assessment for the ${role} position.${resumeContext} To get us started, could you please state your full name and tell me a little bit about your current professional background?`;
+  try {
+    const result = await generateGeminiContent(apiKey, prompt, { maxOutputTokens: 150, temperature: 0.7 });
+    if (result.text) return result.text.trim();
+  } catch (e) {
+    console.error("Failed to generate first question via LLM, falling back", e);
+  }
+  return `Hello! Welcome to your TalEdge ${mode === "technical" ? "Technical" : "Behavioural"} Assessment for the ${role} position. To start, please state your full name and introduce yourself briefly based on your resume.`;
 }
 
 export async function POST(req: NextRequest) {
@@ -59,11 +72,12 @@ export async function POST(req: NextRequest) {
     mode: resolvedMode,
     resumeSummary: body.resumeSummary,
   });
-  const question = firstQuestion(resolvedMode, body.role, body.resumeSummary);
+  
+  const apiKey = getGeminiApiKey();
+  const question = await generateFirstQuestion(apiKey || "", resolvedMode, body.role, body.resumeSummary, body.candidateName);
   
   let audioBase64 = "";
   try {
-    const apiKey = getGeminiApiKey();
     if (apiKey) audioBase64 = await generateGeminiTTS(apiKey, question);
   } catch (ttsErr) {
     console.error("TTS generation failed:", ttsErr);

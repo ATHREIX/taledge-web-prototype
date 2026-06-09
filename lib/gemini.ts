@@ -41,13 +41,14 @@ export async function generateGeminiContent(
   prompt: string,
   options: GenerateOptions = {}
 ) {
-  // Convert Gemini parts to a single string for Gemini API
-  const additionalText = (options.parts || [])
-    .filter(p => "text" in p)
-    .map(p => (p as { text: string }).text)
-    .join("\n");
-  
-  const fullContent = additionalText ? prompt + "\n" + additionalText : prompt;
+  // Preserve image/inlineData parts if provided
+  const combinedParts: any[] = [{ text: prompt }];
+  if (options.parts) {
+    options.parts.forEach(p => {
+      if ("inlineData" in p) combinedParts.push(p);
+      if ("text" in p && typeof (p as any).text === "string") combinedParts.push(p);
+    });
+  }
 
   const modelToUse = options.model || GEMINI_TEXT_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent`;
@@ -64,7 +65,7 @@ export async function generateGeminiContent(
         "x-goog-api-key": apiKey
       },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: fullContent }] }],
+        contents: [{ parts: combinedParts }],
         generationConfig: {
           temperature: options.temperature ?? 0.2,
           ...(options.responseMimeType === "application/json"

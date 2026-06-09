@@ -6,6 +6,7 @@ export const maxDuration = 60;
 
 type Parsed = {
   is_resume?: boolean;
+  is_jd?: boolean;
   reason?: string;
   full_name?: string;
   email?: string;
@@ -112,12 +113,18 @@ export async function POST(req: NextRequest) {
 
 After reading the text, decide whether it is a candidate's resume / CV.
 
-If the document is NOT a resume (e.g. it's an invoice, contract, brochure, syllabus, article, etc.), return EXACTLY this JSON and nothing else:
+If the document is a Job Description (JD), role profile, or syllabus:
+1. Return is_resume: true AND is_jd: true.
+2. Extract target_role, skills, projects, and summary from the JD requirements.
+3. Crucially, set full_name, email, institution, and year_cohort to empty strings (""). Do NOT populate them with mock candidate values or job titles (like "Human Resources Assistant").
+
+If the document is completely unrelated (e.g. it's an invoice, contract, brochure, receipt, book page, etc.), return EXACTLY this JSON and nothing else:
 { "is_resume": false, "reason": "<one short sentence describing what the document actually is>" }
 
-If the document IS a resume, return EXACTLY this JSON shape (no markdown fences, no commentary):
+If the document IS a resume or can be parsed as a candidate profile, return EXACTLY this JSON shape (no markdown fences, no commentary):
 {
   "is_resume": true,
+  "is_jd": false,
   "full_name": "string (the candidate's name)",
   "email": "string (the email on the resume, or empty string if none)",
   "institution": "string (most recent college/university, or current employer if no school)",
@@ -163,8 +170,10 @@ Return strictly valid JSON. No prose before or after.`;
     }
 
     if (
-      !parsed.full_name ||
-      (!parsed.institution && (!parsed.skills || parsed.skills.length === 0))
+      !parsed.is_jd && (
+        !parsed.full_name ||
+        (!parsed.institution && (!parsed.skills || parsed.skills.length === 0))
+      )
     ) {
       return NextResponse.json(
         {
@@ -177,6 +186,21 @@ Return strictly valid JSON. No prose before or after.`;
         },
         { status: 422 }
       );
+    }
+
+    if (parsed.is_jd) {
+      if (!parsed.target_role && (!parsed.skills || parsed.skills.length === 0)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "This Job Description doesn't seem to contain roles or skills we can extract.",
+            notResume: true,
+            filename,
+            sizeKb,
+          },
+          { status: 422 }
+        );
+      }
     }
 
     return NextResponse.json({

@@ -49,9 +49,15 @@ export function ScoreRing({
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <div className="font-display text-2xl font-medium leading-none text-ink-900">
-          {Math.round(value)}
-          <span className="ml-0.5 text-xs text-ink-400">%</span>
+        <div className="font-display text-xl font-medium leading-none text-ink-900">
+          {value === -1 ? (
+            "Pending"
+          ) : (
+            <>
+              {Math.round(value)}
+              <span className="ml-0.5 text-xs text-ink-400">%</span>
+            </>
+          )}
         </div>
         {label && (
           <div className="mt-1 text-[10px] uppercase tracking-wider text-ink-500">
