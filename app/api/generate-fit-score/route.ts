@@ -31,7 +31,24 @@ type Body = {
 
 function transcriptToText(msgs: Msg[] | undefined): string {
   if (!msgs || msgs.length === 0) return "(no responses)";
-  return msgs
+  
+  const filtered = msgs.filter(m => {
+    const text = m.content.toLowerCase().trim();
+    return !(
+      text === "exit" ||
+      text === "quit" ||
+      text === "end" ||
+      text === "stop" ||
+      text === "terminate" ||
+      text.includes("end the interview") ||
+      text.includes("stop the interview") ||
+      text.includes("thank you for completing this assessment")
+    );
+  });
+
+  if (filtered.length === 0) return "(no responses)";
+
+  return filtered
     .map(
       (m, i) =>
         `${m.role === "assistant" ? "Q" : "A"}${Math.floor(i / 2) + 1}: ${m.content}`
@@ -40,8 +57,10 @@ function transcriptToText(msgs: Msg[] | undefined): string {
 }
 
 function clamp(n: any, min = 0, max = 100): number {
+  if (n === null || n === undefined || n === -1) return -1;
   const v = Number(n);
   if (!isFinite(v)) return Math.round((min + max) / 2);
+  if (v === -1) return -1;
   return Math.max(min, Math.min(max, Math.round(v)));
 }
 
@@ -124,6 +143,15 @@ function rubricToPromptList(rubric: Record<string, readonly string[]>): string {
     .join("\n");
 }
 
+const ROLE_JDS: Record<string, string> = {
+  "Full-stack Software Engineer": "Required Skills: React, Next.js, Node.js, TypeScript, SQL databases, REST APIs, WebSockets, system architecture, performance optimization, and front-to-back testing. Experience building responsive web applications and designing end-to-end features.",
+  "Backend Engineer": "Required Skills: Server-side languages (Node.js/Go/Python/Java), databases (SQL, Redis, MongoDB), system design, microservices, API architecture, performance tuning, and message queues. Experience with cloud infrastructure (AWS/GCP), CI/CD, and scaling distributed backend systems.",
+  "Frontend Engineer": "Required Skills: JavaScript/TypeScript, React, Next.js, HTML5, CSS3, TailwindCSS. Solid understanding of responsive design, web performance, component architecture, accessibility, browser APIs, and modern state management. Strong design sense.",
+  "Data / ML Engineer": "Required Skills: Python, SQL. Experience with machine learning frameworks (TensorFlow, PyTorch, Scikit-learn), libraries (Pandas, NumPy), data pipelines, neural networks, and model deployment. Knowledge of NLP/LLMs, computer vision, data engineering (Spark, Kafka).",
+  "Product Manager": "Required Skills: Product lifecycle management, defining product roadmaps, evaluating technical and product trade-offs, writing PRDs, analyzing analytics metrics, and leading cross-functional engineering teams. Strong communication, product sense, problem decomposition, and customer empathy.",
+  "Consultant · Strategy": "Required Skills: Analytical reasoning, problem-solving, structured case interview frameworks, market entry analysis, financial modeling, slide deck creation, business strategy. Ability to interface with clients, manage stakeholders, and design organizational growth playbooks."
+};
+
 export async function POST(req: NextRequest) {
   const apiKey = getGeminiApiKey();
   let body: Body;
@@ -181,26 +209,32 @@ export async function POST(req: NextRequest) {
     .map((p) => `${p.title} [${p.stack.join(", ")}] · ${p.impact}`)
     .join("\n");
 
+  const jdText = ROLE_JDS[body.targetRole] || `Required Skills and competencies for the ${body.targetRole} role, including foundational technical skills, communication, problem-solving, and role-aligned expertise.`;
+
   const prompt = `You are a senior talent intelligence analyst computing a candidate's Fit Score per the Taledge PRD §9 rubric.
 
 You will receive:
-- Resume context
+- Target Job Description (JD) requirements
+- Resume context (skills, projects, summary)
 - Full DNLA Social Competence report (already scored on 1-7 scale)
 - Technical Interview transcript
 - Behavioural Interview transcript
 
 CRITICAL GROUNDING RULES:
 1. Every sub-score MUST be grounded in **specific evidence** from the transcripts and resume. Quote the candidate's exact words when justifying scores.
-2. Where evidence is thin or contradictory, score in the 30-55 range and call that out in the verdict.
-3. Do NOT invent capabilities the candidate did not demonstrate.
-4. Do NOT give generous scores without evidence. If the candidate gave a one-word answer, score that dimension low.
-5. The narrative MUST reference at least 2 specific things the candidate said (paraphrased or quoted).
-6. If a transcript section says "(no responses)", score all related dimensions at 0 and state "No evidence captured."
+2. Directly compare and analyze the candidate's Resume (skills, projects, experience) against the Target Job Description (JD). Ground Component 02 (Resume & profile features) specifically in this comparative overlap: evaluate the "JD overlap percentage" and check for "Core vs Tangential skill dilution".
+3. Where evidence is thin or contradictory, score in the 30-55 range and call that out in the verdict.
+4. Do NOT invent capabilities the candidate did not demonstrate.
+5. Do NOT give generous scores without evidence. If the candidate gave a one-word answer, score that dimension low.
+6. The narrative MUST reference at least 2 specific things the candidate said (paraphrased or quoted).
+7. If a transcript section says "(no responses)", it means that interview stage has not been started yet. You MUST set its corresponding headline score (technical_score or behavioural_score) to -1. Compute the overall fit_score and success_probability composites based ONLY on the completed interview stages (do not include the -1 stage in calculations). Keep the breakdown subscores for the missing stage as 0.
 
 Your task is to compute every sub-score (0-100 scale) with brutal honesty grounded in the actual evidence provided below.
 
 Candidate: ${body.candidateName}
 Target role: ${body.targetRole}
+Target Job Description (JD):
+${jdText}
 
 Resume summary: ${body.resumeSummary || "(not provided)"}
 Resume skills: ${skillList || "(not provided)"}
@@ -244,8 +278,8 @@ Cross-component features (Component 05) · each must be { "label": string, "verd
 Return EXACTLY this JSON shape (no markdown fences, no commentary):
 
 {
-  "technical_score": <0-100 integer>,
-  "behavioural_score": <0-100 integer>,
+  "technical_score": <0-100 integer or -1 if pending>,
+  "behavioural_score": <0-100 integer or -1 if pending>,
   "fit_score": <0-100 integer>,
   "success_probability": <0-100 integer>,
   "verdict": "<one short phrase, e.g. 'Interview-ready' / 'Develop further' / 'Strong fit' / 'High potential, needs polish'>",

@@ -71,8 +71,10 @@ Generate ONE specific, personalized question for this candidate.
 
 Rules:
 - Build heavily on their previous answers. If they gave a vague answer previously, grill them on it.
-- Match their experience level but make it very challenging.
+- Start with simpler, foundational questions in the beginning. As the interview progresses, gradually increase the complexity based on the candidate's responses. Check their behavior and adapt the difficulty according to how well they answer.
+- Match their experience level but make it appropriately challenging.
 - Keep to 1-2 sentences. Do not use pleasantries. Just ask the question.
+- CRITICAL: Ask EXACTLY ONE question. Do NOT ask multi-part questions or combine multiple questions.
 - CRITICAL: For technical interviews, at least once during the interview, explicitly tell the user: "For this question, please manually type your code/answer in the input box instead of speaking."
 
 Return ONLY the question text, nothing else.`;

@@ -1,12 +1,51 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { doc, updateDoc } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 
 const steps = ["Profile", "Goal", "Context", "Done"];
 
+const PLACEMENT_ROLES = [
+  "Full-stack Software Engineer",
+  "Backend Engineer",
+  "Frontend Engineer",
+  "Data / ML Engineer",
+  "Mobile Engineer (iOS/Android)",
+  "DevOps / SRE Engineer",
+  "Cloud Solutions Architect",
+  "Embedded Systems Engineer",
+  "QA / Test Automation Engineer",
+  "Data Scientist / Analyst",
+  "Product Manager",
+  "Product Designer (UI/UX)",
+  "Consultant · Strategy",
+  "Business Analyst",
+  "Human Resources Assistant",
+  "Marketing Operations Specialist",
+  "Financial Analyst"
+];
+
+const COMPETITIVE_EXAMS = [
+  "UPSC Civil Services",
+  "GATE · CSE",
+  "CAT",
+  "GMAT",
+  "GRE",
+  "IIT JEE",
+  "NEET",
+  "SAT / ACT",
+  "TOEFL / IELTS",
+  "Chartered Accountant (CA)",
+  "CFA (Chartered Financial Analyst)",
+  "SBI PO / IBPS Clerk"
+];
+
+
 type ParsedResume = {
+  is_jd?: boolean;
   full_name?: string;
   email?: string;
   institution?: string;
@@ -30,6 +69,16 @@ export default function Onboarding() {
   const [resumeSource, setResumeSource] = useState<string>("");
   const [resumeError, setResumeError] = useState<string>("");
   const [parseMs, setParseMs] = useState<number>(0);
+
+  // JD and Validation state
+  const [isJdUpload, setIsJdUpload] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Search input & Dropdown visibility states
+  const [roleSearch, setRoleSearch] = useState("");
+  const [examSearch, setExamSearch] = useState("");
+  const [showRoleDropdown, setShowRoleDropdown] = useState(false);
+  const [showExamDropdown, setShowExamDropdown] = useState(false);
 
   // Profile fields
   const [fullName, setFullName] = useState("");
@@ -79,10 +128,29 @@ export default function Onboarding() {
 
       setResumeSource(data.source || "");
       const p: ParsedResume = data.parsed || {};
-      if (p.full_name) setFullName(p.full_name);
-      if (p.email) setEmail(p.email);
-      if (p.institution) setInstitution(p.institution);
-      if (p.year_cohort) setYearCohort(p.year_cohort);
+      const isJd = !!p.is_jd;
+      setIsJdUpload(isJd);
+
+      if (isJd) {
+        setFullName("");
+        setEmail("");
+        setInstitution("");
+        setYearCohort("");
+        setTrack("placement");
+        if (p.target_role) {
+          setSelectedRole(p.target_role);
+        }
+      } else {
+        setFullName(p.full_name || "");
+        setEmail(p.email || "");
+        setInstitution(p.institution || "");
+        setYearCohort(p.year_cohort || "");
+        if (p.target_role) {
+          setSelectedRole(p.target_role);
+        }
+      }
+      setErrors({});
+
       setParsedExtras({
         skills: p.skills || [],
         projects: p.projects || [],
@@ -93,6 +161,32 @@ export default function Onboarding() {
     } catch (e: any) {
       setResumeStatus("error");
       setResumeError(e?.message || "Network error · please check your connection and retry.");
+    }
+  }
+
+  function validateStep0() {
+    const newErrors: Record<string, string> = {};
+    if (!fullName.trim()) {
+      newErrors.fullName = "Full name is required.";
+    }
+    if (!email.trim()) {
+      newErrors.email = "Email address is required.";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      newErrors.email = "Please enter a valid email address.";
+    }
+    if (!institution.trim()) {
+      newErrors.institution = "Institution / Company is required.";
+    }
+    if (!yearCohort.trim()) {
+      newErrors.yearCohort = "Year / Cohort is required.";
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }
+
+  function handleContinueStep0() {
+    if (validateStep0()) {
+      setStep(1);
     }
   }
 
@@ -107,13 +201,24 @@ export default function Onboarding() {
     if (file) void handleFile(file);
   }
 
-  function persistDemoProfile() {
+  async function persistDemoProfile() {
     try {
-      localStorage.setItem(
-        "taledge:demo-profile",
-        JSON.stringify({
-          fullName,
-          email,
+      const profileData = JSON.stringify({
+        fullName,
+        email,
+        institution,
+        yearCohort,
+        aspiration,
+        targetRole: selectedRole,
+        resumeSummary: parsedExtras?.summary || "",
+        resumeSkills: parsedExtras?.skills || [],
+        resumeProjects: parsedExtras?.projects || [],
+      });
+      localStorage.setItem("taledge:demo-profile", profileData);
+      localStorage.setItem("taledge:workspace-profile", profileData);
+
+      if (auth.currentUser) {
+        await updateDoc(doc(db, "candidates", auth.currentUser.uid), {
           institution,
           yearCohort,
           aspiration,
@@ -121,9 +226,11 @@ export default function Onboarding() {
           resumeSummary: parsedExtras?.summary || "",
           resumeSkills: parsedExtras?.skills || [],
           resumeProjects: parsedExtras?.projects || [],
-        })
-      );
-    } catch {}
+        });
+      }
+    } catch (e) {
+      console.error("Error persisting profile:", e);
+    }
   }
 
   const slideVariants = {
@@ -193,7 +300,10 @@ export default function Onboarding() {
         {/* Stepper */}
         <div className="max-w-4xl mx-auto w-full mb-12">
           <div className="flex justify-between items-center relative">
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-[2px] bg-slate-200 -z-10 rounded-full overflow-hidden">
+            <div 
+              className="absolute top-6 -translate-y-1/2 h-[2px] bg-slate-200 -z-10 rounded-full overflow-hidden"
+              style={{ left: `calc(50% / ${steps.length})`, right: `calc(50% / ${steps.length})` }}
+            >
               <motion.div 
                 className="h-full bg-gradient-to-r from-indigo-500 to-sky-500"
                 initial={{ width: "0%" }}
@@ -202,7 +312,7 @@ export default function Onboarding() {
               />
             </div>
             {steps.map((s, i) => (
-              <div key={s} className="flex flex-col items-center gap-3">
+              <div key={s} className="flex-1 flex flex-col items-center gap-3">
                 <motion.div
                   layout
                   className={`flex items-center justify-center w-12 h-12 rounded-full font-bold text-sm transition-all duration-500 shadow-sm ${
@@ -266,7 +376,7 @@ export default function Onboarding() {
                           <DocIcon className="w-8 h-8 text-indigo-500" />
                         </div>
                         <div className="text-lg font-bold text-slate-700 mb-1">Drop your resume PDF</div>
-                        <div className="text-sm font-medium text-slate-400 mb-4">Max 10 MB · Gemini 2.5 Pro Powered</div>
+                        <div className="text-sm font-medium text-slate-400 mb-4">Max 10 MB · TalEdge AI Powered</div>
                         <button className="px-6 py-2 rounded-full bg-white border border-slate-200 shadow-sm text-slate-700 text-sm font-bold hover:bg-slate-50 transition-colors">
                           Choose File
                         </button>
@@ -332,11 +442,63 @@ export default function Onboarding() {
                     )}
                   </div>
 
+                  {isJdUpload && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mb-6 flex gap-3.5 p-5 rounded-2xl border border-amber-200 bg-amber-50/70 text-amber-800 backdrop-blur-md"
+                    >
+                      <AlertTriangleIcon className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-bold text-sm text-amber-900">Job Description Detected</div>
+                        <div className="text-xs font-semibold text-amber-700 mt-0.5 leading-relaxed">
+                          The uploaded file appears to be a Job Description. Please fill in your personal details manually.
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-6">
-                    <Field label="Full name" value={fullName} onChange={setFullName} autoFilled={resumeStatus === "parsed"} />
-                    <Field label="Email" value={email} onChange={setEmail} autoFilled={resumeStatus === "parsed"} />
-                    <Field label="Institution" value={institution} onChange={setInstitution} autoFilled={resumeStatus === "parsed"} />
-                    <Field label="Year / Cohort" value={yearCohort} onChange={setYearCohort} autoFilled={resumeStatus === "parsed"} />
+                    <Field 
+                      label="Full name" 
+                      value={fullName} 
+                      onChange={(val: string) => {
+                        setFullName(val);
+                        if (errors.fullName) setErrors(prev => ({ ...prev, fullName: "" }));
+                      }} 
+                      autoFilled={resumeStatus === "parsed" && !isJdUpload} 
+                      error={errors.fullName}
+                    />
+                    <Field 
+                      label="Email" 
+                      value={email} 
+                      onChange={(val: string) => {
+                        setEmail(val);
+                        if (errors.email) setErrors(prev => ({ ...prev, email: "" }));
+                      }} 
+                      autoFilled={resumeStatus === "parsed" && !isJdUpload} 
+                      error={errors.email}
+                    />
+                    <Field 
+                      label="Institution" 
+                      value={institution} 
+                      onChange={(val: string) => {
+                        setInstitution(val);
+                        if (errors.institution) setErrors(prev => ({ ...prev, institution: "" }));
+                      }} 
+                      autoFilled={resumeStatus === "parsed" && !isJdUpload} 
+                      error={errors.institution}
+                    />
+                    <Field 
+                      label="Year / Cohort" 
+                      value={yearCohort} 
+                      onChange={(val: string) => {
+                        setYearCohort(val);
+                        if (errors.yearCohort) setErrors(prev => ({ ...prev, yearCohort: "" }));
+                      }} 
+                      autoFilled={resumeStatus === "parsed" && !isJdUpload} 
+                      error={errors.yearCohort}
+                    />
                   </div>
 
                   <div className="mb-8">
@@ -354,7 +516,7 @@ export default function Onboarding() {
                     <motion.button 
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
-                      onClick={() => setStep(1)} 
+                      onClick={handleContinueStep0} 
                       className="group flex items-center gap-2 bg-indigo-600 text-white px-8 py-4 rounded-full font-bold shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 hover:shadow-2xl hover:shadow-indigo-500/40 hover:-translate-y-1 transition-all duration-300"
                     >
                       Continue <ArrowRightIcon className="w-4 h-4 transition-transform group-hover:translate-x-1" />
@@ -439,34 +601,172 @@ export default function Onboarding() {
                         ? "This grounds your interview questions and Fit Score weighting." 
                         : "This wires in the right success benchmarks and mock-test cadence."}
                     </p>
+                    {isJdUpload && track === "placement" && (
+                      <div className="mt-4 inline-flex items-center gap-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 px-4 py-1.5 rounded-full text-xs font-bold shadow-sm shadow-indigo-500/5">
+                        <SparklesIcon className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
+                        Target role auto-detected from Job Description
+                      </div>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-10">
-                    {(track === "placement" 
-                      ? ["Full-stack Software Engineer", "Backend Engineer", "Frontend Engineer", "Data / ML Engineer", "Product Manager", "Consultant · Strategy"]
-                      : ["UPSC Civil Services", "GATE · CSE", "CAT", "GMAT", "GRE", "Other"]
-                    ).map((r) => (
-                      <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        key={r}
-                        onClick={() => setSelectedRole(r)}
-                        className={`p-5 rounded-2xl border text-left transition-all duration-300 ${
-                          selectedRole === r 
-                            ? "border-indigo-500 bg-indigo-50/80 shadow-md shadow-indigo-500/10" 
-                            : "border-white/60 bg-white/50 backdrop-blur-md hover:border-indigo-300 hover:bg-white/80 hover:shadow-lg hover:shadow-indigo-500/5"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className={`font-bold ${selectedRole === r ? "text-indigo-700" : "text-slate-700"}`}>{r}</span>
-                          {selectedRole === r && (
-                            <motion.div layoutId="check">
-                              <CheckIcon className="w-5 h-5 text-indigo-600" />
-                            </motion.div>
-                          )}
-                        </div>
-                      </motion.button>
-                    ))}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                    {(() => {
+                      const quickList = track === "placement" 
+                        ? ["Full-stack Software Engineer", "Backend Engineer", "Frontend Engineer", "Data / ML Engineer", "Product Manager", "Consultant · Strategy"]
+                        : ["UPSC Civil Services", "GATE · CSE", "CAT", "GMAT", "GRE", "Other"];
+
+                      const displayList = [...quickList];
+                      if (selectedRole && !quickList.includes(selectedRole)) {
+                        displayList.push(selectedRole);
+                      }
+
+                      return displayList.map((r) => (
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          key={r}
+                          onClick={() => setSelectedRole(r)}
+                          className={`p-5 rounded-2xl border text-left transition-all duration-300 ${
+                            selectedRole === r 
+                              ? "border-indigo-500 bg-indigo-50/80 shadow-md shadow-indigo-500/10" 
+                              : "border-white/60 bg-white/50 backdrop-blur-md hover:border-indigo-300 hover:bg-white/80 hover:shadow-lg hover:shadow-indigo-500/5"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className={`font-bold ${selectedRole === r ? "text-indigo-700" : "text-slate-700"}`}>{r}</span>
+                            {selectedRole === r && (
+                              <motion.div layoutId="check">
+                                <CheckIcon className="w-5 h-5 text-indigo-600" />
+                              </motion.div>
+                            )}
+                          </div>
+                        </motion.button>
+                      ));
+                    })()}
+                  </div>
+
+                  <div className="relative mb-10">
+                    <label className="block text-sm font-bold text-slate-700 mb-2">
+                      Search all {track === "placement" ? "roles" : "exams"}...
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <SearchIcon className="w-5 h-5 text-slate-400" />
+                      </div>
+                      <input
+                        type="text"
+                        placeholder={`Type to search or add custom ${track === "placement" ? "role" : "exam"}...`}
+                        value={track === "placement" ? roleSearch : examSearch}
+                        onChange={(e) => {
+                          if (track === "placement") {
+                            setRoleSearch(e.target.value);
+                            setShowRoleDropdown(true);
+                          } else {
+                            setExamSearch(e.target.value);
+                            setShowExamDropdown(true);
+                          }
+                        }}
+                        onFocus={() => {
+                          if (track === "placement") setShowRoleDropdown(true);
+                          else setShowExamDropdown(true);
+                        }}
+                        className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-10 py-4 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-medium shadow-sm hover:shadow-md"
+                      />
+                      {(track === "placement" ? roleSearch : examSearch) && (
+                        <button
+                          onClick={() => {
+                            if (track === "placement") {
+                              setRoleSearch("");
+                            } else {
+                              setExamSearch("");
+                            }
+                          }}
+                          className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600"
+                        >
+                          <CloseIcon className="w-5 h-5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <AnimatePresence>
+                      {((track === "placement" && showRoleDropdown) || (track === "exam" && showExamDropdown)) && (
+                        <>
+                          <div 
+                            className="fixed inset-0 z-20" 
+                            onClick={() => {
+                              setShowRoleDropdown(false);
+                              setShowExamDropdown(false);
+                            }}
+                          />
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            className="absolute z-30 w-full mt-2 bg-white/95 backdrop-blur-xl border border-slate-200 rounded-2xl shadow-xl max-h-60 overflow-y-auto"
+                          >
+                            {(() => {
+                              const query = (track === "placement" ? roleSearch : examSearch).trim().toLowerCase();
+                              const list = track === "placement" ? PLACEMENT_ROLES : COMPETITIVE_EXAMS;
+                              const filtered = list.filter(item => item.toLowerCase().includes(query));
+
+                              return (
+                                <div className="p-2 flex flex-col gap-1">
+                                  {filtered.map((item) => (
+                                    <button
+                                      key={item}
+                                      onClick={() => {
+                                        setSelectedRole(item);
+                                        if (track === "placement") {
+                                          setRoleSearch("");
+                                          setShowRoleDropdown(false);
+                                        } else {
+                                          setExamSearch("");
+                                          setShowExamDropdown(false);
+                                        }
+                                      }}
+                                      className={`w-full text-left px-4 py-3 rounded-xl font-bold text-sm transition-colors flex items-center justify-between ${
+                                        selectedRole === item
+                                          ? "bg-indigo-50 text-indigo-700"
+                                          : "text-slate-700 hover:bg-slate-50"
+                                      }`}
+                                    >
+                                      <span>{item}</span>
+                                      {selectedRole === item && <CheckIcon className="w-4 h-4 text-indigo-600" />}
+                                    </button>
+                                  ))}
+
+                                  {query && !list.some(item => item.toLowerCase() === query) && (
+                                    <button
+                                      onClick={() => {
+                                        const trimmedVal = track === "placement" ? roleSearch.trim() : examSearch.trim();
+                                        setSelectedRole(trimmedVal);
+                                        if (track === "placement") {
+                                          setRoleSearch("");
+                                          setShowRoleDropdown(false);
+                                        } else {
+                                          setExamSearch("");
+                                          setShowExamDropdown(false);
+                                        }
+                                      }}
+                                      className="w-full text-left px-4 py-3 rounded-xl font-bold text-sm text-indigo-600 hover:bg-indigo-50/50 transition-colors flex items-center gap-2 border border-dashed border-indigo-200 mt-1"
+                                    >
+                                      <SparklesIcon className="w-4 h-4 text-indigo-500" />
+                                      <span>Use custom: "{track === "placement" ? roleSearch : examSearch}"</span>
+                                    </button>
+                                  )}
+
+                                  {filtered.length === 0 && !query && (
+                                    <div className="px-4 py-3 text-sm font-medium text-slate-400 text-center">
+                                      No items found.
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </motion.div>
+                        </>
+                      )}
+                    </AnimatePresence>
                   </div>
 
                   <div className="flex justify-between items-center">
@@ -544,14 +844,19 @@ export default function Onboarding() {
   );
 }
 
-function Field({ label, value, onChange, autoFilled = false }: any) {
+function Field({ label, value, onChange, autoFilled = false, error }: any) {
   return (
     <div className="relative group">
       <label className="flex items-center justify-between text-sm font-bold text-slate-700 mb-2">
-        {label}
-        {autoFilled && (
+        <span className={error ? "text-rose-600" : ""}>{label}</span>
+        {autoFilled && !error && (
           <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
             Auto-filled
+          </span>
+        )}
+        {error && (
+          <span className="text-[10px] uppercase tracking-wider font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full">
+            Required
           </span>
         )}
       </label>
@@ -559,11 +864,18 @@ function Field({ label, value, onChange, autoFilled = false }: any) {
         <input
           value={value}
           onChange={onChange ? (e) => onChange(e.target.value) : undefined}
-          className={`w-full border rounded-2xl px-5 py-4 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-300 font-medium shadow-sm hover:shadow-md ${
-            autoFilled ? "border-emerald-200 bg-emerald-50/50" : "border-white/60 bg-white/50 backdrop-blur-md hover:bg-white/80"
+          className={`w-full border rounded-2xl px-5 py-4 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-4 transition-all duration-300 font-medium shadow-sm hover:shadow-md ${
+            error
+              ? "border-rose-300 bg-rose-50/20 focus:ring-rose-500/10 focus:border-rose-400"
+              : autoFilled
+              ? "border-emerald-200 bg-emerald-50/50 focus:ring-indigo-500/10 focus:border-indigo-500"
+              : "border-white/60 bg-white/50 backdrop-blur-md hover:bg-white/80 focus:ring-indigo-500/10 focus:border-indigo-500"
           }`}
         />
       </div>
+      {error && (
+        <p className="mt-1.5 text-xs font-bold text-rose-600">{error}</p>
+      )}
     </div>
   );
 }
@@ -651,6 +963,34 @@ function CheckIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+function AlertTriangleIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  );
+}
+
+function SearchIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+
+function CloseIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
     </svg>
   );
 }
