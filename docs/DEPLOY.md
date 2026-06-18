@@ -41,10 +41,10 @@ cleans `.next` first; the build uses webpack (Turbopack is dev-only).
    (an interview can break mid-way if the request hits a different instance),
    and `AUTH_ENFORCED=true` rejects all calls (no admin to verify tokens).
 
-3. **Use the Vercel Pro plan (or set function limits).** The AI routes declare
-   `export const maxDuration` of 60–90s (`generate-fit-score`=90, interview
-   `voice`=60). The **Hobby plan caps functions at ~10s**, so Gemini calls time
-   out. Pro allows up to 300s and honors the per-route `maxDuration`.
+3. **Plan / function duration.** The free **Hobby plan works** — all AI routes
+   are now ≤ **60s** (`generate-fit-score`/`voice`/`parse-resume` = 60s), which
+   is the Hobby cap. Most Gemini calls finish well under that. Upgrade to **Pro**
+   (up to 300s) only if you later raise `maxDuration` for heavier reports.
 
 4. **Deploy Firestore rules + run the seed** (see `docs/FIRESTORE_SETUP.md`):
    `firebase deploy --only firestore:rules` and `npm run seed`.

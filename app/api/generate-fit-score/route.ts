@@ -9,7 +9,9 @@ import { isProd } from "@/lib/flags";
 const MAX_TRANSCRIPT_MESSAGES = 200;
 
 export const runtime = "nodejs";
-export const maxDuration = 90;
+// 60s = the Vercel Hobby (free) plan cap, so the app deploys without Pro.
+// Bump to 90–120 on Pro if heavy Fit Score reports ever approach the limit.
+export const maxDuration = 60;
 
 type Msg = { role: "assistant" | "user"; content: string };
 
