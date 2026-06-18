@@ -2,6 +2,18 @@
 
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import {
+  PageShell,
+  PageHeader,
+  Card,
+  Button,
+  Badge,
+  Display,
+  Heading,
+  Eyebrow,
+  Stat,
+} from "@/components/ui";
+import { EASE, transition } from "@/lib/motion";
 
 // Types
 type Turn = { who: "ai" | "you"; text: string };
@@ -20,12 +32,12 @@ export default function CoachAI() {
   return SHOW_PHASE_2 ? (
     <CoachAIPhaseTwo />
   ) : (
-    <main className="grid min-h-screen place-items-center bg-white px-6 text-center text-slate-900">
+    <PageShell className="grid min-h-screen place-items-center text-center">
       <div>
-        <h1 className="text-2xl font-black">This workspace is not available in Phase 1.</h1>
-        <p className="mt-2 text-sm text-slate-500">Return to the Phase 1 platform workspace.</p>
+        <Heading as="h1" className="text-2xl">This workspace is not available in Phase 1.</Heading>
+        <p className="mt-2 text-sm text-ink-500">Return to the Phase 1 platform workspace.</p>
       </div>
-    </main>
+    </PageShell>
   );
 }
 
@@ -33,7 +45,6 @@ function CoachAIPhaseTwo() {
   const [vol, setVol] = useState(0);
   const [conn, setConn] = useState(false);
   const [turn, setTurn] = useState(0);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     let t: NodeJS.Timeout;
@@ -45,89 +56,64 @@ function CoachAIPhaseTwo() {
     return () => clearInterval(t);
   }, [conn]);
 
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY });
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, []);
-
   return (
-    <div className="relative min-h-screen w-full bg-[#FAFAFA] text-slate-900 selection:bg-indigo-500/30 overflow-x-hidden font-sans">
-      {/* Dynamic Background Orbs */}
-      <motion.div 
-        animate={{
-          x: mousePos.x * 0.05,
-          y: mousePos.y * 0.05,
-        }}
-        transition={{ type: "spring", damping: 50, stiffness: 50 }}
-        className="pointer-events-none absolute inset-0 overflow-hidden -z-10"
-      >
-        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-600/20 blur-[120px] mix-blend-screen" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-purple-600/20 blur-[150px] mix-blend-screen" />
-        <div className="absolute top-[40%] left-[60%] w-[40%] h-[40%] rounded-full bg-blue-500/10 blur-[100px] mix-blend-screen" />
-      </motion.div>
-
-      {/* Grid Pattern */}
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay pointer-events-none -z-10" />
-      
+    <PageShell width="wide" className="selection:bg-brand-500/30 font-sans">
       {/* Nav/Header Strip */}
-      <header className="relative z-10 w-full border-b border-slate-200 bg-white/40 backdrop-blur-md">
-        <div className="mx-auto max-w-7xl px-6 py-6 sm:px-10 sm:py-8 lg:flex lg:items-end lg:justify-between">
-          <motion.div 
+      <PageHeader
+        className="mb-10 lg:mb-14 items-start lg:items-end"
+        title={
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
+            transition={{ duration: 0.8, ease: EASE }}
             className="max-w-2xl"
           >
             <div className="flex items-center gap-3 mb-4">
-              <span className="flex items-center gap-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 text-xs font-medium text-indigo-400 backdrop-blur-md">
+              <Badge tone="brand">
                 <IconSpark className="w-3.5 h-3.5" /> Phase 2 Preview
-              </span>
-              <span className="rounded-full bg-white/60 border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600">
-                Lifelong Success Intelligence
-              </span>
+              </Badge>
+              <Badge tone="neutral">Lifelong Success Intelligence</Badge>
             </div>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tighter text-slate-900">
-              Real-time Voice <br className="hidden sm:block"/> Coaching for Roles
-            </h1>
-            <p className="mt-4 text-base sm:text-lg text-slate-500 font-light leading-relaxed">
-              Designed for <span className="font-medium text-slate-900">Gemini Live</span> once Phase 2 is enabled.
+            <Display className="text-4xl sm:text-5xl lg:text-6xl">
+              Real-time Voice <br className="hidden sm:block" /> Coaching for Roles
+            </Display>
+            <p className="mt-4 text-base sm:text-lg text-ink-500 font-light leading-relaxed">
+              Designed for <span className="font-medium text-ink-900">Gemini Live</span> once Phase 2 is enabled.
               Low-latency voice coaching with provider-issued ephemeral tokens.
             </p>
           </motion.div>
-          <motion.div 
+        }
+        actions={
+          <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
+            transition={{ duration: 0.8, delay: 0.2, ease: EASE }}
             className="mt-6 lg:mt-0 flex flex-wrap items-center gap-3"
           >
-            {['75ms Latency', '32 Languages', 'In Development'].map((tag, i) => (
-              <span key={tag} className="rounded-lg bg-white/60 border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 shadow-sm backdrop-blur-md">
+            {['75ms Latency', '32 Languages', 'In Development'].map((tag) => (
+              <span key={tag} className="rounded-lg border border-ink-200/70 bg-white px-4 py-2 text-xs font-medium text-ink-600 shadow-sm">
                 {tag}
               </span>
             ))}
           </motion.div>
-        </div>
-      </header>
+        }
+      />
 
-      <main className="mx-auto max-w-7xl px-6 py-10 sm:px-10 lg:py-16">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
-          
-          {/* LEFT COLUMN: Voice Orb + Chat */}
-          <div className="lg:col-span-7 flex flex-col gap-8">
-            
-            {/* VOICE ORB CARD */}
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-              className="relative rounded-3xl border border-slate-200 bg-white/60 backdrop-blur-2xl p-8 sm:p-12 overflow-hidden shadow-2xl group"
-            >
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
+
+        {/* LEFT COLUMN: Voice Orb + Chat */}
+        <div className="lg:col-span-7 flex flex-col gap-8">
+
+          {/* VOICE ORB CARD */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.7, ease: EASE }}
+          >
+            <Card variant="frosted" className="relative rounded-xl3 p-8 sm:p-12 overflow-hidden group">
               {/* Subtle hover gradient */}
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-              
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-brand-500/5 to-accent-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+
               <div className="relative z-10 flex flex-col items-center">
                 {/* Glowing Orb */}
                 <div className="relative flex items-center justify-center w-64 h-64">
@@ -137,11 +123,11 @@ function CoachAIPhaseTwo() {
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.8 }}
-                        className="absolute inset-0 rounded-full bg-indigo-500/20 blur-[60px]"
+                        className="absolute inset-0 rounded-full bg-brand-500/20 blur-[60px]"
                       />
                     )}
                   </AnimatePresence>
-                  
+
                   {/* Outer Ring */}
                   <motion.div
                     animate={conn ? {
@@ -152,9 +138,9 @@ function CoachAIPhaseTwo() {
                       opacity: 0.2
                     }}
                     transition={{ duration: 0.2, ease: "linear" }}
-                    className="absolute w-48 h-48 sm:w-56 sm:h-56 rounded-full border border-indigo-500/30"
+                    className="absolute w-48 h-48 sm:w-56 sm:h-56 rounded-full border border-brand-500/30"
                   />
-                  
+
                   {/* Inner Ring */}
                   <motion.div
                     animate={conn ? {
@@ -162,9 +148,9 @@ function CoachAIPhaseTwo() {
                       borderWidth: [1, 2, 1]
                     } : { scale: 1, borderWidth: 1 }}
                     transition={{ duration: 0.15, ease: "linear" }}
-                    className="absolute w-32 h-32 sm:w-40 sm:h-40 rounded-full border border-indigo-400/40 bg-indigo-500/5 backdrop-blur-md"
+                    className="absolute w-32 h-32 sm:w-40 sm:h-40 rounded-full border border-brand-400/40 bg-brand-500/5 backdrop-blur-md"
                   />
-                  
+
                   {/* Core Orb */}
                   <motion.div
                     animate={conn ? {
@@ -179,78 +165,76 @@ function CoachAIPhaseTwo() {
                       boxShadow: "0 0 20px rgba(99, 102, 241, 0.2)"
                     }}
                     transition={{ duration: 0.1, ease: "linear" }}
-                    className="relative z-20 flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-indigo-400 to-purple-600 shadow-[0_0_40px_rgba(99,102,241,0.5)]"
+                    className="relative z-20 flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-brand-600 to-accent-500 shadow-[0_0_40px_rgba(99,102,241,0.5)]"
                   >
-                    <IconMic className="w-8 h-8 text-slate-900 drop-shadow-md" />
+                    <IconMic className="w-8 h-8 text-white drop-shadow-md" />
                   </motion.div>
                 </div>
 
                 <div className="mt-10 text-center">
-                  <h2 className="text-2xl font-bold tracking-tight text-slate-900">AI Coach · Sales</h2>
-                  <p className="mt-2 text-sm text-slate-500 h-5">
+                  <Heading as="h2" className="text-2xl">AI Coach · Sales</Heading>
+                  <p className="mt-2 text-sm text-ink-500 h-5">
                     {conn ? "Listening to you intently..." : "Tap to begin a coaching session"}
                   </p>
                 </div>
 
                 <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                  <Button
+                    type="button"
+                    variant={conn ? "ghost" : "primary"}
+                    size="lg"
                     onClick={() => setConn(!conn)}
-                    className={`relative overflow-hidden rounded-full px-8 py-3.5 text-sm font-bold shadow-2xl transition-all duration-300 ${
-                      conn 
-                        ? "bg-slate-100/60 text-slate-900 border border-slate-300 hover:bg-white/20"
-                        : "bg-white text-black hover:bg-gray-100"
-                    }`}
+                    aria-pressed={conn}
+                    className="rounded-full"
                   >
-                    {conn && (
-                      <span className="absolute inset-0 rounded-full border border-slate-300 animate-ping opacity-20" />
-                    )}
                     {conn ? "End Session" : "Start Voice Session"}
-                  </motion.button>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="soft"
+                    size="lg"
                     onClick={() => setTurn((t) => Math.min(t + 1, scripted.length))}
                     disabled={!conn}
-                    className="rounded-full bg-white/60 border border-slate-200 px-6 py-3.5 text-sm font-medium text-slate-600 backdrop-blur-md transition-colors hover:bg-slate-100/60 hover:text-slate-900 disabled:opacity-30 disabled:pointer-events-none"
+                    className="rounded-full"
                   >
                     Advance Preview ({turn}/{scripted.length})
-                  </motion.button>
+                  </Button>
                 </div>
 
                 <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
                   {['Latency: 75ms', 'Lang: English (IN)', 'Voice: Sonia'].map((t) => (
-                    <span key={t} className="rounded-md bg-white/60 border border-slate-200 px-2.5 py-1 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
+                    <span key={t} className="rounded-md border border-ink-200/70 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider text-ink-500 font-semibold">
                       {t}
                     </span>
                   ))}
                 </div>
               </div>
-            </motion.div>
+            </Card>
+          </motion.div>
 
-            {/* LIVE TRANSCRIPT */}
-            <motion.div 
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
-              className="relative rounded-3xl border border-slate-200 bg-white/60 backdrop-blur-2xl p-6 sm:p-8 flex-1 min-h-[300px] flex flex-col"
-            >
-              <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200">
-                <h3 className="text-sm font-semibold uppercase tracking-widest text-slate-500">Live Transcript</h3>
+          {/* LIVE TRANSCRIPT */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.2, ease: EASE }}
+            className="flex-1"
+          >
+            <Card variant="frosted" className="relative rounded-xl3 p-6 sm:p-8 min-h-[300px] flex flex-col h-full">
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-ink-200/70">
+                <Eyebrow>Live Transcript</Eyebrow>
                 <AnimatePresence>
                   {conn && (
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.8 }}
                       className="flex items-center gap-2"
                     >
                       <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
                       </span>
-                      <span className="text-xs font-medium text-red-400">Recording</span>
+                      <span className="text-xs font-medium text-rose-500">Recording</span>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -258,7 +242,7 @@ function CoachAIPhaseTwo() {
 
               <div className="flex-1 space-y-4 overflow-y-auto pr-2 custom-scrollbar">
                 <AnimatePresence mode="popLayout">
-                  {scripted.slice(0, turn).map((t, i) => (
+                  {(scripted ?? []).slice(0, turn).map((t, i) => (
                     <motion.div
                       key={i}
                       initial={{ opacity: 0, y: 20, scale: 0.95 }}
@@ -267,163 +251,178 @@ function CoachAIPhaseTwo() {
                       className={`flex ${t.who === "ai" ? "justify-start" : "justify-end"}`}
                     >
                       <div
-                        className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-5 py-3.5 text-sm sm:text-base leading-relaxed shadow-lg ${
+                        className={`max-w-[85%] sm:max-w-[75%] rounded-xl2 px-5 py-3.5 text-sm sm:text-base leading-relaxed shadow-sm ${
                           t.who === "ai"
-                            ? "rounded-tl-sm bg-slate-100/60 border border-slate-200 text-slate-800 backdrop-blur-md"
-                            : "rounded-tr-sm bg-indigo-500 text-white"
+                            ? "rounded-tl-sm bg-ink-50/60 border border-ink-200/50 text-ink-800"
+                            : "rounded-tr-sm bg-brand-600 text-white"
                         }`}
                       >
                         {t.text}
                       </div>
                     </motion.div>
                   ))}
-                  {turn === 0 && (
-                    <motion.div 
+                  {(turn === 0 || (scripted ?? []).slice(0, turn).length === 0) && (
+                    <motion.div
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       className="flex h-full items-center justify-center"
                     >
-                      <div className="rounded-2xl border border-dashed border-slate-300 bg-white/60 px-8 py-10 text-center text-sm text-slate-500">
+                      <div className="rounded-xl2 border border-dashed border-ink-300 bg-white px-8 py-10 text-center text-sm text-ink-500">
                         Start the session and advance turns to view the live coaching transcript.
                       </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
               </div>
-            </motion.div>
-          </div>
-
-          {/* RIGHT COLUMN: Signals */}
-          <div className="lg:col-span-5 space-y-6 lg:space-y-8">
-            <StaggerWrapper delay={0.3}>
-              
-              {/* Verticals */}
-              <GlassCard title="Available Verticals">
-                <div className="grid grid-cols-2 gap-3 mt-4">
-                  {[
-                    { e: "Sales", icon: <IconBriefcase /> },
-                    { e: "Leadership", icon: <IconCrown /> },
-                    { e: "Sports", icon: <IconActivity /> },
-                    { e: "Blue-collar", icon: <IconTool /> },
-                  ].map((v) => (
-                    <motion.button 
-                      whileHover={{ scale: 1.03, backgroundColor: "rgba(255,255,255,0.1)" }}
-                      whileTap={{ scale: 0.97 }}
-                      key={v.e} 
-                      className="group flex flex-col items-start rounded-2xl border border-slate-200 bg-white/60 px-4 py-4 transition-colors"
-                    >
-                      <div className="text-slate-600 group-hover:text-slate-900 transition-colors">{v.icon}</div>
-                      <div className="mt-3 text-sm font-semibold text-slate-700 group-hover:text-slate-900">{v.e}</div>
-                    </motion.button>
-                  ))}
-                </div>
-              </GlassCard>
-
-              {/* Role Transition Gap */}
-              <GlassCard 
-                title="Role Transition Gap" 
-                badge="Sales"
-              >
-                <div className="mt-1 text-lg font-semibold tracking-tight text-slate-900">SDR → AE Promotion</div>
-                <div className="mt-6 space-y-5">
-                  <SignalRow label="Discovery Framing" v={62} color="bg-yellow-400" />
-                  <SignalRow label="Objection Handling" v={71} color="bg-emerald-400" />
-                  <SignalRow label="Multi-threading" v={48} color="bg-rose-400" />
-                  <SignalRow label="Forecast Accuracy" v={66} color="bg-indigo-400" />
-                </div>
-              </GlassCard>
-
-              {/* Longitudinal Growth */}
-              <GlassCard title="Longitudinal Growth">
-                <div className="mt-1 text-sm font-medium text-slate-600">Confidence Index</div>
-                <div className="mt-4 h-16 w-full rounded-xl bg-white/60 border border-slate-200 flex items-end p-2 gap-1">
-                  {/* Mock sparkline */}
-                  {[35, 40, 38, 50, 60, 55, 75, 80, 85].map((val, i) => (
-                    <motion.div 
-                      key={i}
-                      initial={{ height: 0 }}
-                      animate={{ height: `${val}%` }}
-                      transition={{ duration: 1, delay: 0.5 + i * 0.1, type: "spring" }}
-                      className="flex-1 bg-gradient-to-t from-indigo-600/50 to-indigo-400 rounded-sm"
-                    />
-                  ))}
-                </div>
-                <div className="mt-5 grid grid-cols-2 gap-3">
-                  <Stat label="6-mo Lift" value="+26%" />
-                  <Stat label="Sessions" value="34" />
-                </div>
-              </GlassCard>
-
-              {/* Behavioural Nudge */}
-              <GlassCard title="Behavioural Nudge" glow>
-                <p className="mt-3 text-[15px] leading-relaxed text-slate-700 italic font-medium">
-                  "On your next stakeholder call, restate concerns in one sentence <span className="text-slate-900 bg-white/20 px-1 rounded">before</span> responding. You've practiced this 3×."
-                </p>
-                <motion.button 
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="mt-5 w-full rounded-xl bg-slate-100/60 hover:bg-white/20 border border-slate-300 py-3 text-sm font-semibold text-slate-900 transition-colors"
-                >
-                  Send to Phone
-                </motion.button>
-              </GlassCard>
-
-            </StaggerWrapper>
-          </div>
+            </Card>
+          </motion.div>
         </div>
 
-        {/* PHASE 2 GRID */}
-        <section className="mt-20 lg:mt-32">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-100px" }}
-            transition={{ duration: 0.7 }}
-            className="mb-10 lg:mb-14 text-center max-w-2xl mx-auto"
-          >
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-500/10 border border-purple-500/20 px-4 py-1.5 text-sm font-medium text-purple-400 backdrop-blur-md mb-6">
-              <IconSpark className="w-4 h-4" /> Phase 2 Roadmap
-            </span>
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-slate-900 mb-4">
-              What Phase 2 Unlocks
-            </h2>
-            <p className="text-base text-slate-500">
-              Six new verticals and longitudinal growth tracking. Built on the same closed-loop, low-latency architecture.
-            </p>
-          </motion.div>
+        {/* RIGHT COLUMN: Signals */}
+        <div className="lg:col-span-5 space-y-6 lg:space-y-8">
+          <StaggerWrapper delay={0.3}>
 
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {[
-              { t: "Sales Vertical", d: "AE/SDR coaching, discovery + objection drills, forecasting reflection." },
-              { t: "Leadership Vertical", d: "First-time manager onboarding, conflict resolution, feedback loops." },
-              { t: "Sports Vertical", d: "Pre-game mental routines, recovery, focus drills · multilingual." },
-              { t: "Blue-collar Coaching", d: "Hindi + regional language voice coaching for shop-floor & service workers." },
-              { t: "Role Gap Analyzer", d: "Compare current role profile vs target role · generates skill + behaviour pathway." },
-              { t: "Longitudinal Tracker", d: "12-week + 12-month trajectories. Team dynamics dashboard for org buyers." },
-            ].map((c, i) => (
-              <motion.div
-                key={c.t}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-50px" }}
-                transition={{ duration: 0.5, delay: i * 0.1 }}
-                whileHover={{ y: -5 }}
-                className="group relative rounded-3xl border border-slate-200 bg-white/60 p-8 backdrop-blur-xl transition-all hover:bg-slate-100/60 hover:border-slate-300 overflow-hidden"
+            {/* Verticals */}
+            <GlassCard title="Available Verticals">
+              <div className="grid grid-cols-2 gap-3 mt-4">
+                {[
+                  { e: "Sales", icon: <IconBriefcase /> },
+                  { e: "Leadership", icon: <IconCrown /> },
+                  { e: "Sports", icon: <IconActivity /> },
+                  { e: "Blue-collar", icon: <IconTool /> },
+                ].map((v) => (
+                  <motion.button
+                    type="button"
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    key={v.e}
+                    aria-label={`${v.e} coaching vertical`}
+                    className="group flex flex-col items-start rounded-xl2 border border-ink-200/50 bg-white px-4 py-4 transition-colors hover:bg-ink-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                  >
+                    <div className="text-ink-600 group-hover:text-ink-900 transition-colors" aria-hidden="true">{v.icon}</div>
+                    <div className="mt-3 text-sm font-semibold text-ink-700 group-hover:text-ink-900">{v.e}</div>
+                  </motion.button>
+                ))}
+              </div>
+            </GlassCard>
+
+            {/* Role Transition Gap */}
+            <GlassCard
+              title="Role Transition Gap"
+              badge="Sales"
+            >
+              <div className="mt-1 text-lg font-semibold tracking-tight text-ink-900">SDR → AE Promotion</div>
+              <div className="mt-6 space-y-5">
+                <SignalRow label="Discovery Framing" v={62} color="bg-amber-400" />
+                <SignalRow label="Objection Handling" v={71} color="bg-emerald-400" />
+                <SignalRow label="Multi-threading" v={48} color="bg-rose-400" />
+                <SignalRow label="Forecast Accuracy" v={66} color="bg-brand-500" />
+              </div>
+            </GlassCard>
+
+            {/* Longitudinal Growth */}
+            <GlassCard title="Longitudinal Growth">
+              <div className="mt-1 text-sm font-medium text-ink-600">Confidence Index</div>
+              <div
+                role="img"
+                aria-label="Confidence Index trend, rising from 35 to 85 over recent sessions"
+                className="mt-4 h-16 w-full rounded-xl border border-ink-200/50 bg-white flex items-end p-2 gap-1"
               >
-                <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                {/* Mock sparkline */}
+                {[35, 40, 38, 50, 60, 55, 75, 80, 85].map((val, i) => (
+                  <motion.div
+                    key={i}
+                    aria-hidden="true"
+                    initial={{ height: 0 }}
+                    animate={{ height: `${val}%` }}
+                    transition={{ duration: 1, delay: 0.5 + i * 0.1, type: "spring" }}
+                    className="flex-1 bg-gradient-to-t from-brand-600/50 to-brand-400 rounded-sm"
+                  />
+                ))}
+              </div>
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <Stat
+                  label="6-mo Lift"
+                  value="+26%"
+                  tone="success"
+                  className="rounded-xl2 border border-ink-200/50 bg-white p-4 transition-colors hover:bg-ink-50/60"
+                />
+                <Stat
+                  label="Sessions"
+                  value="34"
+                  className="rounded-xl2 border border-ink-200/50 bg-white p-4 transition-colors hover:bg-ink-50/60"
+                />
+              </div>
+            </GlassCard>
+
+            {/* Behavioural Nudge */}
+            <GlassCard title="Behavioural Nudge" glow>
+              <p className="mt-3 text-[15px] leading-relaxed text-ink-700 italic font-medium">
+                "On your next stakeholder call, restate concerns in one sentence <span className="text-ink-900 bg-brand-50 px-1 rounded">before</span> responding. You've practiced this 3×."
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                className="mt-5 w-full rounded-xl"
+              >
+                Send to Phone
+              </Button>
+            </GlassCard>
+
+          </StaggerWrapper>
+        </div>
+      </div>
+
+      {/* PHASE 2 GRID */}
+      <section className="mt-20 lg:mt-32">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={transition}
+          className="mb-10 lg:mb-14 text-center max-w-2xl mx-auto flex flex-col items-center"
+        >
+          <Badge tone="brand" className="mb-6">
+            <IconSpark className="w-4 h-4" /> Phase 2 Roadmap
+          </Badge>
+          <Heading className="mb-4">What Phase 2 Unlocks</Heading>
+          <p className="text-base text-ink-500">
+            Six new verticals and longitudinal growth tracking. Built on the same closed-loop, low-latency architecture.
+          </p>
+        </motion.div>
+
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            { t: "Sales Vertical", d: "AE/SDR coaching, discovery + objection drills, forecasting reflection." },
+            { t: "Leadership Vertical", d: "First-time manager onboarding, conflict resolution, feedback loops." },
+            { t: "Sports Vertical", d: "Pre-game mental routines, recovery, focus drills · multilingual." },
+            { t: "Blue-collar Coaching", d: "Hindi + regional language voice coaching for shop-floor & service workers." },
+            { t: "Role Gap Analyzer", d: "Compare current role profile vs target role · generates skill + behaviour pathway." },
+            { t: "Longitudinal Tracker", d: "12-week + 12-month trajectories. Team dynamics dashboard for org buyers." },
+          ].map((c, i) => (
+            <motion.div
+              key={c.t}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ duration: 0.5, delay: i * 0.1 }}
+              whileHover={{ y: -5 }}
+            >
+              <Card variant="frosted" hover className="group relative rounded-xl3 p-8 overflow-hidden h-full">
+                <div className="absolute inset-0 bg-gradient-to-br from-brand-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                 <div className="relative z-10">
                   <div className="flex items-center justify-between mb-6">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Vertical {String(i + 1).padStart(2, "0")}</span>
-                    <span className="rounded-md bg-slate-100/60 px-2 py-1 text-[10px] uppercase font-bold text-slate-500">Phase 2</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-ink-500">Vertical {String(i + 1).padStart(2, "0")}</span>
+                    <Badge tone="neutral" className="text-[10px] uppercase">Phase 2</Badge>
                   </div>
-                  <h3 className="text-xl font-bold text-slate-900 mb-3">{c.t}</h3>
-                  <p className="text-sm leading-relaxed text-slate-600">{c.d}</p>
+                  <h3 className="text-xl font-bold text-ink-900 mb-3">{c.t}</h3>
+                  <p className="text-sm leading-relaxed text-ink-600">{c.d}</p>
                 </div>
-              </motion.div>
-            ))}
-          </div>
-        </section>
-      </main>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
+      </section>
 
       {/* Global CSS overrides specifically for scrollbar to keep it clean */}
       <style dangerouslySetInnerHTML={{__html: `
@@ -431,18 +430,18 @@ function CoachAIPhaseTwo() {
           width: 4px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(255, 255, 255, 0.02);
+          background: rgba(15, 23, 42, 0.04);
           border-radius: 4px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.1);
+          background: rgba(15, 23, 42, 0.12);
           border-radius: 4px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.2);
+          background: rgba(15, 23, 42, 0.2);
         }
       `}} />
-    </div>
+    </PageShell>
   );
 }
 
@@ -450,14 +449,13 @@ function CoachAIPhaseTwo() {
 
 function GlassCard({ title, badge, children, glow = false }: { title: string; badge?: string; children: React.ReactNode; glow?: boolean }) {
   return (
-    <div className={`relative rounded-3xl border border-slate-200 bg-white/60 backdrop-blur-xl p-6 sm:p-7 overflow-hidden ${glow ? "shadow-[0_0_30px_rgba(99,102,241,0.15)] border-indigo-500/20" : ""}`}>
-      {glow && <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/20 blur-[50px] -z-10" />}
+    <Card variant="frosted" className={`relative rounded-xl3 p-6 sm:p-7 overflow-hidden ${glow ? "border-brand-500/20" : ""}`}>
       <div className="flex items-center justify-between mb-5">
-        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500">{title}</h3>
-        {badge && <span className="rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-1 text-[10px] font-bold uppercase">{badge}</span>}
+        <Eyebrow>{title}</Eyebrow>
+        {badge && <Badge tone="brand" className="text-[10px] uppercase">{badge}</Badge>}
       </div>
       {children}
-    </div>
+    </Card>
   );
 }
 
@@ -465,34 +463,30 @@ function SignalRow({ label, v, color }: { label: string; v: number; color: strin
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-sm font-medium text-slate-700">{label}</span>
-        <span className="text-sm font-bold text-slate-900">{v}</span>
+        <span className="text-sm font-medium text-ink-700">{label}</span>
+        <span className="text-sm font-bold text-ink-900">{v}</span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100/60">
-        <motion.div 
+      <div
+        role="img"
+        aria-label={`${label}: ${v} out of 100`}
+        className="h-2 w-full overflow-hidden rounded-full bg-ink-100"
+      >
+        <motion.div
+          aria-hidden="true"
           initial={{ width: 0 }}
           whileInView={{ width: `${v}%` }}
           viewport={{ once: true }}
           transition={{ duration: 1, ease: "easeOut" }}
-          className={`h-full rounded-full ${color}`} 
+          className={`h-full rounded-full ${color}`}
         />
       </div>
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl bg-white/60 border border-slate-200 p-4 flex flex-col items-center justify-center text-center hover:bg-slate-100/60 transition-colors">
-      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">{label}</div>
-      <div className="text-2xl font-bold tracking-tight text-slate-900">{value}</div>
-    </div>
-  );
-}
-
 function StaggerWrapper({ children, delay = 0 }: { children: React.ReactNode, delay?: number }) {
   return (
-    <motion.div 
+    <motion.div
       initial="hidden"
       animate="visible"
       variants={{

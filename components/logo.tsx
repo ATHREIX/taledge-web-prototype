@@ -1,4 +1,11 @@
-export function Logo({ className = "" }: { className?: string }) {
+export function Logo({
+  className = "",
+  inverted = false,
+}: {
+  className?: string;
+  /** Use on dark backgrounds - renders the wordmark in white. */
+  inverted?: boolean;
+}) {
   return (
     <div className={`flex items-center gap-2.5 ${className}`}>
       <svg
@@ -27,7 +34,7 @@ export function Logo({ className = "" }: { className?: string }) {
         <path d="M16 30 L22 8 L28 30 Z" fill="url(#tg2)" opacity="0.95" />
         <path d="M22 30 L28 16 L34 30 Z" fill="url(#tg3)" opacity="0.9" />
       </svg>
-      <span className="text-xl font-semibold tracking-tight text-ink-900">
+      <span className={`text-xl font-semibold tracking-tight ${inverted ? "text-white" : "text-ink-900"}`}>
         tal<span className="text-[#f57f00]">edge</span>
       </span>
     </div>

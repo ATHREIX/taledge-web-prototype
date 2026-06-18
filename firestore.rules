@@ -1,0 +1,97 @@
+rules_version = '2';
+
+// Taledge Firestore security rules.
+// Default DENY. Every collection grants the minimum required access, scoped to
+// the authenticated user. The Admin SDK (server routes + seed script) bypasses
+// these rules entirely, so privileged writes happen server-side, never client.
+// Deploy with:  firebase deploy --only firestore:rules
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    // Custom claims (set via Admin SDK / seed) drive role-based reads.
+    function hasRole(role) {
+      return isSignedIn() && request.auth.token[role] == true;
+    }
+
+    // Account profile: a user reads/writes only their own record. Identity
+    // fields (uid/email/role) are enforced server-side; client writes here are
+    // limited to the owner so a user can update their own profile fields.
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+    }
+
+    // Candidate profiles: a user can read/write only their own document.
+    match /candidates/{uid} {
+      allow read, write: if isOwner(uid);
+      // Recruiters/institutes read candidate profiles the candidate published.
+      allow read: if (hasRole('recruiter') || hasRole('institute'))
+                  && resource.data.published == true;
+    }
+
+    // ── Catalog / aggregate collections ──────────────────────────────────────
+    // Seeded reference data (cohorts, institutes, org drives, recruiter pool).
+    // Any signed-in user may READ; all writes go through the Admin SDK only.
+    match /examAspirants/{id} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /institutes/{id} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /recruiters/{id} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /coaches/{id} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /organisations/{id} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /recruiterPool/{id} {
+      // Recruiter-facing shortlist data.
+      allow read: if hasRole('recruiter') || hasRole('institute');
+      allow write: if false;
+    }
+
+    // Interview sessions: owner-only. Server (Admin SDK) bypasses these rules.
+    match /interviewSessions/{sessionId} {
+      allow read, write: if isSignedIn()
+                         && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn()
+                    && request.resource.data.ownerUid == request.auth.uid;
+    }
+
+    // Scored reports: owner read/write; recruiters read only published reports.
+    match /reports/{reportId} {
+      allow read, write: if isSignedIn()
+                         && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn()
+                    && request.resource.data.ownerUid == request.auth.uid;
+      allow read: if hasRole('recruiter') && resource.data.published == true;
+    }
+
+    // Coaching sessions: owner-only; coaches read sessions assigned to them.
+    match /coachingSessions/{sessionId} {
+      allow read, write: if isSignedIn()
+                         && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn()
+                    && request.resource.data.ownerUid == request.auth.uid;
+      allow read: if hasRole('coach');
+    }
+
+    // Everything else: explicit deny.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

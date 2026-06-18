@@ -24,9 +24,14 @@ export function ScoreRing({
     muted: "#a1a1aa",
   };
 
+  const ariaLabel =
+    value === -1
+      ? `${label ? `${label}: ` : ""}score pending`
+      : `${label ? `${label}: ` : ""}${Math.round(value)} percent${sub ? `, ${sub}` : ""}`;
+
   return (
     <div className="relative inline-flex flex-col items-center">
-      <svg width={size} height={size} className="-rotate-90">
+      <svg width={size} height={size} className="-rotate-90" role="img" aria-label={ariaLabel}>
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -55,7 +60,7 @@ export function ScoreRing({
           ) : (
             <>
               {Math.round(value)}
-              <span className="ml-0.5 text-xs text-ink-400">%</span>
+              <span className="ml-0.5 text-xs text-ink-500">%</span>
             </>
           )}
         </div>
@@ -64,7 +69,7 @@ export function ScoreRing({
             {label}
           </div>
         )}
-        {sub && <div className="mt-0.5 text-[10px] text-ink-400">{sub}</div>}
+        {sub && <div className="mt-0.5 text-[10px] text-ink-500">{sub}</div>}
       </div>
     </div>
   );
@@ -90,7 +95,11 @@ export function Bar({
     muted: "bg-ink-400",
   };
   return (
-    <div className="flex items-center gap-2">
+    <div
+      className="flex items-center gap-2"
+      role="img"
+      aria-label={`${value.toFixed(1)} of ${max}`}
+    >
       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink-100">
         <div
           className={`h-full rounded-full ${colors[tone]} transition-all duration-700`}
@@ -115,26 +124,60 @@ export function Sparkline({
   tone?: "dark" | "success" | "warn" | "danger";
   height?: number;
 }) {
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
   const w = 200;
-  const points = data
-    .map((v, i) => {
-      const x = (i / (data.length - 1)) * w;
-      const y = height - ((v - min) / range) * (height - 4) - 2;
-      return `${x},${y}`;
-    })
-    .join(" ");
   const stroke: Record<string, string> = {
     dark: "#0a0a0a",
     success: "#10b981",
     warn: "#f59e0b",
     danger: "#e11d48",
   };
+
+  // Guard against missing/empty data so the chart never renders NaN paths.
+  if (!Array.isArray(data) || data.length === 0) {
+    return (
+      <svg
+        viewBox={`0 0 ${w} ${height}`}
+        className="w-full"
+        preserveAspectRatio="none"
+        role="img"
+        aria-label="No trend data available"
+      >
+        <line
+          x1="0"
+          x2={w}
+          y1={height / 2}
+          y2={height / 2}
+          stroke="#e5e7eb"
+          strokeWidth="1.6"
+          strokeDasharray="3 4"
+        />
+      </svg>
+    );
+  }
+
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const range = max - min || 1;
+  const span = data.length - 1 || 1;
+  const points = data
+    .map((v, i) => {
+      const x = (i / span) * w;
+      const y = height - ((v - min) / range) * (height - 4) - 2;
+      return `${x},${y}`;
+    })
+    .join(" ");
   const id = `sg-${tone}-${Math.random().toString(36).slice(2, 7)}`;
+  const last = data[data.length - 1];
+  const first = data[0];
+  const trend = last > first ? "trending up" : last < first ? "trending down" : "flat";
   return (
-    <svg viewBox={`0 0 ${w} ${height}`} className="w-full" preserveAspectRatio="none">
+    <svg
+      viewBox={`0 0 ${w} ${height}`}
+      className="w-full"
+      preserveAspectRatio="none"
+      role="img"
+      aria-label={`Trend ${trend}, latest value ${last}`}
+    >
       <defs>
         <linearGradient id={id} x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stopColor={stroke[tone]} stopOpacity="0.18" />

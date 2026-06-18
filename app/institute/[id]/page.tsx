@@ -12,8 +12,21 @@ import {
 } from "@/lib/data";
 import { FadeIn, SlideUp, StaggerContainer, StaggerItem } from "@/components/motion";
 import { MotionDiv } from "./ClientMotion";
+import {
+  PageShell,
+  Card,
+  Button,
+  ButtonLink,
+  Badge,
+  Display,
+  Heading,
+  Eyebrow,
+  Label,
+  Stat,
+} from "@/components/ui";
 
 type BarTone = "dark" | "success" | "warn" | "danger" | "muted";
+type BadgeTone = "neutral" | "brand" | "success" | "warn" | "danger" | "dark";
 
 type PlacementAnalytics = {
   readinessPct: number;
@@ -92,54 +105,45 @@ export default async function InstitutePage({
   const examAnalytics = isExam ? buildExamAnalytics(inst, examAspirants) : null;
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-[#FAFAFA] text-slate-700 font-sans selection:bg-fuchsia-500/30 selection:text-fuchsia-100">
-      {/* Animated Background Mesh */}
-      <MotionDiv animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.5, 0.3] }} transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }} className="absolute top-[-20%] left-[-10%] w-[60vw] h-[60vw] rounded-full bg-violet-900/30 blur-[140px] mix-blend-screen pointer-events-none" />
-      <MotionDiv animate={{ scale: [1, 1.2, 1], opacity: [0.2, 0.4, 0.2] }} transition={{ duration: 15, repeat: Infinity, ease: "easeInOut", delay: 2 }} className="absolute bottom-[-20%] right-[-10%] w-[60vw] h-[60vw] rounded-full bg-fuchsia-900/30 blur-[140px] mix-blend-screen pointer-events-none" />
-      <MotionDiv animate={{ scale: [1, 1.15, 1], opacity: [0.2, 0.5, 0.2] }} transition={{ duration: 12, repeat: Infinity, ease: "easeInOut", delay: 5 }} className="absolute top-[30%] left-[50%] w-[40vw] h-[40vw] rounded-full bg-cyan-900/20 blur-[120px] mix-blend-screen pointer-events-none" />
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.15] mix-blend-overlay pointer-events-none" />
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#FAFAFA]/50 to-[#FAFAFA] pointer-events-none" />
-      <section className="relative overflow-hidden border-b border-slate-200 bg-white/40 backdrop-blur-3xl shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
-        
-        <div className="mx-auto max-w-7xl px-5 pb-8 pt-8 sm:px-8 sm:pb-10 sm:pt-12">
-          <FadeIn delay={0.1} className="flex flex-wrap items-end justify-between gap-6">
-            <div className="max-w-3xl">
-              <div className="inline-flex items-center gap-2 rounded-full bg-violet-500/10 px-4 py-1.5 text-xs font-bold text-violet-300 border border-violet-500/20 backdrop-blur-md shadow-[0_0_15px_rgba(139,92,246,0.15)] uppercase tracking-widest relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent before:-translate-x-full hover:animate-pulse">
-                <IconInstitute /> {isExam ? "Competitive Exam Institute" : "Placement Institute"}
-              </div>
-              <h1 className="mt-5 text-4xl font-black leading-[1.1] tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 sm:text-5xl md:text-6xl drop-shadow-sm">
-                {inst.name}
-                <br />
-                {isExam ? "Aspirant Success Command Center" : "Placement Readiness Command Center"}
-              </h1>
-              <p className="mt-4 max-w-2xl text-sm text-slate-500 sm:text-base">
-                Production view for <span className="font-semibold text-slate-900">{inst.cohort}</span> learners across{" "}
-                <span className="font-semibold text-slate-900">{inst.batches.length}</span> active groups. Current priority:
-                {" "}
-                <span className="font-semibold text-slate-900">{inst.topGap}</span>.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/60 px-6 py-3 text-sm font-semibold text-slate-900 border border-slate-200 backdrop-blur-md transition-all duration-300 hover:bg-slate-100/60 hover:border-slate-300 hover:scale-105 hover:shadow-[0_0_20px_rgba(255,255,255,0.1)]">
-                <IconDownload /> Export cohort CSV
-              </button>
-              {!isExam ? (
-                <Link href="/recruiter/recruiter-001" className="group relative overflow-hidden inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-600 px-6 py-3 text-sm font-bold text-slate-900 shadow-[0_0_20px_rgba(139,92,246,0.4)] transition-all duration-300 hover:scale-105 hover:shadow-[0_0_40px_rgba(139,92,246,0.6)] before:absolute before:inset-0 before:bg-white/20 before:opacity-0 hover:before:opacity-100 before:transition-opacity">
-                  Recruiter share
-                  <IconArrow />
-                </Link>
-              ) : (
-                <button className="group relative overflow-hidden inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-600 px-6 py-3 text-sm font-bold text-slate-900 shadow-[0_0_20px_rgba(139,92,246,0.4)] transition-all duration-300 hover:scale-105 hover:shadow-[0_0_40px_rgba(139,92,246,0.6)] before:absolute before:inset-0 before:bg-white/20 before:opacity-0 hover:before:opacity-100 before:transition-opacity">
-                  Plan interventions
-                  <IconArrow />
-                </button>
-              )}
-            </div>
-          </FadeIn>
-        </div>
-      </section>
+    <PageShell>
+      <Card variant="frosted" className="rounded-xl3 p-6 sm:p-8">
+        <FadeIn delay={0.1} className="flex flex-wrap items-end justify-between gap-6">
+          <div className="max-w-3xl">
+            <Badge tone="brand" className="uppercase tracking-widest">
+              <IconInstitute /> {isExam ? "Competitive Exam Institute" : "Placement Institute"}
+            </Badge>
+            <Display className="mt-5 text-gradient-brand">
+              {inst.name}
+              <br />
+              {isExam ? "Aspirant Success Command Center" : "Placement Readiness Command Center"}
+            </Display>
+            <p className="mt-4 max-w-2xl text-sm text-ink-500 sm:text-base">
+              Production view for <span className="font-semibold text-ink-900">{inst.cohort}</span> learners across{" "}
+              <span className="font-semibold text-ink-900">{inst.batches.length}</span> active groups. Current priority:
+              {" "}
+              <span className="font-semibold text-ink-900">{inst.topGap}</span>.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="ghost" size="lg">
+              <IconDownload /> Export cohort CSV
+            </Button>
+            {!isExam ? (
+              <ButtonLink href="/recruiter/recruiter-001" variant="primary" size="lg">
+                Recruiter share
+                <IconArrow />
+              </ButtonLink>
+            ) : (
+              <Button type="button" variant="primary" size="lg">
+                Plan interventions
+                <IconArrow />
+              </Button>
+            )}
+          </div>
+        </FadeIn>
+      </Card>
 
-      <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-12">
+      <div className="mt-8 sm:mt-12">
         {!isExam && placementAnalytics && (
           <PlacementKpis inst={inst} analytics={placementAnalytics} />
         )}
@@ -147,35 +151,41 @@ export default async function InstitutePage({
 
         <Section className="mt-12">
           <SlideUp delay={0.3} className="mb-5">
-            <div className="inline-flex items-center gap-2 rounded-full bg-violet-500/10 px-4 py-1.5 text-xs font-bold text-violet-300 border border-violet-500/20 backdrop-blur-md shadow-[0_0_15px_rgba(139,92,246,0.15)] uppercase tracking-widest relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent before:-translate-x-full hover:animate-pulse">
+            <Eyebrow className="inline-flex items-center gap-2">
               <IconSparkles /> Cohort Signals
-            </div>
-            <h2 className="mt-4 text-xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 sm:text-2xl md:text-3xl">
+            </Eyebrow>
+            <Heading className="mt-4 text-gradient-brand">
               Decision Queue
-            </h2>
+            </Heading>
           </SlideUp>
-          <StaggerContainer delay={0.4} className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {inst.insights.map((insight, index) => (
-              <StaggerItem key={insight.label}>
-                <MotionDiv whileHover={{ scale: 1.02, y: -5 }} className={`h-full rounded-[2rem] border p-5 sm:p-6 ${
-                    insight.severity === "danger"
-                      ? "border-rose-500/30 bg-rose-500/10 backdrop-blur-xl shadow-[0_0_30px_rgba(225,29,72,0.15)]"
-                      : insight.severity === "warn"
-                        ? "border-amber-500/30 bg-amber-500/10 backdrop-blur-xl shadow-[0_0_30px_rgba(245,158,11,0.15)]"
-                        : "border-slate-200 bg-white"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className={severityChip(insight.severity)}>
-                      {insight.severity === "danger" ? "Escalate" : insight.severity === "warn" ? "Review" : "Monitor"}
-                    </span>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 tracking-[0.2em]">Signal {String(index + 1).padStart(2, "0")}</span>
-                  </div>
-                  <p className="mt-4 text-base font-semibold leading-snug text-slate-900">{insight.label}</p>
-                </MotionDiv>
-              </StaggerItem>
-            ))}
-          </StaggerContainer>
+          {inst.insights?.length ? (
+            <StaggerContainer delay={0.4} className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              {inst.insights.map((insight, index) => (
+                <StaggerItem key={insight.label}>
+                  <MotionDiv whileHover={{ scale: 1.02, y: -5 }} className={`h-full rounded-xl2 border p-5 sm:p-6 transition-all ${
+                      insight.severity === "danger"
+                        ? "border-rose-200 bg-rose-50"
+                        : insight.severity === "warn"
+                          ? "border-amber-200 bg-amber-50"
+                          : "border-ink-200/70 bg-white shadow-panel"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <Badge tone={severityTone(insight.severity)}>
+                        {insight.severity === "danger" ? "Escalate" : insight.severity === "warn" ? "Review" : "Monitor"}
+                      </Badge>
+                      <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-ink-400">Signal {String(index + 1).padStart(2, "0")}</span>
+                    </div>
+                    <p className="mt-4 text-base font-semibold leading-snug text-ink-900">{insight.label}</p>
+                  </MotionDiv>
+                </StaggerItem>
+              ))}
+            </StaggerContainer>
+          ) : (
+            <Card variant="flat" className="p-6 text-sm text-ink-500">
+              No cohort signals to review right now. New signals appear here as assessments are processed.
+            </Card>
+          )}
         </Section>
 
         {!isExam && placementAnalytics && (
@@ -185,7 +195,7 @@ export default async function InstitutePage({
           <ExamDashboard inst={inst} analytics={examAnalytics} aspirants={examAspirants} />
         )}
       </div>
-    </div>
+    </PageShell>
   );
 }
 
@@ -197,22 +207,22 @@ function PlacementKpis({
   analytics: PlacementAnalytics;
 }) {
   return (
-    <SlideUp delay={0.2} className="relative overflow-hidden rounded-[2rem] bg-white/60 backdrop-blur-2xl border border-slate-200 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] transition-all duration-500 hover:bg-white/80 hover:border-slate-300 hover:shadow-violet-500/20 p-6 sm:p-8">
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="flex items-center gap-4">
-          <ScoreRing value={analytics.readinessPct} size={92} stroke={10} tone="dark" label="Ready" />
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 tracking-[0.2em]">Batch readiness</div>
-            <div className="mt-1 text-2xl font-bold tracking-tight text-slate-900">
-              {inst.interviewReady}/{inst.cohort}
-            </div>
-            <div className="text-xs text-slate-500">Fit threshold: 70+</div>
+    <SlideUp delay={0.2}>
+      <Card variant="frosted" hover className="rounded-xl3 p-6 sm:p-8">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="flex items-center gap-4">
+            <ScoreRing value={analytics.readinessPct} size={92} stroke={10} tone="dark" label="Ready" />
+            <Stat
+              label="Batch readiness"
+              value={`${inst.interviewReady}/${inst.cohort}`}
+              sub="Fit threshold: 70+"
+            />
           </div>
+          <KPI label="Average Fit Score" value={`${inst.avgFit}`} delta="+3 vs last cycle" />
+          <KPI label="Intervention load" value={`${analytics.interventionLoad}`} sub="Groups below readiness threshold" tone="warn" />
+          <KPI label="Recruiter-visible pool" value={`${analytics.recruitableCount}`} sub="Eligible for shared access" />
         </div>
-        <KPI label="Average Fit Score" value={`${inst.avgFit}`} delta="+3 vs last cycle" />
-        <KPI label="Intervention load" value={`${analytics.interventionLoad}`} sub="Groups below readiness threshold" tone="warn" />
-        <KPI label="Recruiter-visible pool" value={`${analytics.recruitableCount}`} sub="Eligible for shared access" />
-      </div>
+      </Card>
     </SlideUp>
   );
 }
@@ -225,26 +235,28 @@ function ExamKpis({
   analytics: ExamAnalytics;
 }) {
   return (
-    <SlideUp delay={0.2} className="relative overflow-hidden rounded-[2rem] bg-white/60 backdrop-blur-2xl border border-slate-200 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] transition-all duration-500 hover:bg-white/80 hover:border-slate-300 hover:shadow-violet-500/20 p-6 sm:p-8">
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="flex items-center gap-4">
-          <ScoreRing
-            value={analytics.onTrackPct}
-            size={92}
-            stroke={10}
-            tone={analytics.onTrackPct >= 70 ? "success" : analytics.onTrackPct >= 50 ? "warn" : "danger"}
-            label="On track"
-          />
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 tracking-[0.2em]">Success trajectory</div>
-            <div className="mt-1 text-2xl font-bold tracking-tight text-slate-900">{inst.avgFit}</div>
-            <div className="text-xs text-slate-500">Average success potential</div>
+    <SlideUp delay={0.2}>
+      <Card variant="frosted" hover className="rounded-xl3 p-6 sm:p-8">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="flex items-center gap-4">
+            <ScoreRing
+              value={analytics.onTrackPct}
+              size={92}
+              stroke={10}
+              tone={analytics.onTrackPct >= 70 ? "success" : analytics.onTrackPct >= 50 ? "warn" : "danger"}
+              label="On track"
+            />
+            <Stat
+              label="Success trajectory"
+              value={`${inst.avgFit}`}
+              sub="Average success potential"
+            />
           </div>
+          <KPI label="High-stress cases" value={`${analytics.highStressCount}`} sub="Require counsellor review" tone="danger" />
+          <KPI label="Avg consistency" value={`${analytics.avgConsistency}%`} sub={deltaLabel(analytics.consistencyDelta)} tone={analytics.consistencyDelta < 0 ? "warn" : "default"} />
+          <KPI label="Avg stress index" value={`${analytics.avgStress}`} sub="Lower is better" tone={analytics.avgStress > 60 ? "danger" : "default"} />
         </div>
-        <KPI label="High-stress cases" value={`${analytics.highStressCount}`} sub="Require counsellor review" tone="danger" />
-        <KPI label="Avg consistency" value={`${analytics.avgConsistency}%`} sub={deltaLabel(analytics.consistencyDelta)} tone={analytics.consistencyDelta < 0 ? "warn" : "default"} />
-        <KPI label="Avg stress index" value={`${analytics.avgStress}`} sub="Lower is better" tone={analytics.avgStress > 60 ? "danger" : "default"} />
-      </div>
+      </Card>
     </SlideUp>
   );
 }
@@ -263,177 +275,211 @@ function PlacementDashboard({
       <Section className="mt-12">
         <SlideUp delay={0.4} className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-violet-500/10 px-4 py-1.5 text-xs font-bold text-violet-300 border border-violet-500/20 backdrop-blur-md shadow-[0_0_15px_rgba(139,92,246,0.15)] uppercase tracking-widest relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent before:-translate-x-full hover:animate-pulse">
+            <Eyebrow className="inline-flex items-center gap-2">
               <IconGrid /> Department, Year, Group Analytics
-            </div>
-            <h2 className="mt-4 text-xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 sm:text-2xl md:text-3xl">
+            </Eyebrow>
+            <Heading className="mt-4 text-gradient-brand">
               Batch Readiness
-            </h2>
+            </Heading>
           </div>
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-slate-100/60 text-slate-700 border border-slate-300 backdrop-blur-md shadow-sm">Placement track only</span>
+          <Badge tone="neutral" className="uppercase tracking-widest">Placement track only</Badge>
         </SlideUp>
-        <SlideUp delay={0.5} className="relative overflow-hidden rounded-[2rem] bg-white/60 backdrop-blur-2xl border border-slate-200 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] transition-all duration-500 hover:bg-white/80 hover:border-slate-300 hover:shadow-violet-500/20 overflow-x-auto p-0">
-          <div className="min-w-[980px]">
-            <div className="grid grid-cols-12 border-b border-slate-200 bg-white/60 px-5 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400 backdrop-blur-md shadow-sm border-b border-slate-200">
-              <div className="col-span-3">Group</div>
-              <div className="col-span-1 text-right">Size</div>
-              <div className="col-span-2">Technical</div>
-              <div className="col-span-2">Behavioural</div>
-              <div className="col-span-1 text-right">Fit</div>
-              <div className="col-span-1 text-right">Ready</div>
-              <div className="col-span-2 text-right">Next action</div>
-            </div>
-            {analytics.batchRows.map((batch) => (
-              <div
-                key={batch.name}
-                className="grid grid-cols-12 items-center border-b border-slate-200 px-5 py-4 text-sm transition-colors last:border-0 hover:bg-white/80"
-              >
-                <div className="col-span-3 min-w-0">
-                  <div className="truncate font-semibold text-slate-900">{batch.group}</div>
-                  <div className="text-[11px] text-slate-500">{batch.year} - top gap: {batch.topGap}</div>
+        <SlideUp delay={0.5}>
+          {analytics.batchRows?.length ? (
+            <Card variant="frosted" hover className="rounded-xl3 overflow-x-auto">
+              <div className="min-w-[980px]">
+                <div className="grid grid-cols-12 border-b border-ink-200 px-5 py-4 text-[11px] font-bold uppercase tracking-widest text-ink-500">
+                  <div className="col-span-3">Group</div>
+                  <div className="col-span-1 text-right">Size</div>
+                  <div className="col-span-2">Technical</div>
+                  <div className="col-span-2">Behavioural</div>
+                  <div className="col-span-1 text-right">Fit</div>
+                  <div className="col-span-1 text-right">Ready</div>
+                  <div className="col-span-2 text-right">Next action</div>
                 </div>
-                <div className="col-span-1 text-right tabular-nums text-slate-700">{batch.size}</div>
-                <div className="col-span-2"><Bar value={batch.avgTech} tone={scoreTone(batch.avgTech)} showVal /></div>
-                <div className="col-span-2"><Bar value={batch.avgBehav} tone={scoreTone(batch.avgBehav)} showVal /></div>
-                <div className="col-span-1 text-right text-2xl font-black tracking-tight text-slate-900 ">{batch.avgFit}</div>
-                <div className="col-span-1 text-right"><span className={toneChip(batch.tone)}>{batch.readinessIndex}%</span></div>
-                <div className="col-span-2 text-right text-xs font-medium text-slate-400">{batch.action}</div>
+                {analytics.batchRows.map((batch) => (
+                  <div
+                    key={batch.name}
+                    className="grid grid-cols-12 items-center border-b border-ink-200 px-5 py-4 text-sm transition-colors last:border-0 hover:bg-ink-50/60"
+                  >
+                    <div className="col-span-3 min-w-0">
+                      <div className="truncate font-semibold text-ink-900">{batch.group}</div>
+                      <div className="text-[11px] text-ink-500">{batch.year} - top gap: {batch.topGap}</div>
+                    </div>
+                    <div className="col-span-1 text-right tabular-nums text-ink-700">{batch.size}</div>
+                    <div className="col-span-2"><Bar value={batch.avgTech} tone={scoreTone(batch.avgTech)} showVal /></div>
+                    <div className="col-span-2"><Bar value={batch.avgBehav} tone={scoreTone(batch.avgBehav)} showVal /></div>
+                    <div className="col-span-1 text-right text-2xl font-black tracking-tight text-ink-900 ">{batch.avgFit}</div>
+                    <div className="col-span-1 text-right"><Badge tone={toneBadge(batch.tone)}>{batch.readinessIndex}%</Badge></div>
+                    <div className="col-span-2 text-right text-xs font-medium text-ink-600">{batch.action}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </Card>
+          ) : (
+            <Card variant="flat" className="p-6 text-sm text-ink-500">
+              No batches configured for this cohort yet.
+            </Card>
+          )}
         </SlideUp>
       </Section>
 
       <Section className="mt-12">
         <SlideUp delay={0.5} className="mb-5">
-          <div className="inline-flex items-center gap-2 rounded-full bg-violet-500/10 px-4 py-1.5 text-xs font-bold text-violet-300 border border-violet-500/20 backdrop-blur-md shadow-[0_0_15px_rgba(139,92,246,0.15)] uppercase tracking-widest relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent before:-translate-x-full hover:animate-pulse">
+          <Eyebrow className="inline-flex items-center gap-2">
             <IconHeatmap /> Competency Heatmap
-          </div>
-          <h2 className="mt-4 text-xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 sm:text-2xl md:text-3xl">
+          </Eyebrow>
+          <Heading className="mt-4 text-gradient-brand">
             Student-Level Competency Signals
-          </h2>
-          <p className="mt-2 max-w-2xl text-sm text-slate-500">
+          </Heading>
+          <p className="mt-2 max-w-2xl text-sm text-ink-500">
             Deterministic heatmap from existing assessment records. Low cells become the coaching backlog.
           </p>
         </SlideUp>
-        <SlideUp delay={0.6} className="relative overflow-hidden rounded-[2rem] bg-white/60 backdrop-blur-2xl border border-slate-200 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] transition-all duration-500 hover:bg-white/80 hover:border-slate-300 hover:shadow-violet-500/20 overflow-x-auto p-5 sm:p-6">
-          <div className="min-w-[1080px]">
-            <div
-              className="grid gap-1 text-[10px] uppercase tracking-wider text-slate-500"
-              style={{ gridTemplateColumns: `180px repeat(${analytics.heatmapCompetencies.length}, minmax(72px, 1fr)) 64px` }}
-            >
-              <div className="px-2 py-1.5 font-semibold">Student</div>
-              {analytics.heatmapCompetencies.map((competency) => (
-                <div key={competency} className="px-2 py-1.5 font-semibold">
-                  {shortCompetency(competency)}
+        <SlideUp delay={0.6}>
+          {analytics.heatmapRows?.length && analytics.heatmapCompetencies?.length ? (
+            <Card variant="frosted" hover className="rounded-xl3 overflow-x-auto p-5 sm:p-6">
+              <div className="min-w-[1080px]">
+                <div
+                  role="img"
+                  aria-label={`Competency heatmap across ${analytics.heatmapCompetencies.length} competencies for ${analytics.heatmapRows.length} students; darker red cells indicate competencies needing intervention.`}
+                  className="grid gap-1 text-[10px] uppercase tracking-wider text-ink-500"
+                  style={{ gridTemplateColumns: `180px repeat(${analytics.heatmapCompetencies.length}, minmax(72px, 1fr)) 64px` }}
+                >
+                  <div className="px-2 py-1.5 font-semibold">Student</div>
+                  {analytics.heatmapCompetencies.map((competency) => (
+                    <div key={competency} className="px-2 py-1.5 font-semibold">
+                      {shortCompetency(competency)}
+                    </div>
+                  ))}
+                  <div className="px-2 py-1.5 text-right font-semibold">Avg</div>
+                  {analytics.heatmapRows.map((row) => (
+                    <HeatmapRow key={row.id} row={row} competencies={analytics.heatmapCompetencies} />
+                  ))}
                 </div>
-              ))}
-              <div className="px-2 py-1.5 text-right font-semibold">Avg</div>
-              {analytics.heatmapRows.map((row) => (
-                <HeatmapRow key={row.id} row={row} competencies={analytics.heatmapCompetencies} />
-              ))}
-            </div>
-            <div className="mt-5 flex flex-wrap items-center gap-4 text-xs text-slate-400">
-              <Legend color="#be123c" label="Needs intervention" />
-              <Legend color="#b45309" label="Developing" />
-              <Legend color="#047857" label="Ready range" />
-            </div>
-          </div>
+                <div className="mt-5 flex flex-wrap items-center gap-4 text-xs text-ink-500">
+                  <Legend color="#be123c" label="Needs intervention" />
+                  <Legend color="#b45309" label="Developing" />
+                  <Legend color="#047857" label="Ready range" />
+                </div>
+              </div>
+            </Card>
+          ) : (
+            <Card variant="flat" className="p-6 text-sm text-ink-500">
+              No assessment records available to build the competency heatmap yet.
+            </Card>
+          )}
         </SlideUp>
       </Section>
 
       <Section className="mt-12">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <SlideUp delay={0.6} className="relative overflow-hidden rounded-[2rem] bg-white/60 backdrop-blur-2xl border border-slate-200 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] transition-all duration-500 hover:bg-white/80 hover:border-slate-300 hover:shadow-violet-500/20 p-5 sm:p-6 lg:col-span-1">
-            <div className="inline-flex items-center gap-2 rounded-full bg-violet-500/10 px-4 py-1.5 text-xs font-bold text-violet-300 border border-violet-500/20 backdrop-blur-md shadow-[0_0_15px_rgba(139,92,246,0.15)] uppercase tracking-widest relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent before:-translate-x-full hover:animate-pulse">
-              <IconTarget /> Top Gaps
-            </div>
-            <h2 className="mt-4 text-lg font-bold tracking-tight text-slate-900 sm:text-xl">Priority Backlog</h2>
-            <div className="mt-5 space-y-4">
-              {analytics.topGaps.map((gap, index) => (
-                <div key={gap.label}>
-                  <div className="mb-1.5 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-slate-900">{gap.label}</div>
-                      <div className="text-[11px] text-slate-500">Priority weight {gap.count}</div>
+          <SlideUp delay={0.6} className="lg:col-span-1">
+            <Card variant="frosted" hover className="rounded-xl3 p-5 sm:p-6">
+              <Eyebrow className="inline-flex items-center gap-2">
+                <IconTarget /> Top Gaps
+              </Eyebrow>
+              <Heading as="h3" className="mt-4 text-lg sm:text-xl">Priority Backlog</Heading>
+              <div className="mt-5 space-y-4">
+                {analytics.topGaps.map((gap, index) => (
+                  <div key={gap.label}>
+                    <div className="mb-1.5 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-ink-900">{gap.label}</div>
+                        <div className="text-[11px] text-ink-500">Priority weight {gap.count}</div>
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-ink-400">0{index + 1}</span>
                     </div>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 tracking-[0.2em]">0{index + 1}</span>
+                    <Bar value={gap.count} max={analytics.topGaps[0]?.count || 1} tone={gap.tone} />
                   </div>
-                  <Bar value={gap.count} max={analytics.topGaps[0]?.count || 1} tone={gap.tone} />
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </Card>
           </SlideUp>
 
-          <SlideUp delay={0.7} className="relative overflow-hidden rounded-[2rem] bg-white/60 backdrop-blur-2xl border border-slate-200 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] transition-all duration-500 hover:bg-white/80 hover:border-slate-300 hover:shadow-violet-500/20 p-5 sm:p-6 lg:col-span-2">
-            <div className="inline-flex items-center gap-2 rounded-full bg-violet-500/10 px-4 py-1.5 text-xs font-bold text-violet-300 border border-violet-500/20 backdrop-blur-md shadow-[0_0_15px_rgba(139,92,246,0.15)] uppercase tracking-widest relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent before:-translate-x-full hover:animate-pulse">
-              <IconCalendar /> Intervention Recommendations
-            </div>
-            <h2 className="mt-4 text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
-              Operating Plan
-            </h2>
-            <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
-              {analytics.interventions.map((item) => (
-                <InterventionCard key={item.title} item={item} />
-              ))}
-            </div>
+          <SlideUp delay={0.7} className="lg:col-span-2">
+            <Card variant="frosted" hover className="rounded-xl3 p-5 sm:p-6">
+              <Eyebrow className="inline-flex items-center gap-2">
+                <IconCalendar /> Intervention Recommendations
+              </Eyebrow>
+              <Heading as="h3" className="mt-4 text-lg sm:text-xl">
+                Operating Plan
+              </Heading>
+              <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
+                {analytics.interventions?.length ? (
+                  analytics.interventions.map((item) => (
+                    <InterventionCard key={item.title} item={item} />
+                  ))
+                ) : (
+                  <Card variant="flat" className="p-4 text-sm text-ink-500 md:col-span-2">
+                    No interventions recommended right now.
+                  </Card>
+                )}
+              </div>
+            </Card>
           </SlideUp>
         </div>
       </Section>
 
       <Section className="mt-12">
         <SlideUp delay={0.8} className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <div className="relative overflow-hidden rounded-[2rem] bg-white/60 backdrop-blur-2xl border border-slate-200 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] transition-all duration-500 hover:bg-white/80 hover:border-slate-300 hover:shadow-violet-500/20 p-5 sm:p-6 lg:col-span-1">
-            <div className="inline-flex items-center gap-2 rounded-full bg-violet-500/10 px-4 py-1.5 text-xs font-bold text-violet-300 border border-violet-500/20 backdrop-blur-md shadow-[0_0_15px_rgba(139,92,246,0.15)] uppercase tracking-widest relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent before:-translate-x-full hover:animate-pulse">
+          <Card variant="frosted" hover className="rounded-xl3 p-5 sm:p-6 lg:col-span-1">
+            <Eyebrow className="inline-flex items-center gap-2">
               <IconLink /> Recruiter Shared Link
-            </div>
-            <h2 className="mt-4 text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
+            </Eyebrow>
+            <Heading as="h3" className="mt-4 text-lg sm:text-xl">
               Scoped Employer Access
-            </h2>
-            <p className="mt-3 text-sm leading-6 text-slate-400">
+            </Heading>
+            <p className="mt-3 text-sm leading-6 text-ink-500">
               Share only eligible candidate profiles, Fit Scores, interview summaries, and publish status with approved recruiters.
             </p>
-            <div className="mt-5 rounded-xl border border-dashed border-slate-200 bg-white/50 p-4 text-xs font-medium text-slate-400">
+            <div className="mt-5 rounded-xl border border-dashed border-ink-200 bg-ink-50/60 p-4 text-xs font-medium text-ink-600">
               /recruiter/recruiter-001?institute={inst.id}
             </div>
-            <Link href="/recruiter/recruiter-001" className="group relative overflow-hidden inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-600 px-6 py-3 text-sm font-bold text-slate-900 shadow-[0_0_20px_rgba(139,92,246,0.4)] transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(139,92,246,0.6)] mt-5 w-full before:absolute before:inset-0 before:bg-white/20 before:opacity-0 hover:before:opacity-100 before:transition-opacity">
+            <ButtonLink href="/recruiter/recruiter-001" variant="primary" size="lg" className="mt-5 w-full">
               Open recruiter view
-            </Link>
-          </div>
+            </ButtonLink>
+          </Card>
 
-          <div className="relative overflow-hidden rounded-[2rem] bg-white/60 backdrop-blur-2xl border border-slate-200 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] transition-all duration-500 hover:bg-white/80 hover:border-slate-300 hover:shadow-violet-500/20 p-2 sm:p-3 lg:col-span-2">
+          <Card variant="frosted" hover className="rounded-xl3 p-2 sm:p-3 lg:col-span-2">
             <div className="px-3 pb-2 pt-3 sm:px-4">
-              <div className="inline-flex items-center gap-2 rounded-full bg-violet-500/10 px-4 py-1.5 text-xs font-bold text-violet-300 border border-violet-500/20 backdrop-blur-md shadow-[0_0_15px_rgba(139,92,246,0.15)] uppercase tracking-widest relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent before:-translate-x-full hover:animate-pulse">
+              <Eyebrow className="inline-flex items-center gap-2">
                 <IconUsers /> Cohort Roster
-              </div>
+              </Eyebrow>
             </div>
             <div className="space-y-1">
-              {cohort.map((student) => (
-                <Link
-                  key={student.id}
-                  href={`/student/${student.id}`}
-                  className="group relative flex overflow-hidden items-center justify-between gap-3 rounded-xl px-3 py-3 transition hover:bg-white/80 sm:px-4"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-900 text-white text-xs font-semibold text-slate-900 transition-transform group-hover:scale-105">
-                      {student.avatar}
+              {cohort?.length ? (
+                cohort.map((student) => (
+                  <Link
+                    key={student.id}
+                    href={`/student/${student.id}`}
+                    className="group relative flex overflow-hidden items-center justify-between gap-3 rounded-xl px-3 py-3 transition hover:bg-ink-50/60 sm:px-4"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-ink-900 text-white text-xs font-semibold transition-transform group-hover:scale-105">
+                        {student.avatar}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-ink-900 transition-colors group-hover:text-brand-700">{student.name}</div>
+                        <div className="truncate text-[11px] text-ink-500">{student.branch} - {student.year}</div>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-slate-900 transition-colors group-hover:text-slate-400">{student.name}</div>
-                      <div className="truncate text-[11px] text-slate-500">{student.branch} - {student.year}</div>
+                    <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+                      <span className="hidden text-xs text-ink-500 sm:inline">Fit {student.fit.fit}</span>
+                      <Badge tone={student.status === "Interview-ready" || student.status === "Published" ? "success" : "warn"}>
+                        {student.status}
+                      </Badge>
+                      <IconChevron />
                     </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-                    <span className="hidden text-xs text-slate-500 sm:inline">Fit {student.fit.fit}</span>
-                    <span className={student.status === "Interview-ready" || student.status === "Published" ? "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.2)] backdrop-blur-md" : "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.2)] backdrop-blur-md"}>
-                      {student.status}
-                    </span>
-                    <IconChevron />
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                ))
+              ) : (
+                <div className="px-3 py-6 text-sm text-ink-500 sm:px-4">
+                  No students in this cohort yet.
+                </div>
+              )}
             </div>
-          </div>
+          </Card>
         </SlideUp>
       </Section>
     </>
@@ -454,170 +500,204 @@ function ExamDashboard({
       <Section className="mt-12">
         <SlideUp delay={0.4} className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-violet-500/10 px-4 py-1.5 text-xs font-bold text-violet-300 border border-violet-500/20 backdrop-blur-md shadow-[0_0_15px_rgba(139,92,246,0.15)] uppercase tracking-widest relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent before:-translate-x-full hover:animate-pulse">
+            <Eyebrow className="inline-flex items-center gap-2">
               <IconShield /> Stress And Consistency
-            </div>
-            <h2 className="mt-4 text-xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 sm:text-2xl md:text-3xl">
+            </Eyebrow>
+            <Heading className="mt-4 text-gradient-brand">
               Exam Cohort Health
-            </h2>
+            </Heading>
           </div>
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-slate-100/60 text-slate-700 border border-slate-300 backdrop-blur-md shadow-sm">Candidate and institute visibility</span>
+          <Badge tone="neutral" className="uppercase tracking-widest">Candidate and institute visibility</Badge>
         </SlideUp>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <SlideUp delay={0.5} className="relative overflow-hidden rounded-[2rem] bg-white/60 backdrop-blur-2xl border border-slate-200 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] transition-all duration-500 hover:bg-white/80 hover:border-slate-300 hover:shadow-violet-500/20 p-5 sm:p-6">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 tracking-[0.2em]">Stress distribution</div>
-            <div className="mt-5 space-y-4">
-              {analytics.stressBuckets.map((bucket) => (
-                <div key={bucket.label}>
-                  <div className="mb-1.5 flex items-center justify-between gap-3">
-                    <span className="text-sm font-semibold text-slate-900">{bucket.label}</span>
-                    <span className={toneChip(bucket.tone)}>{bucket.count} cases</span>
-                  </div>
-                  <Bar value={bucket.pct} tone={bucket.tone} />
-                </div>
-              ))}
-            </div>
+          <SlideUp delay={0.5}>
+            <Card variant="frosted" hover className="rounded-xl3 p-5 sm:p-6">
+              <Label className="block">Stress distribution</Label>
+              <div className="mt-5 space-y-4">
+                {analytics.stressBuckets?.length ? (
+                  analytics.stressBuckets.map((bucket) => (
+                    <div key={bucket.label}>
+                      <div className="mb-1.5 flex items-center justify-between gap-3">
+                        <span className="text-sm font-semibold text-ink-900">{bucket.label}</span>
+                        <Badge tone={toneBadge(bucket.tone)}>{bucket.count} cases</Badge>
+                      </div>
+                      <Bar value={bucket.pct} tone={bucket.tone} />
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-ink-500">No stress data available yet.</p>
+                )}
+              </div>
+            </Card>
           </SlideUp>
 
-          <SlideUp delay={0.6} className="relative overflow-hidden rounded-[2rem] bg-white/60 backdrop-blur-2xl border border-slate-200 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] transition-all duration-500 hover:bg-white/80 hover:border-slate-300 hover:shadow-violet-500/20 p-5 sm:p-6 lg:col-span-2">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 tracking-[0.2em]">Consistency trend</div>
-            <div className="mt-4">
-              <InlineSparkline data={analytics.weeklyConsistency} tone={analytics.consistencyDelta < 0 ? "warn" : "success"} height={96} />
-            </div>
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <MiniStat label="Current average" value={`${analytics.avgConsistency}%`} />
-              <MiniStat label="12-week movement" value={deltaLabel(analytics.consistencyDelta)} tone={analytics.consistencyDelta < 0 ? "warn" : "success"} />
-              <MiniStat label="Tracked profiles" value={`${aspirants.length}`} />
-            </div>
+          <SlideUp delay={0.6} className="lg:col-span-2">
+            <Card variant="frosted" hover className="rounded-xl3 p-5 sm:p-6">
+              <Label className="block">Consistency trend</Label>
+              <div className="mt-4">
+                <InlineSparkline data={analytics.weeklyConsistency} tone={analytics.consistencyDelta < 0 ? "warn" : "success"} height={96} />
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <MiniStat label="Current average" value={`${analytics.avgConsistency}%`} />
+                <MiniStat label="12-week movement" value={deltaLabel(analytics.consistencyDelta)} tone={analytics.consistencyDelta < 0 ? "warn" : "success"} />
+                <MiniStat label="Tracked profiles" value={`${aspirants.length}`} />
+              </div>
+            </Card>
           </SlideUp>
         </div>
       </Section>
 
       <Section className="mt-12">
         <SlideUp delay={0.5} className="mb-5">
-          <div className="inline-flex items-center gap-2 rounded-full bg-violet-500/10 px-4 py-1.5 text-xs font-bold text-violet-300 border border-violet-500/20 backdrop-blur-md shadow-[0_0_15px_rgba(139,92,246,0.15)] uppercase tracking-widest relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent before:-translate-x-full hover:animate-pulse">
+          <Eyebrow className="inline-flex items-center gap-2">
             <IconGrid /> Batch Analytics
-          </div>
-          <h2 className="mt-4 text-xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 sm:text-2xl md:text-3xl">
+          </Eyebrow>
+          <Heading className="mt-4 text-gradient-brand">
             Exam Group Performance
-          </h2>
+          </Heading>
         </SlideUp>
-        <SlideUp delay={0.6} className="relative overflow-hidden rounded-[2rem] bg-white/60 backdrop-blur-2xl border border-slate-200 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] transition-all duration-500 hover:bg-white/80 hover:border-slate-300 hover:shadow-violet-500/20 overflow-x-auto p-0">
-          <div className="min-w-[860px]">
-            <div className="grid grid-cols-12 border-b border-slate-200 bg-white/60 px-5 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400 backdrop-blur-md shadow-sm border-b border-slate-200">
-              <div className="col-span-4">Group</div>
-              <div className="col-span-1 text-right">Size</div>
-              <div className="col-span-3">Resilience / Behaviour</div>
-              <div className="col-span-2 text-right">Potential</div>
-              <div className="col-span-2 text-right">Top gap</div>
-            </div>
-            {inst.batches.map((batch) => (
-              <div
-                key={batch.name}
-                className="grid grid-cols-12 items-center border-b border-slate-200 px-5 py-4 text-sm transition-colors last:border-0 hover:bg-white/80"
-              >
-                <div className="col-span-4 font-semibold text-slate-900">{batch.name}</div>
-                <div className="col-span-1 text-right tabular-nums text-slate-700">{batch.size}</div>
-                <div className="col-span-3"><Bar value={batch.avgBehav} tone={scoreTone(batch.avgBehav)} showVal /></div>
-                <div className="col-span-2 text-right text-2xl font-black tracking-tight text-slate-900 ">{batch.avgFit}</div>
-                <div className="col-span-2 text-right text-xs text-slate-400">{batch.topGap}</div>
+        <SlideUp delay={0.6}>
+          {inst.batches?.length ? (
+            <Card variant="frosted" hover className="rounded-xl3 overflow-x-auto">
+              <div className="min-w-[860px]">
+                <div className="grid grid-cols-12 border-b border-ink-200 px-5 py-4 text-[11px] font-bold uppercase tracking-widest text-ink-500">
+                  <div className="col-span-4">Group</div>
+                  <div className="col-span-1 text-right">Size</div>
+                  <div className="col-span-3">Resilience / Behaviour</div>
+                  <div className="col-span-2 text-right">Potential</div>
+                  <div className="col-span-2 text-right">Top gap</div>
+                </div>
+                {inst.batches.map((batch) => (
+                  <div
+                    key={batch.name}
+                    className="grid grid-cols-12 items-center border-b border-ink-200 px-5 py-4 text-sm transition-colors last:border-0 hover:bg-ink-50/60"
+                  >
+                    <div className="col-span-4 font-semibold text-ink-900">{batch.name}</div>
+                    <div className="col-span-1 text-right tabular-nums text-ink-700">{batch.size}</div>
+                    <div className="col-span-3"><Bar value={batch.avgBehav} tone={scoreTone(batch.avgBehav)} showVal /></div>
+                    <div className="col-span-2 text-right text-2xl font-black tracking-tight text-ink-900 ">{batch.avgFit}</div>
+                    <div className="col-span-2 text-right text-xs text-ink-600">{batch.topGap}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </Card>
+          ) : (
+            <Card variant="flat" className="p-6 text-sm text-ink-500">
+              No exam batches configured for this cohort yet.
+            </Card>
+          )}
         </SlideUp>
       </Section>
 
       <Section className="mt-12">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <SlideUp delay={0.6} className="relative overflow-hidden rounded-[2rem] bg-white/60 backdrop-blur-2xl border border-slate-200 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] transition-all duration-500 hover:bg-white/80 hover:border-slate-300 hover:shadow-violet-500/20 p-5 sm:p-6">
-            <div className="inline-flex items-center gap-2 rounded-full bg-violet-500/10 px-4 py-1.5 text-xs font-bold text-violet-300 border border-violet-500/20 backdrop-blur-md shadow-[0_0_15px_rgba(139,92,246,0.15)] uppercase tracking-widest relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent before:-translate-x-full hover:animate-pulse">
-              <IconUsers /> At-Risk Students
-            </div>
-            <h2 className="mt-4 text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
-              Counsellor Queue
-            </h2>
-            <div className="mt-5 space-y-2">
-              {analytics.atRisk.length ? (
-                analytics.atRisk.map((aspirant) => (
-                  <Link
-                    key={aspirant.id}
-                    href={`/exam/${aspirant.id}`}
-                    className="group relative flex overflow-hidden items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 transition hover:bg-white/80"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-900 text-white text-xs font-semibold text-slate-900">
-                        {aspirant.avatar}
+          <SlideUp delay={0.6}>
+            <Card variant="frosted" hover className="rounded-xl3 p-5 sm:p-6">
+              <Eyebrow className="inline-flex items-center gap-2">
+                <IconUsers /> At-Risk Students
+              </Eyebrow>
+              <Heading as="h3" className="mt-4 text-lg sm:text-xl">
+                Counsellor Queue
+              </Heading>
+              <div className="mt-5 space-y-2">
+                {analytics.atRisk?.length ? (
+                  analytics.atRisk.map((aspirant) => (
+                    <Link
+                      key={aspirant.id}
+                      href={`/exam/${aspirant.id}`}
+                      className="group relative flex overflow-hidden items-center justify-between gap-3 rounded-xl border border-ink-200 p-3 transition hover:bg-ink-50/60"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-ink-900 text-white text-xs font-semibold">
+                          {aspirant.avatar}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-ink-900">{aspirant.name}</div>
+                          <div className="truncate text-[11px] text-ink-500">{aspirant.exam} - stress {aspirant.stressIndex}</div>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-slate-900">{aspirant.name}</div>
-                        <div className="truncate text-[11px] text-slate-500">{aspirant.exam} - stress {aspirant.stressIndex}</div>
-                      </div>
-                    </div>
-                    <span className={aspirant.stressIndex >= 65 ? "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-rose-500/20 text-rose-300 border border-rose-500/30 shadow-[0_0_15px_rgba(225,29,72,0.2)] backdrop-blur-md" : "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.2)] backdrop-blur-md"}>{aspirant.risks.length || 1} flags</span>
-                  </Link>
-                ))
-              ) : (
-                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 backdrop-blur-xl shadow-[0_0_30px_rgba(16,185,129,0.15)] p-4 text-sm text-slate-700">
-                  No active high-risk student records.
-                </div>
-              )}
-            </div>
+                      <Badge tone={aspirant.stressIndex >= 65 ? "danger" : "warn"}>{aspirant.risks.length || 1} flags</Badge>
+                    </Link>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-ink-700">
+                    No active high-risk student records.
+                  </div>
+                )}
+              </div>
+            </Card>
           </SlideUp>
 
-          <SlideUp delay={0.7} className="relative overflow-hidden rounded-[2rem] bg-white/60 backdrop-blur-2xl border border-slate-200 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] transition-all duration-500 hover:bg-white/80 hover:border-slate-300 hover:shadow-violet-500/20 p-5 sm:p-6 lg:col-span-2">
-            <div className="inline-flex items-center gap-2 rounded-full bg-violet-500/10 px-4 py-1.5 text-xs font-bold text-violet-300 border border-violet-500/20 backdrop-blur-md shadow-[0_0_15px_rgba(139,92,246,0.15)] uppercase tracking-widest relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent before:-translate-x-full hover:animate-pulse">
-              <IconCalendar /> Intervention Planning
-            </div>
-            <h2 className="mt-4 text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
-              Action Plan
-            </h2>
-            <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
-              {analytics.interventions.map((item) => (
-                <InterventionCard key={item.title} item={item} />
-              ))}
-            </div>
+          <SlideUp delay={0.7} className="lg:col-span-2">
+            <Card variant="frosted" hover className="rounded-xl3 p-5 sm:p-6">
+              <Eyebrow className="inline-flex items-center gap-2">
+                <IconCalendar /> Intervention Planning
+              </Eyebrow>
+              <Heading as="h3" className="mt-4 text-lg sm:text-xl">
+                Action Plan
+              </Heading>
+              <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
+                {analytics.interventions?.length ? (
+                  analytics.interventions.map((item) => (
+                    <InterventionCard key={item.title} item={item} />
+                  ))
+                ) : (
+                  <Card variant="flat" className="p-4 text-sm text-ink-500 md:col-span-2">
+                    No interventions planned right now.
+                  </Card>
+                )}
+              </div>
+            </Card>
           </SlideUp>
         </div>
       </Section>
 
       <Section className="mt-12">
         <SlideUp delay={0.8} className="mb-5">
-          <div className="inline-flex items-center gap-2 rounded-full bg-violet-500/10 px-4 py-1.5 text-xs font-bold text-violet-300 border border-violet-500/20 backdrop-blur-md shadow-[0_0_15px_rgba(139,92,246,0.15)] uppercase tracking-widest relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent before:-translate-x-full hover:animate-pulse">
+          <Eyebrow className="inline-flex items-center gap-2">
             <IconLine /> Progress Tracking
-          </div>
-          <h2 className="mt-4 text-xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 sm:text-2xl md:text-3xl">
+          </Eyebrow>
+          <Heading className="mt-4 text-gradient-brand">
             Aspirant Trajectories
-          </h2>
+          </Heading>
         </SlideUp>
-        <SlideUp delay={0.9} className="relative overflow-hidden rounded-[2rem] bg-white/60 backdrop-blur-2xl border border-slate-200 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] transition-all duration-500 hover:bg-white/80 hover:border-slate-300 hover:shadow-violet-500/20 overflow-x-auto p-0">
-          <div className="min-w-[980px]">
-            <div className="grid grid-cols-12 border-b border-slate-200 bg-white/60 px-5 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400 backdrop-blur-md shadow-sm border-b border-slate-200">
-              <div className="col-span-3">Aspirant</div>
-              <div className="col-span-1 text-right">Potential</div>
-              <div className="col-span-2">Consistency</div>
-              <div className="col-span-1 text-right">Stress</div>
-              <div className="col-span-2 text-right">12-week move</div>
-              <div className="col-span-1 text-right">Hours</div>
-              <div className="col-span-2 text-right">Next action</div>
-            </div>
-            {analytics.progressRows.map((row) => (
-              <div
-                key={row.id}
-                className="grid grid-cols-12 items-center border-b border-slate-200 px-5 py-4 text-sm transition-colors last:border-0 hover:bg-white/80"
-              >
-                <div className="col-span-3 min-w-0">
-                  <div className="truncate font-semibold text-slate-900">{row.name}</div>
-                  <div className="truncate text-[11px] text-slate-500">{row.context}</div>
+        <SlideUp delay={0.9}>
+          {analytics.progressRows?.length ? (
+            <Card variant="frosted" hover className="rounded-xl3 overflow-x-auto">
+              <div className="min-w-[980px]">
+                <div className="grid grid-cols-12 border-b border-ink-200 px-5 py-4 text-[11px] font-bold uppercase tracking-widest text-ink-500">
+                  <div className="col-span-3">Aspirant</div>
+                  <div className="col-span-1 text-right">Potential</div>
+                  <div className="col-span-2">Consistency</div>
+                  <div className="col-span-1 text-right">Stress</div>
+                  <div className="col-span-2 text-right">12-week move</div>
+                  <div className="col-span-1 text-right">Hours</div>
+                  <div className="col-span-2 text-right">Next action</div>
                 </div>
-                <div className="col-span-1 text-right text-2xl font-black tracking-tight text-slate-900 ">{row.successPotential}</div>
-                <div className="col-span-2"><Bar value={row.consistency} tone={scoreTone(row.consistency)} showVal /></div>
-                <div className="col-span-1 text-right"><span className={row.stressIndex >= 65 ? "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-rose-500/20 text-rose-300 border border-rose-500/30 shadow-[0_0_15px_rgba(225,29,72,0.2)] backdrop-blur-md" : row.stressIndex >= 50 ? "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.2)] backdrop-blur-md" : "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.2)] backdrop-blur-md"}>{row.stressIndex}</span></div>
-                <div className="col-span-2 text-right"><span className={row.trendDelta < 0 ? "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.2)] backdrop-blur-md" : "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.2)] backdrop-blur-md"}>{deltaLabel(row.trendDelta)}</span></div>
-                <div className="col-span-1 text-right tabular-nums text-slate-700">{row.studyHours}h</div>
-                <div className="col-span-2 text-right text-xs font-medium text-slate-400">{row.action}</div>
+                {analytics.progressRows.map((row) => (
+                  <div
+                    key={row.id}
+                    className="grid grid-cols-12 items-center border-b border-ink-200 px-5 py-4 text-sm transition-colors last:border-0 hover:bg-ink-50/60"
+                  >
+                    <div className="col-span-3 min-w-0">
+                      <div className="truncate font-semibold text-ink-900">{row.name}</div>
+                      <div className="truncate text-[11px] text-ink-500">{row.context}</div>
+                    </div>
+                    <div className="col-span-1 text-right text-2xl font-black tracking-tight text-ink-900 ">{row.successPotential}</div>
+                    <div className="col-span-2"><Bar value={row.consistency} tone={scoreTone(row.consistency)} showVal /></div>
+                    <div className="col-span-1 text-right"><Badge tone={row.stressIndex >= 65 ? "danger" : row.stressIndex >= 50 ? "warn" : "success"}>{row.stressIndex}</Badge></div>
+                    <div className="col-span-2 text-right"><Badge tone={row.trendDelta < 0 ? "warn" : "success"}>{deltaLabel(row.trendDelta)}</Badge></div>
+                    <div className="col-span-1 text-right tabular-nums text-ink-700">{row.studyHours}h</div>
+                    <div className="col-span-2 text-right text-xs font-medium text-ink-600">{row.action}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </Card>
+          ) : (
+            <Card variant="flat" className="p-6 text-sm text-ink-500">
+              No aspirant trajectories to display yet.
+            </Card>
+          )}
         </SlideUp>
       </Section>
     </>
@@ -638,18 +718,22 @@ function KPI({
   tone?: "default" | "danger" | "warn";
 }) {
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-white/[0.05] to-transparent border border-slate-200 shadow-inner transition-all duration-300 hover:border-slate-200 p-5 sm:p-6 hover:shadow-[0_0_20px_rgba(139,92,246,0.1)]">
-      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 tracking-[0.2em]">{label}</div>
-      <div
-        className={`mt-2 text-2xl font-bold tracking-tight sm:text-3xl ${
-          tone === "danger" ? "text-rose-400 drop-shadow-[0_0_10px_rgba(251,113,133,0.5)]" : tone === "warn" ? "text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]" : "text-slate-900"
-        }`}
-      >
-        {value}
-      </div>
-      {delta && <div className="mt-1 text-xs font-medium text-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.5)]">{delta}</div>}
-      {sub && <div className="mt-1 text-xs text-slate-500">{sub}</div>}
-    </div>
+    <Card variant="flat" hover className="p-5 sm:p-6">
+      <Stat
+        label={label}
+        value={value}
+        tone={tone === "danger" ? "danger" : tone === "warn" ? "warn" : "neutral"}
+        sub={
+          (delta || sub) ? (
+            <>
+              {delta && <span className="font-medium text-emerald-600">{delta}</span>}
+              {delta && sub && " "}
+              {sub}
+            </>
+          ) : undefined
+        }
+      />
+    </Card>
   );
 }
 
@@ -663,12 +747,13 @@ function MiniStat({
   tone?: "default" | "success" | "warn";
 }) {
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-white/[0.05] to-transparent border border-slate-200 shadow-inner transition-all duration-300 hover:border-slate-200 p-5 hover:shadow-[0_0_20px_rgba(139,92,246,0.1)]">
-      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 tracking-[0.2em]">{label}</div>
-      <div className={`mt-2 text-xl font-bold tracking-tight ${tone === "success" ? "text-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.5)]" : tone === "warn" ? "text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]" : "text-slate-900"}`}>
-        {value}
-      </div>
-    </div>
+    <Card variant="flat" hover className="p-5">
+      <Stat
+        label={label}
+        value={value}
+        tone={tone === "success" ? "success" : tone === "warn" ? "warn" : "neutral"}
+      />
+    </Card>
   );
 }
 
@@ -682,15 +767,15 @@ function HeatmapRow({
   return (
     <>
       <div className="min-w-0 px-2 py-2">
-        <div className="truncate text-xs font-semibold normal-case tracking-normal text-slate-900">{row.name}</div>
-        <div className="truncate text-[10px] normal-case tracking-normal text-slate-500">{row.context}</div>
+        <div className="truncate text-xs font-semibold normal-case tracking-normal text-ink-900">{row.name}</div>
+        <div className="truncate text-[10px] normal-case tracking-normal text-ink-500">{row.context}</div>
       </div>
       {competencies.map((competency) => {
         const score = row.scores.find((item) => item.competency === competency)?.score || 0;
         return (
           <div
             key={`${row.id}-${competency}`}
-            className="grid h-10 place-items-center rounded text-xs font-bold tabular-nums text-slate-900"
+            className="grid h-10 place-items-center rounded text-xs font-bold tabular-nums text-white"
             style={{ background: heatColor(score) }}
             title={`${competency}: ${score.toFixed(1)}`}
           >
@@ -699,7 +784,7 @@ function HeatmapRow({
         );
       })}
       <div
-        className="grid h-10 place-items-center rounded text-xs font-bold tabular-nums text-slate-900"
+        className="grid h-10 place-items-center rounded text-xs font-bold tabular-nums text-white"
         style={{ background: heatColor(row.average) }}
       >
         {row.average.toFixed(1)}
@@ -710,25 +795,25 @@ function HeatmapRow({
 
 function InterventionCard({ item }: { item: Intervention }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white/60 backdrop-blur-xl shadow-lg hover:shadow-violet-500/10 transition-all p-4">
+    <Card variant="default" hover className="p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-slate-900">{item.title}</div>
-          <div className="mt-1 text-xs text-slate-500">{item.audience}</div>
+          <div className="text-sm font-semibold text-ink-900">{item.title}</div>
+          <div className="mt-1 text-xs text-ink-500">{item.audience}</div>
         </div>
-        <span className={toneChip(item.tone)}>{item.owner}</span>
+        <Badge tone={toneBadge(item.tone)}>{item.owner}</Badge>
       </div>
-      <div className="mt-4 grid grid-cols-1 gap-3 text-xs text-slate-400 sm:grid-cols-2">
+      <div className="mt-4 grid grid-cols-1 gap-3 text-xs text-ink-500 sm:grid-cols-2">
         <div>
-          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 tracking-[0.2em]">Cadence</div>
-          <div className="mt-1 font-medium text-slate-200">{item.cadence}</div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-ink-500">Cadence</div>
+          <div className="mt-1 font-medium text-ink-700">{item.cadence}</div>
         </div>
         <div>
-          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 tracking-[0.2em]">Success metric</div>
-          <div className="mt-1 font-medium text-slate-200">{item.metric}</div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-ink-500">Success metric</div>
+          <div className="mt-1 font-medium text-ink-700">{item.metric}</div>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -754,9 +839,18 @@ function InlineSparkline({
     })
     .join(" ");
   const stroke = tone === "danger" ? "#e11d48" : tone === "warn" ? "#f59e0b" : tone === "success" ? "#10b981" : "#0a0a0a";
+  const first = safeData[0];
+  const last = safeData[safeData.length - 1];
+  const direction = last > first ? "rising" : last < first ? "declining" : "flat";
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-24 w-full" preserveAspectRatio="none">
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="h-24 w-full"
+      preserveAspectRatio="none"
+      role="img"
+      aria-label={`Weekly consistency sparkline, ${direction} from ${first} to ${last} over ${safeData.length} weeks.`}
+    >
       <polyline
         points={points}
         fill="none"
@@ -989,7 +1083,7 @@ function normalizeGap(label: string) {
 function splitBatchName(name: string) {
   const [group, year] = name.split(" - ");
   if (year) return { group, year };
-  const parts = name.split("\u00b7").map((part) => part.trim());
+  const parts = name.split("·").map((part) => part.trim());
   return {
     group: parts[0] || name,
     year: parts[1] || "Active cohort",
@@ -1039,18 +1133,18 @@ function scoreTone(value: number): BarTone {
   return "danger";
 }
 
-function severityChip(severity: "info" | "warn" | "danger") {
-  if (severity === "danger") return "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-rose-500/20 text-rose-300 border border-rose-500/30 shadow-[0_0_15px_rgba(225,29,72,0.2)] backdrop-blur-md";
-  if (severity === "warn") return "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.2)] backdrop-blur-md";
-  return "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-slate-100/60 text-slate-700 border border-slate-300 backdrop-blur-md shadow-sm";
+function severityTone(severity: "info" | "warn" | "danger"): BadgeTone {
+  if (severity === "danger") return "danger";
+  if (severity === "warn") return "warn";
+  return "neutral";
 }
 
-function toneChip(tone: BarTone) {
-  if (tone === "danger") return "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-rose-500/20 text-rose-300 border border-rose-500/30 shadow-[0_0_15px_rgba(225,29,72,0.2)] backdrop-blur-md";
-  if (tone === "warn") return "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.2)] backdrop-blur-md";
-  if (tone === "success") return "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.2)] backdrop-blur-md";
-  if (tone === "muted") return "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-slate-100/60 text-slate-700 border border-slate-300 backdrop-blur-md shadow-sm";
-  return "inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-violet-500/20 text-violet-300 border border-violet-500/30 backdrop-blur-md";
+function toneBadge(tone: BarTone): BadgeTone {
+  if (tone === "danger") return "danger";
+  if (tone === "warn") return "warn";
+  if (tone === "success") return "success";
+  if (tone === "muted") return "neutral";
+  return "brand";
 }
 
 function heatColor(score: number) {
@@ -1075,7 +1169,7 @@ function deltaLabel(delta: number) {
 
 function IconInstitute() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 21h18" />
       <path d="M5 21V10l7-5 7 5v11" />
       <path d="M9 21v-6h6v6" />
@@ -1085,7 +1179,7 @@ function IconInstitute() {
 
 function IconDownload() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="7 10 12 15 17 10" />
       <line x1="12" y1="15" x2="12" y2="3" />
@@ -1095,7 +1189,7 @@ function IconDownload() {
 
 function IconSparkles() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 3l1.9 5.7L20 10l-5 4 1.5 6L12 17l-4.5 3L9 14l-5-4 6.1-1.3z" />
     </svg>
   );
@@ -1103,7 +1197,7 @@ function IconSparkles() {
 
 function IconGrid() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="3" width="7" height="7" />
       <rect x="14" y="3" width="7" height="7" />
       <rect x="3" y="14" width="7" height="7" />
@@ -1114,7 +1208,7 @@ function IconGrid() {
 
 function IconHeatmap() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <line x1="9" y1="3" x2="9" y2="21" />
       <line x1="15" y1="3" x2="15" y2="21" />
@@ -1126,7 +1220,7 @@ function IconHeatmap() {
 
 function IconUsers() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
       <circle cx="9" cy="7" r="4" />
       <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
@@ -1137,7 +1231,7 @@ function IconUsers() {
 
 function IconTarget() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="9" />
       <circle cx="12" cy="12" r="5" />
       <circle cx="12" cy="12" r="1" />
@@ -1147,7 +1241,7 @@ function IconTarget() {
 
 function IconCalendar() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M8 2v4" />
       <path d="M16 2v4" />
       <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -1158,7 +1252,7 @@ function IconCalendar() {
 
 function IconLink() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
       <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
     </svg>
@@ -1167,7 +1261,7 @@ function IconLink() {
 
 function IconShield() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
     </svg>
   );
@@ -1175,7 +1269,7 @@ function IconShield() {
 
 function IconLine() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 3v18h18" />
       <path d="M7 15l4-4 3 3 5-8" />
     </svg>
@@ -1184,7 +1278,7 @@ function IconLine() {
 
 function IconArrow() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
       <path d="M5 12h14M13 5l7 7-7 7" />
     </svg>
   );
@@ -1192,7 +1286,7 @@ function IconArrow() {
 
 function IconChevron() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-600 transition-transform group-hover:translate-x-1">
+    <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ink-400 transition-transform group-hover:translate-x-1">
       <path d="M9 6l6 6-6 6" />
     </svg>
   );

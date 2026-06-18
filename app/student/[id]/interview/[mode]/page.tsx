@@ -1,10 +1,30 @@
 "use client";
 
 import { use, useEffect, useRef, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, notFound } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, MicOff, Send, Camera, AlertTriangle, ShieldAlert, FileText, Loader2, Eye, Smartphone, Users, MonitorOff, Clipboard, Brain, Check, X, ArrowRight } from "lucide-react";
 import Editor from "@monaco-editor/react";
+import { Card, Button, Badge, Eyebrow, Heading } from "@/components/ui";
+import { authedFetch } from "@/lib/api-client";
+import { getStudent } from "@/lib/data";
+
+/**
+ * Compact DNLA report for the interviewer prompt: each competency's score vs
+ * its benchmark, with sub-benchmark items flagged as development areas so the
+ * behavioural interview can target real weaknesses. Empty string when no DNLA
+ * data exists for this id (real users until the provider import lands).
+ */
+function buildDnlaSummary(studentId: string): string {
+  const dnla = getStudent(studentId)?.dnla ?? [];
+  if (!dnla.length) return "";
+  return dnla
+    .map(
+      (d) =>
+        `${d.competency} (${d.group}): ${d.score}/7 vs benchmark ${d.benchmark}${d.score < d.benchmark ? " — development area" : ""}`
+    )
+    .join("\n");
+}
 
 type CandidateProfile = {
   fullName: string;
@@ -71,6 +91,12 @@ type ProctoringStatus = {
 
 export default function InterviewPage({ params }: { params: Promise<{ id: string; mode: string }> }) {
   const { id, mode } = use(params);
+  // Validate the [mode] route param: only "technical" and "behavioural" are
+  // real interview stages. Anything else (e.g. /interview/foo) must 404 rather
+  // than silently masquerade as a behavioural interview.
+  if (mode !== "technical" && mode !== "behavioural") {
+    notFound();
+  }
   const router = useRouter();
   const isTech = mode === "technical";
 
@@ -89,7 +115,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const [isCodingMode, setIsCodingMode] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [setupStep, setSetupStep] = useState<"rules" | "verify" | "interview">("rules");
+  const [setupStep, setSetupStep] = useState<"resume" | "rules" | "verify" | "interview">("rules");
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [verificationResult, setVerificationResult] = useState<{status: "idle" | "verifying" | "success" | "error", message?: string}>({status: "idle"});
   const [hasStarted, setHasStarted] = useState(false);
@@ -102,7 +128,14 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     faceVisible: false, personCount: 0, phoneDetected: false, cameraCovered: false, tabFocused: true, noiseDetected: false,
   });
   const [violationLog, setViolationLog] = useState<string[]>([]);
-  
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  // Surfaces a finite-timeout / failure on the interview-start ("Connecting...")
+  // path so the UI does not spin forever. Retry re-runs startInterview().
+  const [connectError, setConnectError] = useState<string | null>(null);
+  // Non-blocking send/transcribe failure banner (the drafted answer is restored
+  // separately so the candidate never loses their typed/spoken response).
+  const [sendError, setSendError] = useState<string | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -111,10 +144,14 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const audioCtxRef = useRef<AudioContext | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const proctoringRef = useRef({ blocked: false, isWarningVisible: false });
+  // Mirror of sessionId for use inside long-lived proctoring closures, so each
+  // violation can be reported to the server-authoritative proctor endpoint.
+  const sessionIdRef = useRef<string | null>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const draftRef = useRef("");
   const modelRef = useRef<any>(null);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const connectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasStartedRef = useRef(false);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const [proctoringReady, setProctoringReady] = useState(false);
@@ -144,6 +181,16 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       }
     } catch {}
 
+    // Gate the interview behind a résumé: the questions are tailored to it, so
+    // if none was uploaded (onboarding skipped) show the upload step first.
+    const hasResume = !!(
+      localProfile &&
+      (localProfile.resumeSummary ||
+        (localProfile.resumeSkills && localProfile.resumeSkills.length > 0) ||
+        (localProfile.resumeProjects && localProfile.resumeProjects.length > 0))
+    );
+    if (!hasResume) setSetupStep("resume");
+
     const resumeContext = localProfile ? [
       localProfile.resumeSummary,
       localProfile.resumeSkills && localProfile.resumeSkills.length > 0 ? `Skills: ${localProfile.resumeSkills.join(", ")}` : "",
@@ -152,16 +199,17 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     ].filter(Boolean).join("\n") : "";
 
     // Preload first question
-    fetch("/api/interview/start", {
+    authedFetch("/api/interview/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ 
          studentId: id, 
          candidateName: localProfile?.fullName || "Candidate",
          role: localProfile?.targetRole || "Candidate", 
-         mode, 
+         mode,
          stage: mode === "technical" ? 1 : 2,
-         resumeSummary: resumeContext
+         resumeSummary: resumeContext,
+         dnlaSummary: buildDnlaSummary(id)
       }),
     }).then(r => r.json()).then(data => {
       if (data.ok) setPreloadedSession(data);
@@ -176,8 +224,23 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         if (videoRef.current) videoRef.current.srcObject = stream;
         setWebcamEnabled(true);
         webcamEnabledRef.current = true;
+        setCameraError(null);
       })
-      .catch((err) => console.error("Camera error:", err));
+      .catch((err) => {
+        console.error("Camera error:", err);
+        // Surface camera/getUserMedia failures to the candidate instead of
+        // swallowing them - a proctored interview cannot proceed without it.
+        const name = err?.name || "";
+        const reason =
+          name === "NotAllowedError" || name === "SecurityError"
+            ? "Camera access was denied. Please allow camera permissions in your browser and reload this page."
+            : name === "NotFoundError" || name === "DevicesNotFoundError"
+            ? "No camera was found on this device. A working webcam is required for this proctored assessment."
+            : name === "NotReadableError" || name === "TrackStartError"
+            ? "Your camera is already in use by another application. Close it and reload this page."
+            : "We could not access your camera. A working webcam is required for this proctored assessment.";
+        setCameraError(reason);
+      });
 
     // Request audio stream for noise monitoring
     navigator.mediaDevices.getUserMedia({ audio: true })
@@ -316,7 +379,18 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       proctoringRef.current.isWarningVisible = true;
       
       setViolationLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${reason}`]);
-      
+
+      // Report to the server-authoritative proctor sink (fire-and-forget). The
+      // server owns the real count + blocked state, so reloading the page can't
+      // wipe violations, and the voice endpoint refuses blocked sessions.
+      if (sessionIdRef.current) {
+        authedFetch("/api/interview/proctor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: sessionIdRef.current, event: "violation", reason }),
+        }).catch(() => {});
+      }
+
       setWarnings(prev => {
         const newWarnings = prev + 1;
         if (newWarnings >= 3) {
@@ -329,7 +403,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       });
     };
 
-    // 1. Tab switching detection (ONLY visibilitychange — blur is too aggressive and causes false positives)
+    // 1. Tab switching detection (ONLY visibilitychange - blur is too aggressive and causes false positives)
     const handleVisibilityChange = () => {
       if (document.hidden) {
         setProctoringStatus(prev => ({ ...prev, tabFocused: false }));
@@ -526,6 +600,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       window.removeEventListener("resize", handleResize);
       clearInterval(visionInterval);
       clearInterval(timer);
+      if (connectTimerRef.current) clearTimeout(connectTimerRef.current);
       mediaStreamRef.current?.getTracks().forEach(t => t.stop());
       audioStream?.getTracks().forEach(t => t.stop());
       if (noiseContext) {
@@ -667,11 +742,31 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
 
   async function startInterview() {
     setIsProcessing(true);
+    setConnectError(null);
+    // Finite timeout so the "Connecting..." state can never spin forever. If no
+    // session has been established within ~20s, surface a retryable error.
+    if (connectTimerRef.current) clearTimeout(connectTimerRef.current);
+    connectTimerRef.current = setTimeout(() => {
+      if (!sessionId) {
+        setIsProcessing(false);
+        setConnectError("We could not reach the AI interviewer. Please check your connection and try again.");
+      }
+    }, 20000);
+
+    const finishConnect = () => {
+      if (connectTimerRef.current) {
+        clearTimeout(connectTimerRef.current);
+        connectTimerRef.current = null;
+      }
+    };
+
     try {
       localStorage.removeItem(`taledge:fit-score:${id}`);
     } catch (e) {}
     if (preloadedSession) {
+      finishConnect();
       setSessionId(preloadedSession.sessionId);
+      sessionIdRef.current = preloadedSession.sessionId;
       setMessages([{ role: "ai", text: stripMarkdown(preloadedSession.firstQuestion) }]);
       setIsProcessing(false);
       playAudioAndListen(preloadedSession.audioBase64);
@@ -686,7 +781,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     ].filter(Boolean).join("\n") : "";
 
     try {
-      const res = await fetch("/api/interview/start", {
+      const res = await authedFetch("/api/interview/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -695,18 +790,27 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           role: profile?.targetRole || "Candidate",
           mode,
           stage: mode === "technical" ? 1 : 2,
-          resumeSummary: resumeContext
+          resumeSummary: resumeContext,
+          dnlaSummary: buildDnlaSummary(id)
         }),
       });
       const data = await res.json();
       if (data.ok) {
+        finishConnect();
         setSessionId(data.sessionId);
+        sessionIdRef.current = data.sessionId;
         setMessages([{ role: "ai", text: stripMarkdown(data.firstQuestion) }]);
         setIsProcessing(false);
         playAudioAndListen(data.audioBase64);
+      } else {
+        finishConnect();
+        setIsProcessing(false);
+        setConnectError("The AI interviewer could not start this session. Please try again.");
       }
     } catch (e) {
+      finishConnect();
       setIsProcessing(false);
+      setConnectError("We could not reach the AI interviewer. Please check your connection and try again.");
     }
   }
 
@@ -729,7 +833,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           const base64Image = tempCanvas.toDataURL("image/jpeg", 0.8);
           setCapturedImage(base64Image);
           
-          const vRes = await fetch("/api/interview/verify-face", {
+          const vRes = await authedFetch("/api/interview/verify-face", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ imageBase64: base64Image })
@@ -742,6 +846,15 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             });
           } else {
             setVerificationResult({ status: "success" });
+            // Record the successful face check on the server session so the
+            // voice endpoint can require verification before serving questions.
+            if (sessionIdRef.current) {
+              authedFetch("/api/interview/proctor", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sessionId: sessionIdRef.current, event: "verified" }),
+              }).catch(() => {});
+            }
           }
         }
       }
@@ -790,6 +903,30 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     } catch(e) {}
   };
 
+  // FLOW (pilot): DNLA (psychometrics, first) -> technical -> behavioural -> Fit Score.
+  //  technical   -> behavioural interview
+  //  behavioural -> Fit Score report
+  const nextStep = isTech
+    ? { href: `/student/${id}/interview/behavioural`, label: "Continue to behavioural interview" }
+    : { href: `/student/${id}/fit-score`, label: "View Results & Report" };
+
+  const goToNextStep = () => router.push(nextStep.href);
+
+  // Allow Escape to dismiss the active proctoring dialog (setup / warning).
+  // The terminal "blocked" dialog is intentionally not Escape-dismissible.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (warningMessage && !blocked) {
+        closeWarning();
+      } else if (!hasStarted && setupStep === "verify" && !blocked) {
+        setSetupStep("rules");
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [warningMessage, blocked, hasStarted, setupStep]);
+
   async function handleSendText() {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     const currentText = textAreaRef.current ? textAreaRef.current.value.trim() : (draft + interimDraft).trim();
@@ -800,6 +937,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       try { recognitionRef.current.stop(); } catch (e) {}
     }
 
+    setSendError(null);
     setMessages(prev => [...prev, { role: "user", text: currentText }]);
     setDraft("");
     draftRef.current = "";
@@ -807,8 +945,23 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     if (textAreaRef.current) textAreaRef.current.value = "";
     setIsProcessing(true);
 
+    // Restore the candidate's drafted answer (and roll back the optimistic
+    // message) so a transient send/transcribe failure never silently drops it.
+    const restoreDraft = () => {
+      setMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (last && last.role === "user" && last.text === currentText) {
+          return prev.slice(0, -1);
+        }
+        return prev;
+      });
+      draftRef.current = currentText;
+      setDraft(currentText);
+      if (textAreaRef.current) textAreaRef.current.value = currentText;
+    };
+
     try {
-      const res = await fetch("/api/interview/voice", {
+      const res = await authedFetch("/api/interview/voice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -836,9 +989,15 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         setMessages(prev => [...prev, { role: "ai", text: stripMarkdown(data.nextQuestion) }]);
         setIsProcessing(false);
         playAudioAndListen(data.audioBase64);
+      } else {
+        setIsProcessing(false);
+        restoreDraft();
+        setSendError("Your answer could not be sent. It has been restored below - please try sending again.");
       }
     } catch (e) {
       setIsProcessing(false);
+      restoreDraft();
+      setSendError("Your answer could not be sent. It has been restored below - please try sending again.");
     }
   }
 
@@ -858,37 +1017,100 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   // Proctoring status indicator helper
   const StatusDot = ({ ok, label }: { ok: boolean; label: string }) => (
     <div className="flex items-center gap-1.5">
-      <span className={`w-1.5 h-1.5 rounded-full ${ok ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]' : 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)] animate-pulse'}`} />
+      <span className={`w-1.5 h-1.5 rounded-full ${ok ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]' : 'bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.8)] animate-pulse'}`} />
       <span className={`text-[9px] font-bold uppercase tracking-wider ${ok ? 'text-emerald-700' : 'text-rose-600'}`}>{label}</span>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans relative z-0 select-none"
+    <div className="min-h-screen bg-canvas flex flex-col font-sans relative z-0 select-none"
       onCopy={e => e.preventDefault()}
       onCut={e => e.preventDefault()}
       onPaste={e => e.preventDefault()}
       onContextMenu={e => e.preventDefault()}
       onSelectCapture={e => {}}
     >
-      {/* Animated background */}
-      <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[45%] h-[45%] rounded-full bg-indigo-400/20 blur-[130px] animate-pulse" style={{ animationDuration: '8s' }} />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[45%] h-[45%] rounded-full bg-emerald-400/20 blur-[130px] animate-pulse" style={{ animationDuration: '12s' }} />
-        <div className="absolute top-[30%] right-[20%] w-[35%] h-[35%] rounded-full bg-blue-400/20 blur-[120px] animate-pulse" style={{ animationDuration: '15s' }} />
+      {/* Ambient background glow (single decorative halo) */}
+      <div aria-hidden className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[45%] h-[45%] rounded-full bg-brand-300/20 blur-[130px] animate-pulse" style={{ animationDuration: '8s' }} />
       </div>
 
+      {/* ===== CAMERA FAILURE OVERLAY (blocking) ===== */}
+      {cameraError && !blocked && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="camera-error-title"
+          className="fixed inset-0 z-[210] bg-ink-900/70 backdrop-blur-xl flex items-center justify-center p-4 text-center"
+        >
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full max-w-lg">
+            <Card variant="frosted" className="rounded-xl3 p-8 border-rose-200">
+              <div aria-hidden className="w-16 h-16 bg-rose-100 rounded-full mx-auto flex items-center justify-center mb-5">
+                <Camera className="w-8 h-8 text-rose-600" />
+              </div>
+              <Heading as="h2" id="camera-error-title" className="text-2xl text-ink-900 mb-3">Camera Unavailable</Heading>
+              <p className="text-ink-600 mb-6 text-sm" aria-live="assertive">{cameraError}</p>
+              <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                <Button type="button" onClick={() => window.location.reload()} size="lg">
+                  Retry Camera Access
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => router.push(`/student/${id}`)} size="lg">
+                  Return to Dashboard
+                </Button>
+              </div>
+            </Card>
+          </motion.div>
+        </div>
+      )}
+
       {/* ===== PRE-START RULES OVERLAY ===== */}
+      {!hasStarted && setupStep === "resume" && !blocked && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="resume-dialog-title"
+          className="fixed inset-0 z-[100] bg-ink-900/60 backdrop-blur-xl overflow-y-auto flex justify-center p-4 md:p-8"
+        >
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="my-auto w-full max-w-lg">
+            <Card variant="frosted" className="rounded-xl3 p-6 md:p-8 text-center">
+              <div aria-hidden className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-xl2 bg-gradient-to-br from-brand-600 to-accent-500 shadow-panel">
+                <FileText className="h-6 w-6 text-white" />
+              </div>
+              <Heading as="h2" id="resume-dialog-title" className="text-2xl">Upload your résumé first</Heading>
+              <p className="mt-2 text-sm text-ink-500">
+                Your {isTech ? "technical" : "behavioural"} interview is tailored to your résumé — your skills, projects and target role. Upload it now for the most relevant questions.
+              </p>
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                <a href="/onboarding" className="btn-primary rounded-full">
+                  <FileText className="h-4 w-4" /> Upload résumé
+                </a>
+                <button type="button" onClick={() => setSetupStep("rules")} className="btn-ghost rounded-full">
+                  Continue without résumé
+                </button>
+              </div>
+            </Card>
+          </motion.div>
+        </div>
+      )}
+
       {!hasStarted && setupStep === "rules" && !blocked && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-xl overflow-y-auto flex justify-center p-4 md:p-8">
-          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="my-auto bg-white/80 backdrop-blur-2xl p-6 md:p-8 rounded-3xl shadow-2xl border border-white/80 max-w-2xl w-full">
-            <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/30 mb-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="rules-dialog-title"
+          aria-describedby="rules-dialog-desc"
+          className="fixed inset-0 z-[100] bg-ink-900/60 backdrop-blur-xl overflow-y-auto flex justify-center p-4 md:p-8"
+        >
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="my-auto w-full max-w-2xl">
+            <Card variant="frosted" className="rounded-xl3 p-6 md:p-8">
+            <div aria-hidden className="w-12 h-12 bg-gradient-to-br from-brand-600 to-accent-500 rounded-xl2 flex items-center justify-center shadow-panel mb-4">
               <ShieldAlert className="w-6 h-6 text-white" />
             </div>
-            <h2 className="text-xl font-bold text-slate-900 mb-1">Proctored Assessment</h2>
-            <p className="text-slate-600 mb-4 text-xs font-semibold">This is a strictly monitored AI interview. Read the rules carefully.</p>
-            
-            <div className="bg-slate-100/50 rounded-2xl p-4 mb-4 border border-slate-200/50 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
+            <Eyebrow className="mb-1">{isTech ? "Technical" : "Behavioural"} Assessment</Eyebrow>
+            <Heading as="h2" id="rules-dialog-title" className="text-xl text-ink-900 mb-1">Proctored Assessment</Heading>
+            <p id="rules-dialog-desc" className="text-ink-500 mb-4 text-xs font-semibold">This is a strictly monitored AI interview. Read the rules carefully.</p>
+
+            <div className="bg-ink-50/60 rounded-xl2 p-4 mb-4 border border-ink-200/50 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
               {[
                 { icon: <MonitorOff className="w-4 h-4" />, title: "No Window Switching", desc: "Leaving or unfocusing triggers a warning." },
                 { icon: <Users className="w-4 h-4" />, title: "No Other People", desc: "Only 1 person allowed in frame." },
@@ -899,104 +1121,126 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 { icon: <Mic className="w-4 h-4" />, title: "Quiet Environment", desc: "Keep background noise low." },
               ].map((rule, i) => (
                 <div key={i} className="flex items-start gap-2.5">
-                  <div className="mt-0.5 text-indigo-600 shrink-0">{rule.icon}</div>
+                  <div className="mt-0.5 text-brand-600 shrink-0">{rule.icon}</div>
                   <div>
-                    <span className="text-xs font-bold text-slate-800 block leading-tight">{rule.title}</span>
-                    <span className="text-[10px] text-slate-500 leading-snug block">{rule.desc}</span>
+                    <span className="text-xs font-bold text-ink-800 block leading-tight">{rule.title}</span>
+                    <span className="text-[10px] text-ink-500 leading-snug block">{rule.desc}</span>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="bg-red-50 border border-red-200 rounded-xl p-2.5 mb-4">
-              <p className="text-red-600 text-[10px] font-bold text-center">⚠ 3 violations = automatic termination. No exceptions.</p>
+            <div className="bg-rose-50 border border-rose-200 rounded-xl2 p-2.5 mb-4">
+              <p className="text-rose-600 text-[10px] font-bold text-center">⚠ 3 violations = automatic termination. No exceptions.</p>
             </div>
 
-            <button onClick={handleGoToVerify} disabled={!proctoringReady} className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl hover:from-indigo-500 hover:to-purple-500 shadow-lg shadow-indigo-500/20 text-sm transition-all hover:scale-[1.01] disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2">
+            <Button type="button" onClick={handleGoToVerify} disabled={!proctoringReady} size="lg" className="w-full">
               {proctoringReady ? "Continue to Face ID Setup" : <><Loader2 className="w-4 h-4 animate-spin" /> Initializing AI Proctoring Engine...</>}
-            </button>
+            </Button>
+            </Card>
           </motion.div>
         </div>
       )}
 
       {/* ===== FACE ID VERIFICATION OVERLAY ===== */}
       {!hasStarted && setupStep === "verify" && !blocked && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-xl overflow-y-auto flex items-center justify-center p-4 md:p-8">
-          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white/80 backdrop-blur-2xl p-6 md:p-8 rounded-3xl shadow-2xl border border-white/80 max-w-lg w-full flex flex-col items-center">
-            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center shadow-lg shadow-blue-500/30 mb-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="verify-dialog-title"
+          aria-describedby="verify-dialog-desc"
+          className="fixed inset-0 z-[100] bg-ink-900/80 backdrop-blur-xl overflow-y-auto flex items-center justify-center p-4 md:p-8"
+        >
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-lg">
+            <Card variant="frosted" className="rounded-xl3 p-6 md:p-8 flex flex-col items-center">
+            <div aria-hidden className="w-16 h-16 bg-gradient-to-br from-brand-600 to-accent-500 rounded-full flex items-center justify-center shadow-panel mb-4">
               <Camera className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-xl font-bold text-slate-900 mb-2">Face ID Verification</h2>
-            <p className="text-slate-600 mb-6 text-sm text-center font-medium">Please look directly into your camera to verify your identity. Only one person is allowed.</p>
-            
+            <Heading as="h2" id="verify-dialog-title" className="text-xl text-ink-900 mb-2">Face ID Verification</Heading>
+            <p id="verify-dialog-desc" className="text-ink-500 mb-6 text-sm text-center font-medium">Please look directly into your camera to verify your identity. Only one person is allowed.</p>
+
             {capturedImage ? (
-              <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-slate-900 mb-6 shadow-inner ring-4 ring-slate-100">
+              <div className="relative w-full aspect-video rounded-xl2 overflow-hidden bg-ink-900 mb-6 shadow-inner ring-4 ring-ink-100">
                 <img src={capturedImage} alt="Captured Face ID" className="w-full h-full object-cover" />
                 {verificationResult.status === "verifying" && (
-                  <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm flex flex-col items-center justify-center text-white">
+                  <div className="absolute inset-0 bg-ink-900/60 backdrop-blur-sm flex flex-col items-center justify-center text-white">
                     <Loader2 className="w-8 h-8 animate-spin mb-3" />
                     <span className="font-bold text-sm tracking-wide">Analyzing Image...</span>
                   </div>
                 )}
                 {verificationResult.status === "success" && (
                   <div className="absolute inset-0 bg-emerald-500/20 border-4 border-emerald-500 flex items-center justify-center backdrop-blur-[2px]">
-                    <div className="bg-emerald-500 text-white p-3 rounded-full shadow-2xl scale-[1.2] animate-bounce">
+                    <div className="bg-emerald-500 text-white p-3 rounded-full shadow-panel scale-[1.2] animate-bounce">
                       <Check className="w-8 h-8" />
                     </div>
                   </div>
                 )}
                 {verificationResult.status === "error" && (
-                  <div className="absolute inset-0 bg-red-500/20 border-4 border-red-500 flex items-center justify-center backdrop-blur-[2px]">
-                    <div className="bg-red-500 text-white p-3 rounded-full shadow-2xl scale-[1.2]">
+                  <div className="absolute inset-0 bg-rose-500/20 border-4 border-rose-500 flex items-center justify-center backdrop-blur-[2px]">
+                    <div className="bg-rose-500 text-white p-3 rounded-full shadow-panel scale-[1.2]">
                       <X className="w-8 h-8" />
                     </div>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="w-full aspect-video rounded-xl overflow-hidden bg-slate-900 mb-6 relative shadow-inner ring-4 ring-slate-100 flex flex-col items-center justify-center text-slate-400">
-                <Camera className="w-10 h-10 mb-2 opacity-50" />
+              <div className="w-full aspect-video rounded-xl2 overflow-hidden bg-ink-900 mb-6 relative shadow-inner ring-4 ring-ink-100 flex flex-col items-center justify-center text-ink-200">
+                <Camera aria-hidden className="w-10 h-10 mb-2 opacity-50" />
                 <span className="text-xs font-semibold uppercase tracking-wider">Live feed active in background</span>
               </div>
             )}
 
             {verificationResult.status === "error" && (
-              <div className="w-full bg-red-50 border border-red-200 rounded-xl p-3 mb-6 text-center">
-                <p className="text-red-600 text-sm font-bold">{verificationResult.message}</p>
-                <button onClick={() => { setCapturedImage(null); setVerificationResult({status: "idle"}); }} className="mt-2 text-red-700 underline text-xs font-semibold">Take Another Picture</button>
+              <div className="w-full bg-rose-50 border border-rose-200 rounded-xl2 p-3 mb-6 text-center" role="alert" aria-live="assertive">
+                <p className="text-rose-600 text-sm font-bold">{verificationResult.message}</p>
+                <button type="button" onClick={() => { setCapturedImage(null); setVerificationResult({status: "idle"}); }} className="mt-2 text-rose-700 underline text-xs font-semibold">Take Another Picture</button>
               </div>
             )}
 
             {verificationResult.status === "success" ? (
-              <button onClick={handleStartInterview} className="w-full py-3.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-500 shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 text-sm">
-                Identity Verified — Start Interview <ArrowRight className="w-4 h-4" />
+              <button type="button" onClick={handleStartInterview} className="w-full py-3.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-500 shadow-panel transition-all flex items-center justify-center gap-2 text-sm">
+                Identity Verified - Start Interview <ArrowRight className="w-4 h-4" />
               </button>
             ) : (
-              <button onClick={handleCaptureAndVerify} disabled={verificationResult.status === "verifying"} className="w-full py-3.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-500 shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 text-sm">
-                {verificationResult.status === "verifying" ? "Verifying..." : "📸 Capture Image"}
-              </button>
+              <Button type="button" onClick={handleCaptureAndVerify} disabled={verificationResult.status === "verifying"} size="lg" className="w-full py-3.5">
+                {verificationResult.status === "verifying" ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying...</> : "📸 Capture Image"}
+              </Button>
             )}
+            </Card>
           </motion.div>
         </div>
       )}
 
       {/* ===== BLOCKED OVERLAY ===== */}
       {blocked && (
-        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-xl flex items-center justify-center p-4 text-center">
-          <motion.div initial={{ scale: 0.8 }} animate={{ scale: 1 }} className="bg-white/80 backdrop-blur-2xl p-10 rounded-3xl shadow-2xl max-w-lg w-full border border-red-200">
-            <div className="w-20 h-20 bg-red-100 rounded-full mx-auto flex items-center justify-center mb-6">
-              <ShieldAlert className="w-10 h-10 text-red-600" />
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="blocked-dialog-title"
+          className="fixed inset-0 z-[200] bg-ink-900/60 backdrop-blur-xl flex items-center justify-center p-4 text-center"
+        >
+          <motion.div initial={{ scale: 0.8 }} animate={{ scale: 1 }} className="w-full max-w-lg">
+            <Card variant="frosted" className="rounded-xl3 p-10 border-rose-200">
+            <div aria-hidden className="w-20 h-20 bg-rose-100 rounded-full mx-auto flex items-center justify-center mb-6">
+              <ShieldAlert className="w-10 h-10 text-rose-600" />
             </div>
-            <h2 className="text-3xl font-black text-slate-900 mb-4">Assessment Terminated</h2>
-            <p className="text-slate-600 mb-4 text-lg">Your assessment has been permanently blocked due to {warnings} proctoring violations.</p>
-            <div className="bg-rose-50 border border-rose-100 rounded-xl p-4 mb-8 text-left max-h-32 overflow-y-auto">
-              {violationLog.map((v, i) => (
-                <p key={i} className="text-xs text-red-600 font-mono mb-1">{v}</p>
-              ))}
-            </div>
-            <button onClick={() => router.push(`/student/${id}`)} className="px-8 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700">
+            <Heading as="h2" id="blocked-dialog-title" className="text-3xl text-ink-900 mb-4">Assessment Terminated</Heading>
+            <p className="text-ink-500 mb-4 text-lg" role="alert">Your assessment has been permanently blocked due to {warnings} proctoring violations.</p>
+            {violationLog.length > 0 ? (
+              <div className="bg-rose-50 border border-rose-100 rounded-xl2 p-4 mb-8 text-left max-h-32 overflow-y-auto">
+                {violationLog.map((v, i) => (
+                  <p key={i} className="text-xs text-rose-600 font-mono mb-1">{v}</p>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-ink-50/60 border border-ink-200/50 rounded-xl2 p-4 mb-8 text-center">
+                <p className="text-xs text-ink-500">No detailed violation log is available for this session.</p>
+              </div>
+            )}
+            <Button type="button" variant="danger" onClick={() => router.push(`/student/${id}`)} size="lg" className="px-8 py-3">
               Return to Dashboard
-            </button>
+            </Button>
+            </Card>
           </motion.div>
         </div>
       )}
@@ -1004,17 +1248,28 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       {/* ===== WARNING OVERLAY ===== */}
       <AnimatePresence>
         {warningMessage && !blocked && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[150] bg-slate-900/60 backdrop-blur-xl flex items-center justify-center p-4 text-center">
-            <motion.div initial={{ scale: 0.8, y: 20 }} animate={{ scale: 1, y: 0 }} className="bg-white/85 backdrop-blur-2xl p-10 rounded-3xl shadow-2xl max-w-lg w-full border border-amber-200">
-              <div className="w-20 h-20 bg-amber-100 rounded-full mx-auto flex items-center justify-center mb-6">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="warning-dialog-title"
+            aria-describedby="warning-dialog-desc"
+            className="fixed inset-0 z-[150] bg-ink-900/60 backdrop-blur-xl flex items-center justify-center p-4 text-center"
+          >
+            <motion.div initial={{ scale: 0.8, y: 20 }} animate={{ scale: 1, y: 0 }} className="w-full max-w-lg">
+              <Card variant="frosted" className="rounded-xl3 p-10 border-amber-200">
+              <div aria-hidden className="w-20 h-20 bg-amber-100 rounded-full mx-auto flex items-center justify-center mb-6">
                 <AlertTriangle className="w-10 h-10 text-amber-600" />
               </div>
-              <h2 className="text-2xl font-black text-slate-900 mb-4">{warningMessage.split(':')[0]}</h2>
-              <p className="text-slate-700 mb-4 text-lg font-medium">{warningMessage.split(':').slice(1).join(':')}</p>
-              <p className="text-slate-500 mb-8 text-sm">Return to fullscreen immediately. {3 - warnings} warning(s) remaining before termination.</p>
-              <button onClick={closeWarning} className="px-8 py-4 w-full bg-gradient-to-r from-amber-600 to-orange-600 text-white font-bold rounded-xl hover:from-amber-500 hover:to-orange-500 shadow-lg shadow-amber-500/20">
-                I Understand — Return to Interview
+              <Heading as="h2" id="warning-dialog-title" className="text-2xl text-ink-900 mb-4" aria-live="assertive">{warningMessage.split(':')[0]}</Heading>
+              <p id="warning-dialog-desc" className="text-ink-700 mb-4 text-lg font-medium">{warningMessage.split(':').slice(1).join(':')}</p>
+              <p className="text-ink-500 mb-8 text-sm">Return to fullscreen immediately. {3 - warnings} warning(s) remaining before termination.</p>
+              <button type="button" autoFocus onClick={closeWarning} className="px-8 py-4 w-full bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-500 shadow-panel transition-all">
+                I Understand - Return to Interview
               </button>
+              </Card>
             </motion.div>
           </motion.div>
         )}
@@ -1023,33 +1278,33 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       {/* ===== MAIN INTERVIEW LAYOUT ===== */}
       <div className="flex-1 flex flex-col w-full z-10 relative">
         {/* Header */}
-        <header className="bg-white/80 backdrop-blur-2xl border-b border-slate-200/60 sticky top-0 z-50">
+        <header className="bg-white/80 backdrop-blur-2xl border-b border-ink-200/60 sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="relative w-9 h-9 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-[0_0_15px_rgba(99,102,241,0.4)]">
+              <div aria-hidden className="relative w-9 h-9 bg-gradient-to-br from-brand-600 to-accent-500 rounded-xl flex items-center justify-center shadow-panel">
                 <Brain className="w-4 h-4 text-white" />
               </div>
               <div>
-                <h1 className="font-bold text-slate-900 text-sm leading-tight">TalEdge AI</h1>
-                <p className="text-[10px] font-medium text-slate-500">{isTech ? "Technical" : "Behavioural"} Assessment</p>
+                <h1 className="font-bold text-ink-900 text-sm leading-tight">TalEdge AI</h1>
+                <p className="text-[10px] font-medium text-ink-500">{isTech ? "Technical" : "Behavioural"} Assessment</p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3">
-              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-rose-50 border border-rose-200 text-rose-600 rounded-full text-[10px] font-bold shadow-sm">
-                <span className="relative flex h-2 w-2">
+              <Badge tone="danger" className="hidden md:inline-flex">
+                <span className="relative flex h-2 w-2" aria-hidden>
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
                 </span>
                 PROCTORED · {warnings}/3
-              </div>
-              <div className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-bold ${!isProcessing && sessionId ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-amber-200 bg-amber-50 text-amber-600'}`}>
+              </Badge>
+              <Badge tone={!isProcessing && sessionId ? "success" : "warn"}>
                 <span className={`h-1.5 w-1.5 rounded-full ${!isProcessing && sessionId ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
                 {!isProcessing && sessionId ? "Live" : "Connecting..."}
-              </div>
-              <div className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 text-slate-600 rounded-full text-[10px] font-bold font-mono border border-slate-200/60 shadow-sm">
+              </Badge>
+              <Badge tone="neutral" className="font-mono">
                 {m}:{s}
-              </div>
+              </Badge>
             </div>
           </div>
         </header>
@@ -1058,42 +1313,43 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           {/* Left Column: Camera + Proctoring Panel + Profile */}
           <div className="lg:col-span-4 flex flex-col md:grid md:grid-cols-2 lg:flex lg:flex-col gap-4">
             {/* Camera Feed */}
-            <div className="bg-white/50 backdrop-blur-2xl rounded-2xl p-1.5 shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-white/60 relative group">
+            <Card variant="frosted" className="bg-white/50 p-1.5 relative group">
               <div className="absolute top-3 left-3 z-20 flex flex-col gap-1.5">
                 <div className="px-2.5 py-1 bg-black/70 backdrop-blur-xl rounded-lg text-[9px] font-bold text-white flex items-center gap-1.5 uppercase tracking-wider">
-                  <span className={`w-1.5 h-1.5 rounded-full ${webcamEnabled ? 'bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.8)]' : 'bg-red-500'}`} />
-                  <Camera className="w-2.5 h-2.5" />
+                  <span className={`w-1.5 h-1.5 rounded-full ${webcamEnabled ? 'bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.8)]' : 'bg-rose-500'}`} />
+                  <Camera aria-hidden className="w-2.5 h-2.5" />
                   {webcamEnabled ? "LIVE" : "OFF"}
                 </div>
-                <div className="px-2.5 py-1 bg-indigo-50/80 backdrop-blur-xl rounded-lg text-[9px] font-bold text-indigo-700 flex items-center gap-1.5 uppercase tracking-wider border border-indigo-200/50">
+                <div className="px-2.5 py-1 bg-brand-50/80 backdrop-blur-xl rounded-lg text-[9px] font-bold text-brand-700 flex items-center gap-1.5 uppercase tracking-wider border border-brand-200/50">
                   {proctoringReady ? (
-                    <><Eye className="w-2.5 h-2.5 text-emerald-600" /> AI Vision</>
+                    <><Eye aria-hidden className="w-2.5 h-2.5 text-emerald-600" /> AI Vision</>
                   ) : (
-                    <><Loader2 className="w-2.5 h-2.5 animate-spin" /> Loading...</>
+                    <><Loader2 aria-hidden className="w-2.5 h-2.5 animate-spin" /> Loading...</>
                   )}
                 </div>
               </div>
               {/* Person count indicator */}
               {hasStarted && proctoringStatus.personCount > 0 && (
                 <div className="absolute top-3 right-3 z-20">
-                  <div className={`px-2.5 py-1 rounded-lg text-[9px] font-bold flex items-center gap-1.5 uppercase tracking-wider ${proctoringStatus.personCount === 1 ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/30' : 'bg-red-500/20 text-red-600 border border-red-500/30 animate-pulse'}`}>
-                    <Users className="w-2.5 h-2.5" />
+                  <div className={`px-2.5 py-1 rounded-lg text-[9px] font-bold flex items-center gap-1.5 uppercase tracking-wider ${proctoringStatus.personCount === 1 ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-600 border border-rose-500/30 animate-pulse'}`}>
+                    <Users aria-hidden className="w-2.5 h-2.5" />
                     {proctoringStatus.personCount} {proctoringStatus.personCount === 1 ? 'Person' : 'People'}
                   </div>
                 </div>
               )}
               <div className="relative rounded-xl overflow-hidden">
-                <div className={`absolute inset-0 border-2 rounded-xl z-10 pointer-events-none transition-colors duration-500 ${webcamEnabled && !proctoringStatus.cameraCovered ? 'border-emerald-500/20' : 'border-red-500/30'}`} />
-                <video ref={videoRef} autoPlay playsInline muted className="w-full h-32 md:h-48 lg:h-auto lg:aspect-[4/3] object-cover bg-black rounded-xl" />
+                <div className={`absolute inset-0 border-2 rounded-xl z-10 pointer-events-none transition-colors duration-500 ${webcamEnabled && !proctoringStatus.cameraCovered ? 'border-emerald-500/20' : 'border-rose-500/30'}`} />
+                <video ref={videoRef} autoPlay playsInline muted aria-label="Live proctoring camera feed of the candidate" className="w-full h-32 md:h-48 lg:h-auto lg:aspect-[4/3] object-cover bg-black rounded-xl" />
               </div>
-            </div>
+            </Card>
 
             {/* Live Proctoring Panel */}
             {hasStarted && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white/50 backdrop-blur-2xl rounded-2xl p-4 border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.06)]">
-                <h3 className="text-[10px] font-bold text-slate-400 mb-3 flex items-center gap-1.5 uppercase tracking-wider">
-                  <ShieldAlert className="w-3 h-3 text-indigo-500" /> Live Security Checks
-                </h3>
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                <Card variant="frosted" className="bg-white/50 p-4">
+                <Eyebrow className="mb-3 flex items-center gap-1.5">
+                  <ShieldAlert aria-hidden className="w-3 h-3 text-brand-500" /> Live Security Checks
+                </Eyebrow>
                 <div className="grid grid-cols-2 gap-2">
                   <StatusDot ok={proctoringStatus.faceVisible} label="Face visible" />
                   <StatusDot ok={!proctoringStatus.phoneDetected} label="No devices" />
@@ -1103,56 +1359,84 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                   <StatusDot ok={!proctoringStatus.noiseDetected} label="Quiet Env" />
                   <StatusDot ok={warnings === 0} label={`${warnings}/3 warns`} />
                 </div>
+                </Card>
               </motion.div>
             )}
 
             {/* Candidate Profile */}
-            <div className="bg-white/50 backdrop-blur-2xl rounded-2xl p-5 border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.06)]">
-              <h3 className="text-[10px] font-bold text-slate-400 mb-3 flex items-center gap-1.5 uppercase tracking-wider">
-                <FileText className="w-3 h-3 text-indigo-500" /> Candidate Profile
-              </h3>
-              {profile && (
+            <Card variant="frosted" className="bg-white/50 p-5">
+              <Eyebrow className="mb-3 flex items-center gap-1.5">
+                <FileText aria-hidden className="w-3 h-3 text-brand-500" /> Candidate Profile
+              </Eyebrow>
+              {profile ? (
                 <div className="space-y-3">
                   <div>
-                    <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Name</div>
-                    <div className="text-sm font-semibold text-slate-800">{profile.fullName}</div>
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-ink-500 mb-0.5">Name</div>
+                    <div className="text-sm font-semibold text-ink-800">{profile.fullName}</div>
                   </div>
                   <div>
-                    <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Role</div>
-                    <div className="text-sm font-semibold text-slate-800">{profile.targetRole}</div>
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-ink-500 mb-0.5">Role</div>
+                    <div className="text-sm font-semibold text-ink-800">{profile.targetRole}</div>
                   </div>
                   {profile.resumeSkills && profile.resumeSkills.length > 0 && (
                     <div>
-                      <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Skills</div>
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-ink-500 mb-1.5">Skills</div>
                       <div className="flex flex-wrap gap-1.5">
-                        {profile.resumeSkills.slice(0, 6).map((skill, idx) => (
-                          <span key={idx} className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-md text-[10px] font-semibold border border-indigo-100">
+                        {(profile.resumeSkills ?? []).slice(0, 6).map((skill, idx) => (
+                          <Badge key={idx} tone="brand" className="rounded-md text-[10px]">
                             {skill}
-                          </span>
+                          </Badge>
                         ))}
                       </div>
                     </div>
                   )}
                 </div>
+              ) : (
+                <p className="text-xs text-ink-500">No candidate profile is available for this session.</p>
               )}
-            </div>
+            </Card>
           </div>
 
           {/* Right Column: Chat Interface */}
-          <div className="lg:col-span-8 flex flex-col h-[550px] md:h-[600px] lg:h-[calc(100vh-10rem)] bg-white/40 backdrop-blur-3xl rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-white/60 overflow-hidden relative">
+          <div className="lg:col-span-8 flex flex-col h-[550px] md:h-[600px] lg:h-[calc(100vh-10rem)] bg-white/40 backdrop-blur-3xl rounded-xl2 shadow-panel border border-ink-200/60 overflow-hidden relative">
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-transparent">
+            <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-transparent" role="log" aria-label="Interview conversation" aria-live="polite">
+              {(messages?.length ?? 0) === 0 && !isProcessing && connectError && (
+                <div className="h-full flex items-center justify-center">
+                  <Card variant="flat" className="rounded-xl2 px-6 py-5 text-center max-w-sm border-rose-200" role="alert" aria-live="assertive">
+                    <div aria-hidden className="w-12 h-12 bg-rose-100 rounded-full mx-auto flex items-center justify-center mb-3">
+                      <AlertTriangle className="w-6 h-6 text-rose-600" />
+                    </div>
+                    <p className="text-sm font-semibold text-ink-800 mb-1">Connection failed</p>
+                    <p className="text-xs text-ink-500 mb-4">{connectError}</p>
+                    <Button type="button" size="sm" onClick={startInterview} disabled={isProcessing}>
+                      {isProcessing ? <Loader2 aria-hidden className="w-3.5 h-3.5 animate-spin" /> : null} Retry
+                    </Button>
+                  </Card>
+                </div>
+              )}
+              {(messages?.length ?? 0) === 0 && !isProcessing && !connectError && (
+                <div className="h-full flex items-center justify-center">
+                  <Card variant="flat" className="rounded-xl2 px-6 py-5 text-center max-w-sm">
+                    <p className="text-sm text-ink-500">
+                      {hasStarted
+                        ? "Connecting to your AI interviewer..."
+                        : "Complete the proctoring setup to begin your interview."}
+                    </p>
+                  </Card>
+                </div>
+              )}
               <AnimatePresence>
-                {messages.map((msg, i) => (
+                {(messages ?? []).map((msg, i) => (
                   <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[85%] rounded-2xl px-5 py-3.5 text-[14px] leading-relaxed ${
+                    <div className={`max-w-[85%] rounded-xl2 px-5 py-3.5 text-[14px] leading-relaxed ${
                       msg.role === "user"
-                        ? "bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-br-sm border border-indigo-400/30 shadow-md"
-                        : "bg-white/80 backdrop-blur-md text-slate-800 border border-slate-200/80 rounded-bl-sm shadow-sm"
+                        ? "bg-gradient-to-br from-brand-600 to-brand-700 text-white rounded-br-sm border border-brand-400/30 shadow-md"
+                        : "bg-white/80 backdrop-blur-md text-ink-800 border border-ink-200/80 rounded-bl-sm shadow-sm"
                     }`}>
                       {msg.role === "ai" && (
-                        <div className="text-[9px] font-bold uppercase tracking-wider text-indigo-600 mb-1.5 flex items-center gap-1">
-                          <Brain className="w-3 h-3" /> AI Interviewer
+                        <div className="text-[9px] font-bold uppercase tracking-wider text-brand-600 mb-1.5 flex items-center gap-1">
+                          <Brain aria-hidden className="w-3 h-3" /> AI Interviewer
                         </div>
                       )}
                       {msg.text}
@@ -1161,13 +1445,13 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 ))}
                 {isProcessing && (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-                    <div className="bg-white/80 backdrop-blur-md text-slate-500 border border-slate-200/80 rounded-2xl px-5 py-3.5 rounded-bl-sm flex items-center gap-3 shadow-sm">
-                      <div className="flex gap-1">
-                        <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-2 h-2 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                    <div className="bg-white/80 backdrop-blur-md text-ink-500 border border-ink-200/80 rounded-xl2 px-5 py-3.5 rounded-bl-sm flex items-center gap-3 shadow-sm">
+                      <div className="flex gap-1" aria-hidden>
+                        <span className="w-2 h-2 rounded-full bg-brand-600 animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-2 h-2 rounded-full bg-brand-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-2 h-2 rounded-full bg-accent-400 animate-bounce" style={{ animationDelay: '300ms' }} />
                       </div>
-                      <span className="text-sm font-medium text-slate-400">Thinking...</span>
+                      <span className="text-sm font-medium text-ink-500">Thinking...</span>
                     </div>
                   </motion.div>
                 )}
@@ -1176,14 +1460,18 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             </div>
 
             {/* AI Visualizer Orb */}
-            <div className="absolute top-5 right-5 pointer-events-none">
+            <div
+              className="absolute top-5 right-5 pointer-events-none"
+              role="img"
+              aria-label={aiSpeaking ? "AI interviewer is speaking" : isProcessing ? "AI interviewer is thinking" : recording ? "Listening to your response" : sessionId ? "AI interviewer is ready" : "AI interviewer is idle"}
+            >
               <div className="relative w-14 h-14 md:w-16 md:h-16 flex items-center justify-center">
-                 <div 
-                   className={`absolute inset-0 rounded-full blur-xl transition-all duration-75 ${aiSpeaking ? 'bg-purple-500/20' : !isProcessing && sessionId && !recording ? 'bg-emerald-500/10 animate-pulse' : isProcessing ? 'bg-indigo-500/10' : 'bg-transparent'}`} 
+                 <div
+                   className={`absolute inset-0 rounded-full blur-xl transition-all duration-75 ${aiSpeaking ? 'bg-brand-500/20' : !isProcessing && sessionId && !recording ? 'bg-emerald-500/10 animate-pulse' : isProcessing ? 'bg-brand-500/10' : 'bg-transparent'}`}
                    style={{ transform: aiSpeaking ? `scale(${1 + aiVolume / 80})` : 'scale(1)' }}
                  />
-                 <div 
-                   className={`relative w-8 h-8 md:w-10 md:h-10 rounded-full border-2 flex items-center justify-center transition-all duration-75 ${aiSpeaking ? 'bg-gradient-to-tr from-fuchsia-500 to-indigo-500 border-fuchsia-400 shadow-[0_0_30px_rgba(217,70,239,0.4)]' : !isProcessing && sessionId && !recording ? 'bg-gradient-to-tr from-emerald-500 to-teal-300 border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.3)]' : isProcessing ? 'bg-gradient-to-tr from-indigo-500 to-purple-400 border-indigo-400' : 'bg-slate-100 border-slate-300'}`}
+                 <div
+                   className={`relative w-8 h-8 md:w-10 md:h-10 rounded-full border-2 flex items-center justify-center transition-all duration-75 ${aiSpeaking ? 'bg-gradient-to-tr from-brand-600 to-accent-500 border-brand-400 shadow-[0_0_30px_rgba(79,70,229,0.4)]' : !isProcessing && sessionId && !recording ? 'bg-gradient-to-tr from-emerald-500 to-emerald-300 border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.3)]' : isProcessing ? 'bg-gradient-to-tr from-brand-600 to-accent-500 border-brand-400' : 'bg-ink-100 border-ink-300'}`}
                    style={{ transform: aiSpeaking ? `scale(${1 + aiVolume / 120})` : '' }}
                  >
                    <div className="w-1/2 h-1/2 rounded-full bg-white/30 blur-[1px]" />
@@ -1192,46 +1480,62 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             </div>
 
             {/* Input Area */}
-            <div className="p-4 md:p-5 bg-white/70 backdrop-blur-xl border-t border-slate-200/60 z-10">
+            <div className="p-4 md:p-5 bg-white/70 backdrop-blur-xl border-t border-ink-200/60 z-10">
               {done ? (
-                <div className="bg-emerald-50 rounded-2xl p-6 border border-emerald-100 text-center">
+                <div className="bg-emerald-50 rounded-xl2 p-6 border border-emerald-100 text-center">
                   <h3 className="text-lg font-bold text-emerald-800 mb-2">Interview Completed</h3>
-                  <p className="text-slate-600 text-sm mb-4">Your responses have been analyzed. View your detailed Fit Score report.</p>
-                  <button onClick={() => router.push(`/student/${id}/fit-score`)} className="px-8 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold rounded-xl hover:from-emerald-500 hover:to-teal-500 shadow-lg shadow-emerald-500/20">
-                    View Results & Report
+                  <p className="text-ink-500 text-sm mb-4">
+                    {isTech
+                      ? "Your technical responses have been analyzed. Next, complete the behavioural interview."
+                      : "Your responses have been analyzed. View your detailed Fit Score report."}
+                  </p>
+                  <button type="button" onClick={goToNextStep} className="px-8 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-500 shadow-panel transition-all inline-flex items-center justify-center gap-2">
+                    {nextStep.label} <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
               ) : (
                 <div className="space-y-3">
+                  {sendError && (
+                    <div className="flex items-start gap-2 bg-rose-50 border border-rose-200 rounded-xl2 px-3 py-2" role="alert" aria-live="assertive">
+                      <AlertTriangle aria-hidden className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                      <p className="flex-1 text-[11px] font-semibold text-rose-700 leading-snug">{sendError}</p>
+                      <button type="button" onClick={() => setSendError(null)} aria-label="Dismiss error" className="text-rose-500 hover:text-rose-700 shrink-0">
+                        <X aria-hidden className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between px-1 mb-1">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                      {recording && <span className="flex h-2 w-2 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span></span>}
+                    <div className="text-[10px] font-bold text-ink-500 uppercase tracking-wider flex items-center gap-2" aria-live="polite">
+                      {recording && <span className="flex h-2 w-2 relative" aria-hidden><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span></span>}
                       {recording ? "Listening... (Auto-submitting after 4s of silence)" : "Auto-Mic Ready"}
                     </div>
                     <div className="text-[9px] font-semibold text-rose-500 bg-rose-50 px-2 py-0.5 rounded border border-rose-100/50 animate-pulse">
                       ⚠ Keep background noise low & sit in a quiet place
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <button onClick={() => setIsCodingMode(false)} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${!isCodingMode ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200/60'}`}>Voice / Text</button>
-                      {isTech && <button onClick={() => setIsCodingMode(true)} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${isCodingMode ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200/60'}`}><FileText className="w-3 h-3 inline mr-1" />Code</button>}
+                    <div className="flex items-center gap-1.5" role="group" aria-label="Response input mode">
+                      <button type="button" aria-pressed={!isCodingMode} onClick={() => setIsCodingMode(false)} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${!isCodingMode ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200/60'}`}>Voice / Text</button>
+                      {isTech && <button type="button" aria-pressed={isCodingMode} onClick={() => setIsCodingMode(true)} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${isCodingMode ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200/60'}`}><FileText aria-hidden className="w-3 h-3 inline mr-1" />Code</button>}
                     </div>
                   </div>
-                  
+
                   <div className="flex gap-3 items-end">
                     {!isCodingMode && (
                       <button
+                        type="button"
                         onClick={toggleMic}
+                        aria-label={recording ? "Stop microphone" : "Start microphone"}
+                        aria-pressed={recording}
                         className={`shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
-                          recording ? "bg-rose-500 text-white shadow-lg shadow-rose-500/30" : "bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200"
+                          recording ? "bg-rose-500 text-white shadow-lg shadow-rose-500/30" : "bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200"
                         }`}
                       >
-                        {recording ? <Mic className="w-5 h-5 animate-pulse" /> : <MicOff className="w-5 h-5" />}
+                        {recording ? <Mic aria-hidden className="w-5 h-5 animate-pulse" /> : <MicOff aria-hidden className="w-5 h-5" />}
                       </button>
                     )}
-                    
+
                     <div className="flex-1">
                       {isCodingMode ? (
-                        <div className="h-48 border border-slate-200 rounded-xl overflow-hidden focus-within:ring-2 ring-indigo-500/20">
+                        <div className="h-48 border border-ink-200 rounded-xl overflow-hidden focus-within:ring-2 ring-brand-500/20">
                           <Editor
                             height="100%"
                             defaultLanguage="javascript"
@@ -1245,8 +1549,10 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                           />
                         </div>
                       ) : (
-                        <div className="bg-white border border-slate-200 rounded-xl p-2 flex focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/10 transition-all">
+                        <div className="bg-white border border-ink-200 rounded-xl p-2 flex focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/10 transition-all">
+                          <label htmlFor="answer-input" className="sr-only">Your response</label>
                           <textarea
+                            id="answer-input"
                             ref={textAreaRef}
                             defaultValue={draft}
                             onChange={(e) => {
@@ -1254,13 +1560,16 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                                setDraft(e.target.value);
                             }}
                             placeholder="Speak naturally or type your response..."
-                            className="flex-1 bg-transparent px-2 py-2 resize-none text-sm focus:outline-none text-slate-800 placeholder-slate-400"
+                            className="flex-1 bg-transparent px-2 py-2 resize-none text-sm focus:outline-none text-ink-800 placeholder-ink-400"
                             rows={2}
                           />
                         </div>
                       )}
                       <div className="flex justify-end mt-2 gap-2">
-                        <button
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
                           onClick={() => {
                             setDraft("");
                             setInterimDraft("");
@@ -1270,13 +1579,12 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                             startListening();
                           }}
                           disabled={isProcessing}
-                          className="px-4 py-2 bg-slate-100 border border-slate-200 text-slate-600 font-semibold rounded-lg hover:bg-slate-200 disabled:opacity-40 transition-all text-sm flex items-center gap-1.5"
                         >
                           Clear & Re-answer
-                        </button>
-                        <button id="send-btn" onClick={handleSendText} disabled={isProcessing} className="px-5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-lg hover:from-indigo-500 hover:to-purple-500 shadow-md disabled:opacity-40 disabled:cursor-not-allowed transition-all text-sm flex items-center gap-2">
-                          <Send className="w-3.5 h-3.5" /> Send
-                        </button>
+                        </Button>
+                        <Button type="button" id="send-btn" size="sm" onClick={handleSendText} disabled={isProcessing}>
+                          {isProcessing ? <Loader2 aria-hidden className="w-3.5 h-3.5 animate-spin" /> : <Send aria-hidden className="w-3.5 h-3.5" />} Send
+                        </Button>
                       </div>
                     </div>
                   </div>

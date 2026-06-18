@@ -1,20 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getPrincipal, unauthorized } from "@/lib/server-auth";
+import { logger } from "@/lib/logger";
+import { isProd } from "@/lib/flags";
 
 export const runtime = "nodejs";
 
-const localSessions: unknown[] = [];
+type CoachingSession = {
+  id: string;
+  studentId: string;
+  coachId: string;
+  track: "placement" | "exam";
+  topic: string;
+  status: "scheduled";
+  scheduledFor: string | null;
+  privacy: string;
+};
 
-export async function GET() {
-  return NextResponse.json({ ok: true, sessions: localSessions });
+/**
+ * Owner-scoped, in-memory coaching-session store keyed by the authenticated
+ * uid. Each principal only ever reads/writes their own bucket, so a caller can
+ * never see another user's sessions. (Per-instance/dev scope - back with a real
+ * datastore for production durability.)
+ */
+const sessionsByOwner = new Map<string, CoachingSession[]>();
+
+const MAX_FIELD_LEN = 200;
+
+function isShortString(v: unknown): v is string {
+  return typeof v === "string" && v.trim().length > 0 && v.length <= MAX_FIELD_LEN;
+}
+
+export async function GET(req: NextRequest) {
+  const principal = await getPrincipal(req);
+  if (!principal) return unauthorized();
+  const uid = principal.uid;
+
+  const sessions = sessionsByOwner.get(uid) ?? [];
+  return NextResponse.json({ ok: true, sessions });
 }
 
 export async function POST(req: NextRequest) {
+  const principal = await getPrincipal(req);
+  if (!principal) return unauthorized();
+  const uid = principal.uid;
+
   let body: {
-    studentId?: string;
-    coachId?: string;
-    track?: "placement" | "exam";
-    topic?: string;
-    scheduledFor?: string;
+    studentId?: unknown;
+    coachId?: unknown;
+    track?: unknown;
+    topic?: unknown;
+    scheduledFor?: unknown;
   };
 
   try {
@@ -23,27 +58,68 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (!body.studentId || !body.coachId || !body.track || !body.topic) {
+  if (
+    !isShortString(body.studentId) ||
+    !isShortString(body.coachId) ||
+    !isShortString(body.topic) ||
+    (body.track !== "placement" && body.track !== "exam")
+  ) {
     return NextResponse.json(
-      { ok: false, error: "studentId, coachId, track, and topic are required" },
+      {
+        ok: false,
+        error:
+          "studentId, coachId, topic, and a valid track ('placement' | 'exam') are required",
+      },
       { status: 400 }
     );
   }
 
-  return NextResponse.json({
-    ok: true,
-    session: {
-      id: `sess_${body.studentId}_${Math.random().toString(36).slice(2, 8)}`,
-      studentId: body.studentId,
-      coachId: body.coachId,
-      track: body.track,
-      topic: body.topic,
+  if (
+    body.scheduledFor !== undefined &&
+    body.scheduledFor !== null &&
+    !isShortString(body.scheduledFor)
+  ) {
+    return NextResponse.json(
+      { ok: false, error: "scheduledFor must be a string when provided" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const studentId = body.studentId as string;
+    const coachId = body.coachId as string;
+    const track = body.track as "placement" | "exam";
+    const topic = body.topic as string;
+    const scheduledFor = (body.scheduledFor as string | undefined) || null;
+
+    const session: CoachingSession = {
+      id: `sess_${studentId}_${Math.random().toString(36).slice(2, 8)}`,
+      studentId,
+      coachId,
+      track,
+      topic,
       status: "scheduled",
-      scheduledFor: body.scheduledFor || null,
+      scheduledFor,
       privacy:
-        body.track === "exam"
+        track === "exam"
           ? "exam risk indicators remain restricted to candidate, counsellor, and exam institute"
           : "placement development insights visible to authorized placement stakeholders",
-    },
-  });
+    };
+
+    // Persist into the caller's own bucket so subsequent GETs are owner-scoped.
+    const owned = sessionsByOwner.get(uid) ?? [];
+    owned.push(session);
+    sessionsByOwner.set(uid, owned);
+
+    return NextResponse.json({ ok: true, session });
+  } catch (err) {
+    logger.error("coaching/sessions POST failed", { err: String(err) });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: isProd ? "Unable to create coaching session" : String(err),
+      },
+      { status: 500 }
+    );
+  }
 }

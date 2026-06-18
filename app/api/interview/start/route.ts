@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSession, updateSession } from "@/lib/session-store";
 import { generateGeminiTTS, getGeminiApiKey, generateGeminiContent } from "@/lib/gemini";
+import { getPrincipal, unauthorized } from "@/lib/server-auth";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
+import { isProd } from "@/lib/flags";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -12,19 +16,24 @@ type Body = {
   mode?: "technical" | "behavioural";
   stage?: 1 | 2;
   resumeSummary?: string;
+  dnlaSummary?: string;
 };
 
-function generateSessionId(): string {
-  return `vs_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-}
+const MAX_STR = 4000;
 
-async function generateFirstQuestion(apiKey: string, mode: Body["mode"], role: string, resumeSummary?: string, candidateName?: string): Promise<string> {
+async function generateFirstQuestion(apiKey: string, mode: Body["mode"], role: string, resumeSummary?: string, candidateName?: string, dnlaSummary?: string): Promise<string> {
   const nameToUse = candidateName && candidateName !== "Candidate" ? candidateName : "the candidate";
+  // The opening question stays a warm icebreaker, but for the behavioural round
+  // we privately note the candidate's DNLA development areas so the interviewer
+  // can steer toward them in later turns (it must NOT quiz them on turn 1).
+  const dnlaNote = dnlaSummary
+    ? `\nPrivate context (do NOT mention DNLA or scores aloud): this candidate's psychometric development areas to probe LATER in the interview are:\n${dnlaSummary}`
+    : "";
   const prompt = mode === "technical"
     ? `You are a strict but professional technical interviewer. The candidate is applying for the ${role} position. Their name is ${nameToUse}.
-Generate a simple, welcoming opening question about their target role. For example, ask them to briefly introduce themselves and explain why they are interested in the ${role} position, or what their general placement goals are. Do NOT ask any specific technical questions or anything about their past projects/resume yet. CRITICAL: You MUST explicitly greet them by their name (Hello ${nameToUse}) and welcome them to the interview for the ${role} position. Keep it to 2 sentences. Ask EXACTLY ONE short question.`
+Generate a simple, welcoming opening question about their target role. For example, ask them to briefly introduce themselves and explain why they are interested in the ${role} position, or what their general placement goals are. Do NOT ask any specific technical questions or anything about their past projects/resume yet. CRITICAL: You MUST explicitly greet them by their name (Hello ${nameToUse}) and welcome them to the interview for the ${role} position. Keep it to 2 sentences. Ask EXACTLY ONE short question.${dnlaNote}`
     : `You are a strict but professional behavioural interviewer. The candidate is applying for the ${role} position. Their name is ${nameToUse}.
-Generate a simple, welcoming opening question about their target role. For example, ask them to briefly introduce themselves and explain why they are interested in the ${role} position. Do NOT ask a complex behavioural question or ask about their past projects/resume yet. CRITICAL: You MUST explicitly greet them by their name (Hello ${nameToUse}) and welcome them to the interview for the ${role} position. Keep it to 2 sentences. Ask EXACTLY ONE short question.`;
+Generate a simple, welcoming opening question about their target role. For example, ask them to briefly introduce themselves and explain why they are interested in the ${role} position. Do NOT ask a complex behavioural question or ask about their past projects/resume yet. CRITICAL: You MUST explicitly greet them by their name (Hello ${nameToUse}) and welcome them to the interview for the ${role} position. Keep it to 2 sentences. Ask EXACTLY ONE short question.${dnlaNote}`;
 
   if (!apiKey) {
     return `Hello! Welcome to your TalEdge ${mode === "technical" ? "Technical" : "Behavioural"} Assessment for the ${role} position. To start, please state your full name and introduce yourself briefly based on your resume.`;
@@ -34,12 +43,22 @@ Generate a simple, welcoming opening question about their target role. For examp
     const result = await generateGeminiContent(apiKey, prompt, { maxOutputTokens: 150, temperature: 0.7 });
     if (result.text) return result.text.trim();
   } catch (e) {
-    console.error("Failed to generate first question via LLM, falling back", e);
+    logger.error("interview-start: failed to generate first question via LLM, falling back", { err: String(e) });
   }
   return `Hello! Welcome to your TalEdge ${mode === "technical" ? "Technical" : "Behavioural"} Assessment for the ${role} position. To start, please state your full name and introduce yourself briefly based on your resume.`;
 }
 
 export async function POST(req: NextRequest) {
+  // 1. AuthN: derive the authorization subject from the verified principal,
+  //    never from a client-supplied studentId.
+  const principal = await getPrincipal(req);
+  if (!principal) return unauthorized();
+  const uid = principal.uid;
+
+  // 2. Rate limit (Gemini-backed route).
+  const limited = enforceRateLimit(req, { uid, limit: 20, windowMs: 60000, scope: "interview-start" });
+  if (limited) return limited;
+
   let body: Body;
   try {
     body = (await req.json()) as Body;
@@ -47,11 +66,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  if (!body.studentId || !body.role) {
-    return NextResponse.json(
-      { error: "studentId and role are required" },
-      { status: 400 }
-    );
+  // 3. Input validation: types, presence, and size bounds.
+  if (typeof body.studentId !== "string" || !body.studentId.trim() || body.studentId.length > MAX_STR) {
+    return NextResponse.json({ error: "studentId is required" }, { status: 400 });
+  }
+  if (typeof body.role !== "string" || !body.role.trim() || body.role.length > MAX_STR) {
+    return NextResponse.json({ error: "role is required" }, { status: 400 });
+  }
+  if (body.candidateName !== undefined && (typeof body.candidateName !== "string" || body.candidateName.length > MAX_STR)) {
+    return NextResponse.json({ error: "candidateName must be a string" }, { status: 400 });
+  }
+  if (body.resumeSummary !== undefined && (typeof body.resumeSummary !== "string" || body.resumeSummary.length > MAX_STR * 4)) {
+    return NextResponse.json({ error: "resumeSummary must be a string" }, { status: 400 });
+  }
+  if (body.dnlaSummary !== undefined && (typeof body.dnlaSummary !== "string" || body.dnlaSummary.length > MAX_STR * 4)) {
+    return NextResponse.json({ error: "dnlaSummary must be a string" }, { status: 400 });
+  }
+  if (body.mode !== undefined && !["technical", "behavioural"].includes(body.mode)) {
+    return NextResponse.json({ error: "mode must be 'technical' or 'behavioural'" }, { status: 400 });
+  }
+  if (body.stage !== undefined && body.stage !== 1 && body.stage !== 2) {
+    return NextResponse.json({ error: "stage must be 1 or 2" }, { status: 400 });
   }
 
   const resolvedMode = body.stage === 1 ? "technical" : body.stage === 2 ? "behavioural" : body.mode;
@@ -63,27 +98,39 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const sessionId = generateSessionId();
+  // 4. Server-authoritative session id; never trust a client-supplied one.
+  const sessionId = crypto.randomUUID();
 
-  const session = createSession({
-    sessionId,
-    studentId: body.studentId,
-    role: body.role,
-    mode: resolvedMode,
-    resumeSummary: body.resumeSummary,
-  });
-  
+  let session;
+  try {
+    session = await createSession({
+      sessionId,
+      ownerUid: uid,
+      studentId: body.studentId,
+      role: body.role,
+      mode: resolvedMode,
+      resumeSummary: body.resumeSummary,
+      dnlaSummary: body.dnlaSummary,
+    });
+  } catch (e) {
+    logger.error("interview-start: createSession failed", { err: String(e), uid });
+    return NextResponse.json(
+      { error: isProd ? "Failed to start interview" : `Failed to start interview: ${String(e)}` },
+      { status: 500 }
+    );
+  }
+
   const apiKey = getGeminiApiKey();
-  const question = await generateFirstQuestion(apiKey || "", resolvedMode, body.role, body.resumeSummary, body.candidateName);
-  
+  const question = await generateFirstQuestion(apiKey || "", resolvedMode, body.role, body.resumeSummary, body.candidateName, body.dnlaSummary);
+
   let audioBase64 = "";
   try {
     if (apiKey) audioBase64 = await generateGeminiTTS(apiKey, question);
   } catch (ttsErr) {
-    console.error("TTS generation failed:", ttsErr);
+    logger.error("interview-start: TTS generation failed", { err: String(ttsErr) });
   }
 
-  updateSession(session.sessionId, {
+  await updateSession(session.sessionId, {
     transcript: [{ timestamp: Date.now(), role: "assistant", content: question }],
   });
 

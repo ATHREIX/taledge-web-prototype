@@ -1,11 +1,23 @@
 "use client";
 
-import { notFound, useParams } from "next/navigation";
-import Link from "next/link";
+import { notFound, useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { ScoreRing, Bar } from "@/components/score-ring";
 import { getStudent } from "@/lib/data";
+import {
+  PageShell,
+  PageHeader,
+  Card,
+  Button,
+  ButtonLink,
+  Badge,
+  Stat,
+  Heading,
+  Eyebrow,
+} from "@/components/ui";
+import { authedFetch } from "@/lib/api-client";
+import { containerVariants, itemVariants } from "@/lib/motion";
 
 type Msg = { role: "assistant" | "user"; content: string };
 type Row = [string, number];
@@ -36,46 +48,129 @@ const ROLE_JDS: Record<string, string> = {
   "Consultant · Strategy": "Analytical reasoning, problem-solving, structured case interview frameworks, market entry analysis, financial modeling, slide deck creation, business strategy. Ability to interface with clients, manage stakeholders, and design organizational growth playbooks."
 };
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.08
-    }
-  }
+// Stable, module-level defaults so empty-state resets keep a referentially
+// stable object (avoids re-creating the empty report on every render).
+const emptyReportDefaults: GenReport = {
+  technical_score: -1,
+  behavioural_score: -1,
+  fit_score: -1,
+  success_probability: -1,
+  verdict: "Awaiting evidence",
+  narrative:
+    "Complete the technical and behavioural interviews to generate a Fit Score grounded in captured assessment evidence. DNLA will be included only after the provider import is connected.",
+  technical_breakdown: [],
+  resume_breakdown: [],
+  behavioural_breakdown: [],
+  cross_flags: [],
 };
 
-const itemVariants = {
-  hidden: { opacity: 0, y: 15 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease: "easeOut" as const } }
-};
+/**
+ * Normalize a (possibly partial / malformed) generated report so every array
+ * field and numeric field the UI maps over is guaranteed present. Prevents the
+ * page from crashing on `undefined.map(...)` if the API returns a shape that is
+ * missing breakdown groups or flags.
+ */
+function normalizeReport(raw: Partial<GenReport> | null | undefined): GenReport {
+  const r = raw ?? {};
+  return {
+    technical_score: typeof r.technical_score === "number" ? r.technical_score : -1,
+    behavioural_score: typeof r.behavioural_score === "number" ? r.behavioural_score : -1,
+    fit_score: typeof r.fit_score === "number" ? r.fit_score : -1,
+    success_probability:
+      typeof r.success_probability === "number" ? r.success_probability : -1,
+    verdict: r.verdict || emptyReportDefaults.verdict,
+    narrative: r.narrative || "",
+    technical_breakdown: Array.isArray(r.technical_breakdown) ? r.technical_breakdown : [],
+    resume_breakdown: Array.isArray(r.resume_breakdown) ? r.resume_breakdown : [],
+    behavioural_breakdown: Array.isArray(r.behavioural_breakdown)
+      ? r.behavioural_breakdown
+      : [],
+    cross_flags: Array.isArray(r.cross_flags) ? r.cross_flags : [],
+  };
+}
+
+type PublishState = "idle" | "publishing" | "published" | "error";
 
 export default function FitScorePage() {
   const params = useParams();
+  const router = useRouter();
   const id = String(params.id);
   const s = getStudent(id);
   if (!s) notFound();
 
-  const emptyReport: GenReport = {
-    technical_score: -1,
-    behavioural_score: -1,
-    fit_score: -1,
-    success_probability: -1,
-    verdict: "Awaiting evidence",
-    narrative:
-      "Complete the technical and behavioural interviews to generate a Fit Score grounded in captured assessment evidence. DNLA will be included only after the provider import is connected.",
-    technical_breakdown: [],
-    resume_breakdown: [],
-    behavioural_breakdown: [],
-    cross_flags: [],
-  };
+  const emptyReport: GenReport = emptyReportDefaults;
 
   const [report, setReport] = useState<GenReport>(emptyReport);
   const [status, setStatus] = useState<GenStatus>("idle");
   const [source, setSource] = useState<string>("not-generated");
   const [genError, setGenError] = useState<string>("");
   const [generatedAt, setGeneratedAt] = useState<number | null>(null);
+  const [publishState, setPublishState] = useState<PublishState>("idle");
+  const [publishError, setPublishError] = useState<string>("");
+
+  // Publish the Fit Score report to the recruiter portal. Confirms intent,
+  // shows a loading state, and surfaces a success / error result.
+  const publishToRecruiters = useCallback(async () => {
+    if (publishState === "publishing") return;
+    const confirmed =
+      typeof window === "undefined"
+        ? true
+        : window.confirm(
+            "Publish your Fit Score report to all empanelled recruiters? Your score will become visible in the recruiter portal."
+          );
+    if (!confirmed) return;
+
+    setPublishState("publishing");
+    setPublishError("");
+    try {
+      const r = await authedFetch("/api/reports/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId: id,
+          reportType: "fit-score",
+          audience: "recruiters",
+          consent: true,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) {
+        setPublishState("error");
+        setPublishError(data?.error || "Couldn't publish the report.");
+        return;
+      }
+      setPublishState("published");
+    } catch (e: any) {
+      setPublishState("error");
+      setPublishError(e?.message || "Network error while publishing.");
+    }
+  }, [id, publishState]);
+
+  // Reattempt: a true restart. Clear every cached assessment artifact for this
+  // candidate (interview transcripts + timestamps, fit-score report, workspace
+  // transcript keys) before navigating back to the DNLA stage, so stale results
+  // never bleed into the new attempt.
+  const reattempt = useCallback(() => {
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        if (
+          key.startsWith(`taledge:interview:${id}:`) ||
+          key === `taledge:fit-score:${id}` ||
+          key.startsWith(`taledge:workspace:${id}:`) ||
+          key.startsWith(`taledge:workspace-transcript:${id}`)
+        ) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+    } catch {
+      /* non-fatal: navigate even if cache clearing fails */
+    }
+    router.push(`/student/${id}/dnla`);
+  }, [id, router]);
 
   const readTranscripts = useCallback(() => {
     try {
@@ -110,7 +205,7 @@ export default function FitScorePage() {
     const { technical, behavioural, dnla } = readTranscripts();
     const profile = readWorkspaceProfile();
     try {
-      const r = await fetch("/api/generate-fit-score", {
+      const r = await authedFetch("/api/generate-fit-score", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -137,7 +232,7 @@ export default function FitScorePage() {
         setGenError(data?.error || "Couldn't generate the report.");
         return;
       }
-      setReport(data.generated);
+      setReport(normalizeReport(data.generated));
       setSource(data.source || "gemini-2.5-flash");
       setGeneratedAt(Date.now());
       setStatus("generated");
@@ -165,10 +260,10 @@ export default function FitScorePage() {
         const lastTechUpdate = Number(localStorage.getItem(`taledge:interview:${id}:technical:updatedAt`) || 0);
         const lastBehavUpdate = Number(localStorage.getItem(`taledge:interview:${id}:behavioural:updatedAt`) || 0);
         const lastUpdate = Math.max(lastTechUpdate, lastBehavUpdate);
-        
+
         // Auto-regenerate if a new interview has been taken since the report was generated
         if (parsed?.report?.fit_score != null && parsed.ts > lastUpdate) {
-          setReport(parsed.report);
+          setReport(normalizeReport(parsed.report));
           setSource(parsed.source || "gemini-2.5-flash");
           setGeneratedAt(parsed.ts || null);
           setStatus("generated");
@@ -195,42 +290,24 @@ export default function FitScorePage() {
   const profile = readWorkspaceProfile();
 
   return (
-    <div className="relative overflow-x-hidden min-h-screen">
-      
-      {/* Animated background */}
-      <div className="fixed inset-0 -z-20 min-h-screen bg-slate-50 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-400/20 blur-[120px] animate-pulse" style={{ animationDuration: '8s' }} />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-emerald-400/20 blur-[120px] animate-pulse" style={{ animationDuration: '10s' }} />
-        <div className="absolute top-[20%] right-[10%] w-[30%] h-[30%] rounded-full bg-blue-400/20 blur-[120px] animate-pulse" style={{ animationDuration: '12s' }} />
-      </div>
-
+    <PageShell>
       <motion.section
         initial="hidden"
         animate="visible"
         variants={containerVariants}
-        className="container mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-12"
       >
         {/* Header */}
         <motion.div variants={itemVariants} className="mb-10">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-600 uppercase rounded-full bg-indigo-50/80 border border-indigo-200/50 backdrop-blur-md shadow-sm">
-              <ScoreIcon /> Fit Score & Success Probability
-            </div>
-            <Link 
-              href={`/student/${s.id}`} 
-              className="inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 transition-all duration-300 bg-white/60 border border-white/60 rounded-xl hover:bg-white/80 hover:shadow-lg hover:shadow-slate-200/20 hover:-translate-y-0.5 active:scale-95 backdrop-blur-md"
-            >
-              <ArrowLeft /> Back to Dashboard
-            </Link>
-          </div>
-
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight leading-[1.1] text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
-            Structured feedback report for {s.name.split(" ")[0]}
-          </h1>
-          <p className="mt-4 max-w-2xl text-sm text-slate-600 sm:text-base">
-            Composite Fit Score synthesized from technical interview, behavioural
-            interview, resume signals, and cross-component checks. DNLA remains pending until import is connected.
-          </p>
+          <PageHeader
+            eyebrow="Fit Score & Success Probability"
+            title={`Structured feedback report for ${s.name.split(" ")[0]}`}
+            description="Composite Fit Score synthesized from technical interview, behavioural interview, resume signals, and cross-component checks. DNLA remains pending until import is connected."
+            actions={
+              <ButtonLink href={`/student/${s.id}`} variant="ghost" size="sm" aria-label="Back to student dashboard">
+                <ArrowLeft /> Back to Dashboard
+              </ButtonLink>
+            }
+          />
 
           {/* Generation status banner */}
           <GenStatusBanner
@@ -244,89 +321,136 @@ export default function FitScorePage() {
 
         {status === "generating" ? (
           <ReportSkeleton />
+        ) : status === "idle" ? (
+          /* Empty state: no captured transcript yet - show a clear prompt
+             instead of a blank/Pending score grid. */
+          <motion.div variants={itemVariants}>
+            <Card variant="frosted" className="rounded-xl3 overflow-hidden p-8 text-center sm:p-12">
+              <Eyebrow className="text-brand-500">No assessment evidence yet</Eyebrow>
+              <Heading as="h2" className="mt-3">
+                Complete an interview to unlock your Fit Score
+              </Heading>
+              <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-ink-600">
+                We could not find a captured assessment for
+                {" "}{s.name.split(" ")[0]}. Complete the assessment first - DNLA, then
+                the AI technical and behavioural interviews - to generate a
+                personalized Fit Score report grounded in your responses.
+              </p>
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                <ButtonLink
+                  href={`/student/${s.id}/dnla`}
+                  variant="primary"
+                  size="lg"
+                >
+                  Start assessment
+                  <ArrowRight />
+                </ButtonLink>
+                <Button type="button" onClick={generate} variant="ghost" size="lg">
+                  Generate now
+                </Button>
+              </div>
+            </Card>
+          </motion.div>
         ) : (
           <div className="space-y-10">
             {/* HEADLINE NUMBERS */}
-            <motion.div 
-              variants={itemVariants}
-              className="relative bg-white/50 backdrop-blur-2xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.06)] rounded-3xl overflow-hidden p-6 sm:p-8"
-            >
-              <div className="grid grid-cols-1 items-center gap-6 lg:grid-cols-12">
-                <div className="flex justify-center lg:col-span-3">
-                  <ScoreRing
-                    value={report.success_probability}
-                    size={188}
-                    stroke={14}
-                    label="Success Probability"
-                    sub={status === "generated" ? `Fit Score · ${report.fit_score}%` : "Awaiting report"}
-                    tone={report.success_probability === -1 ? "muted" : report.success_probability >= 75 ? "success" : report.success_probability >= 55 ? "warn" : "danger"}
-                  />
+            <motion.div variants={itemVariants}>
+              <Card variant="frosted" className="rounded-xl3 overflow-hidden p-6 sm:p-8">
+                <div className="grid grid-cols-1 items-center gap-6 lg:grid-cols-12">
+                  <div className="flex justify-center lg:col-span-3">
+                    <ScoreRing
+                      value={report.success_probability}
+                      size={188}
+                      stroke={14}
+                      label="Success Probability"
+                      sub={status === "generated" ? `Fit Score · ${report.fit_score}%` : "Awaiting report"}
+                      tone={report.success_probability === -1 ? "muted" : report.success_probability >= 75 ? "success" : report.success_probability >= 55 ? "warn" : "danger"}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 lg:col-span-6 sm:grid-cols-3">
+                    <HeadlineStat
+                      label="Technical Score"
+                      value={report.technical_score === -1 ? "Pending" : `${report.technical_score}%`}
+                      hint="Tech interview + coding"
+                    />
+                    <HeadlineStat
+                      label="Behavioural Score"
+                      value={report.behavioural_score === -1 ? "Pending" : `${report.behavioural_score}%`}
+                      hint="Behavioural interview; DNLA after import"
+                    />
+                    <HeadlineStat
+                      label="Fit Score"
+                      value={report.fit_score === -1 ? "Pending" : `${report.fit_score}%`}
+                      hint="Weighted composite"
+                    />
+                    <HeadlineStat
+                      label="Success Probability"
+                      value={report.success_probability === -1 ? "Pending" : `${report.success_probability}%`}
+                      hint="Likelihood of placement success"
+                    />
+                    <HeadlineStat
+                      label="Risk flags"
+                      value={report.cross_flags.filter(f => f.tone !== "ok").length}
+                      hint={report.cross_flags.some(f => f.tone === "danger") ? "Action required" : "Watch list"}
+                      tone={report.cross_flags.some(f => f.tone === "danger") ? "warn" : "ok"}
+                    />
+                    <HeadlineStat
+                      label="Verdict"
+                      value={report.verdict}
+                      hint={`Threshold ${report.fit_score >= 70 ? "met" : "below 70"}`}
+                      tone={report.fit_score >= 70 ? "ok" : "warn"}
+                    />
+                  </div>
+                  <div className="space-y-2.5 lg:col-span-3">
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="lg"
+                      className="w-full"
+                      onClick={publishToRecruiters}
+                      disabled={publishState === "publishing" || publishState === "published"}
+                    >
+                      {publishState === "publishing"
+                        ? "Publishing..."
+                        : publishState === "published"
+                        ? "Published to recruiters"
+                        : "Publish to recruiters"}
+                      {publishState === "idle" || publishState === "error" ? <ArrowRight /> : null}
+                    </Button>
+                    {publishState === "error" && (
+                      <p className="text-xs font-medium text-rose-600">{publishError}</p>
+                    )}
+                    <Button
+                      type="button"
+                      onClick={reattempt}
+                      variant="ghost"
+                      size="lg"
+                      className="w-full"
+                    >
+                      Reattempt assessment
+                    </Button>
+                    <ButtonLink
+                      href={`/student/${s.id}/development`}
+                      variant="ghost"
+                      size="lg"
+                      className="w-full"
+                    >
+                      Development Pathway
+                    </ButtonLink>
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3 lg:col-span-6 sm:grid-cols-3">
-                  <HeadlineStat 
-                    label="Technical Score" 
-                    value={report.technical_score === -1 ? "Pending" : `${report.technical_score}%`} 
-                    hint="Tech interview + coding" 
-                  />
-                  <HeadlineStat 
-                    label="Behavioural Score" 
-                    value={report.behavioural_score === -1 ? "Pending" : `${report.behavioural_score}%`} 
-                    hint="Behavioural interview; DNLA after import" 
-                  />
-                  <HeadlineStat 
-                    label="Fit Score" 
-                    value={report.fit_score === -1 ? "Pending" : `${report.fit_score}%`} 
-                    hint="Weighted composite" 
-                  />
-                  <HeadlineStat 
-                    label="Success Probability" 
-                    value={report.success_probability === -1 ? "Pending" : `${report.success_probability}%`} 
-                    hint="Likelihood of placement success" 
-                  />
-                  <HeadlineStat 
-                    label="Risk flags" 
-                    value={report.cross_flags.filter(f => f.tone !== "ok").length} 
-                    hint={report.cross_flags.some(f => f.tone === "danger") ? "Action required" : "Watch list"} 
-                    tone={report.cross_flags.some(f => f.tone === "danger") ? "warn" : "ok"} 
-                  />
-                  <HeadlineStat 
-                    label="Verdict" 
-                    value={report.verdict} 
-                    hint={`Threshold ${report.fit_score >= 70 ? "met" : "below 70"}`} 
-                    tone={report.fit_score >= 70 ? "ok" : "warn"} 
-                  />
-                </div>
-                <div className="space-y-2.5 lg:col-span-3">
-                  <button className="relative inline-flex items-center justify-center gap-2 px-6 py-3.5 text-sm font-semibold text-white transition-all duration-300 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 hover:shadow-xl hover:shadow-indigo-500/20 hover:-translate-y-0.5 active:scale-95 overflow-hidden ring-1 ring-white/10 w-full">
-                    Publish to recruiters
-                    <ArrowRight />
-                  </button>
-                  <Link
-                    href={`/student/${s.id}/interview/technical`}
-                    className="inline-flex items-center justify-center gap-2 px-6 py-3.5 text-sm font-semibold text-slate-700 transition-all duration-300 bg-white/50 border border-white/60 rounded-2xl hover:bg-white/80 hover:shadow-lg hover:shadow-slate-200/20 hover:-translate-y-0.5 active:scale-95 backdrop-blur-md w-full"
-                  >
-                    Reattempt assessment
-                  </Link>
-                  <Link
-                    href={`/student/${s.id}/development`}
-                    className="inline-flex items-center justify-center gap-2 px-6 py-3.5 text-sm font-semibold text-slate-700 transition-all duration-300 bg-white/50 border border-white/60 rounded-2xl hover:bg-white/80 hover:shadow-lg hover:shadow-slate-200/20 hover:-translate-y-0.5 active:scale-95 backdrop-blur-md w-full"
-                  >
-                    Development Pathway
-                  </Link>
-                </div>
-              </div>
+              </Card>
             </motion.div>
 
             {/* Narrative summary */}
             {report.narrative && (
-              <motion.div 
-                variants={itemVariants}
-                className="rounded-3xl border border-white/60 bg-white/50 backdrop-blur-2xl p-6 sm:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)]"
-              >
-                <div className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">Executive summary</div>
-                <p className="mt-3 text-base leading-relaxed text-slate-800 font-medium">
-                  {report.narrative}
-                </p>
+              <motion.div variants={itemVariants}>
+                <Card variant="frosted" className="rounded-xl3 p-6 sm:p-8">
+                  <Eyebrow>Executive summary</Eyebrow>
+                  <p className="mt-3 text-base leading-relaxed text-ink-800 font-medium">
+                    {report.narrative}
+                  </p>
+                </Card>
               </motion.div>
             )}
 
@@ -345,9 +469,9 @@ export default function FitScorePage() {
               title="Resume & profile features"
               desc="Per PRD §9.2 · skill matching against the JD, project quality, academic signals, and resume quality."
               score={(() => {
-                const rows = report.resume_breakdown.flatMap(g => g.rows);
+                const rows = report.resume_breakdown.flatMap(g => g?.rows ?? []);
                 if (rows.length === 0) return 0;
-                const sum = rows.reduce((acc, r) => acc + (r[1] || 0), 0);
+                const sum = rows.reduce((acc, r) => acc + (Number(r?.[1]) || 0), 0);
                 return Math.round(sum / rows.length);
               })()}
               groups={report.resume_breakdown}
@@ -355,55 +479,54 @@ export default function FitScorePage() {
 
             {/* JD VS RESUME MATCH ANALYSIS */}
             {status === "generated" && (
-              <motion.div 
-                variants={itemVariants}
-                className="relative bg-white/50 backdrop-blur-2xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-3xl overflow-hidden p-6 sm:p-8 animate-fade-in"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/50 pb-4 mb-5">
-                  <div>
-                    <div className="text-[10px] font-bold tracking-[0.2em] text-indigo-500 uppercase">Comparative Fit Analysis</div>
-                    <h3 className="text-lg font-bold text-slate-800 mt-1">Job Description (JD) vs. Resume Alignment</h3>
+              <motion.div variants={itemVariants}>
+                <Card variant="frosted" className="rounded-xl3 overflow-hidden p-6 sm:p-8 animate-fade-in">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-200/50 pb-4 mb-5">
+                    <div>
+                      <Eyebrow className="text-brand-500">Comparative Fit Analysis</Eyebrow>
+                      <Heading as="h3" className="text-lg mt-1">Job Description (JD) vs. Resume Alignment</Heading>
+                    </div>
+                    <Badge tone="brand">
+                      Target Role: {profile.targetRole || s.targetRole}
+                    </Badge>
                   </div>
-                  <div className="px-3.5 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50/80 border border-indigo-200/50 rounded-full">
-                    Target Role: {profile.targetRole || s.targetRole}
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* JD Column */}
-                  <div className="bg-white/30 border border-white/40 rounded-2xl p-5 shadow-sm">
-                    <div className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase mb-2.5">Target JD Core Requirements</div>
-                    <p className="text-sm leading-relaxed text-slate-700 font-medium">
-                      {ROLE_JDS[profile.targetRole || s.targetRole] || `Required foundational skills, core engineering competencies, communication, and target role expertise.`}
-                    </p>
-                  </div>
-                  
-                  {/* Resume Column */}
-                  <div className="bg-white/30 border border-white/40 rounded-2xl p-5 shadow-sm">
-                    <div className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase mb-2.5">Ingested Resume Profile</div>
-                    {profile.resumeSummary || s.resumeSummary ? (
-                      <p className="text-sm leading-relaxed text-slate-700">
-                        {profile.resumeSummary || s.resumeSummary}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* JD Column */}
+                    <Card variant="flat" className="p-5">
+                      <Eyebrow className="mb-2.5">Target JD Core Requirements</Eyebrow>
+                      <p className="text-sm leading-relaxed text-ink-700 font-medium">
+                        {ROLE_JDS[profile.targetRole || s.targetRole] || `Required foundational skills, core engineering competencies, communication, and target role expertise.`}
                       </p>
-                    ) : (
-                      <p className="text-sm italic text-slate-500">
-                        No resume uploaded. Ingested profile is currently empty.
-                      </p>
-                    )}
-                    {((profile.resumeSkills && profile.resumeSkills.length > 0) || (s.skills && s.skills.length > 0)) && (
-                      <div className="mt-4 pt-3 border-t border-slate-200/50">
-                        <div className="text-[9px] font-bold tracking-[0.2em] text-slate-400 uppercase mb-2">Parsed Skills</div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {(profile.resumeSkills?.length ? profile.resumeSkills : s.skills).map((skill: string) => (
-                            <span key={skill} className="px-2 py-0.5 text-[10px] font-semibold text-slate-600 bg-white border border-slate-200/60 rounded-md">
-                              {skill}
-                            </span>
-                          ))}
+                    </Card>
+
+                    {/* Resume Column */}
+                    <Card variant="flat" className="p-5">
+                      <Eyebrow className="mb-2.5">Ingested Resume Profile</Eyebrow>
+                      {profile.resumeSummary || s.resumeSummary ? (
+                        <p className="text-sm leading-relaxed text-ink-700">
+                          {profile.resumeSummary || s.resumeSummary}
+                        </p>
+                      ) : (
+                        <p className="text-sm italic text-ink-500">
+                          No resume uploaded. Ingested profile is currently empty.
+                        </p>
+                      )}
+                      {((profile.resumeSkills && profile.resumeSkills.length > 0) || (s.skills && s.skills.length > 0)) && (
+                        <div className="mt-4 pt-3 border-t border-ink-200/50">
+                          <Eyebrow className="mb-2">Parsed Skills</Eyebrow>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(profile.resumeSkills?.length ? profile.resumeSkills : s.skills).map((skill: string) => (
+                              <Badge key={skill} tone="neutral" className="rounded-md">
+                                {skill}
+                              </Badge>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </Card>
                   </div>
-                </div>
+                </Card>
               </motion.div>
             )}
 
@@ -411,31 +534,29 @@ export default function FitScorePage() {
             <motion.section variants={itemVariants} className="mt-12 w-full">
               <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-600 uppercase rounded-full bg-indigo-50/80 border border-indigo-200/50 backdrop-blur-md shadow-sm">
-                    <BrainIcon /> Component 03
-                  </div>
-                  <h2 className="mt-4 text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
+                  <Eyebrow className="flex items-center gap-1.5 text-brand-500">
+                    <span aria-hidden="true"><BrainIcon /></span> Component 03
+                  </Eyebrow>
+                  <Heading className="mt-3 sm:text-3xl">
                     DNLA Social Competence
-                  </h2>
-                  <p className="mt-2 max-w-2xl text-sm text-slate-500">
+                  </Heading>
+                  <p className="mt-2 max-w-2xl text-sm text-ink-500">
                     Per PRD §9.3 · DNLA remains pending until the official provider
                     import is connected. No placeholder psychometric scores are shown.
                   </p>
                 </div>
-                <Link href={`/student/${s.id}/dnla`} className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold text-slate-700 transition-all duration-300 bg-white/50 border border-white/60 rounded-2xl hover:bg-white/80 hover:shadow-lg hover:shadow-slate-200/20 hover:-translate-y-0.5 active:scale-95 backdrop-blur-md !py-2 text-xs">
+                <ButtonLink href={`/student/${s.id}/dnla`} variant="ghost" size="sm">
                   View full DNLA report
                   <ArrowRight />
-                </Link>
+                </ButtonLink>
               </div>
-              <div className="w-full relative bg-white/50 backdrop-blur-2xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-3xl overflow-hidden transition-all duration-300 p-6">
-                <div className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">
-                  Awaiting DNLA import
-                </div>
-                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-650">
+              <Card variant="frosted" className="w-full rounded-xl3 overflow-hidden p-6">
+                <Eyebrow>Awaiting DNLA import</Eyebrow>
+                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-600">
                   DNLA competencies will appear only after verified external import.
                   Until then, behavioural scoring is based on interview evidence only.
                 </p>
-              </div>
+              </Card>
             </motion.section>
 
             {/* COMPONENT 4 · BEHAVIOURAL INTERVIEW */}
@@ -451,111 +572,130 @@ export default function FitScorePage() {
             <motion.section variants={itemVariants} className="mt-12 w-full">
               <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-600 uppercase rounded-full bg-indigo-50/80 border border-indigo-200/50 backdrop-blur-md shadow-sm">
-                    <FlagIcon /> Component 05
-                  </div>
-                  <h2 className="mt-4 text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
+                  <Eyebrow className="flex items-center gap-1.5 text-brand-500">
+                    <span aria-hidden="true"><FlagIcon /></span> Component 05
+                  </Eyebrow>
+                  <Heading className="mt-3 sm:text-3xl">
                     Cross-component features
-                  </h2>
-                  <p className="mt-2 max-w-2xl text-sm text-slate-500">
+                  </Heading>
+                  <p className="mt-2 max-w-2xl text-sm text-ink-500">
                     Per PRD §9.5 · gap analysis between resume claims and tech performance,
                     confidence vs accuracy, and behaviour vs psychometric alignment.
                   </p>
                 </div>
               </div>
-              <div className="w-full relative bg-white/50 backdrop-blur-2xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-3xl overflow-hidden transition-all duration-300 overflow-x-auto p-0">
+              <Card variant="frosted" className="w-full rounded-xl3 overflow-hidden overflow-x-auto p-0">
                 <div className="min-w-[640px]">
-                  <div className="grid grid-cols-12 border-b border-white/40 bg-slate-50/60 px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  <div className="grid grid-cols-12 border-b border-ink-200/40 bg-ink-50/60 px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-ink-500">
                     <div className="col-span-4">Check</div>
                     <div className="col-span-6">Verdict</div>
                     <div className="col-span-2 text-right">Signal</div>
                   </div>
                   {report.cross_flags.length === 0 && (
-                    <div className="px-6 py-6 text-sm text-slate-500">
+                    <div className="px-6 py-6 text-sm text-ink-500">
                       Cross-component findings will be generated after the report is ready.
                     </div>
                   )}
                   {report.cross_flags.map((f) => (
                     <div
                       key={f.label}
-                      className="grid grid-cols-12 items-center border-b border-slate-100 px-6 py-4.5 text-sm last:border-0 hover:bg-slate-50/30 transition-colors"
+                      className="grid grid-cols-12 items-center border-b border-ink-100 px-6 py-4.5 text-sm last:border-0 hover:bg-ink-50/30 transition-colors"
                     >
-                      <div className="col-span-4 font-bold text-slate-900">{f.label}</div>
-                      <div className="col-span-6 text-slate-700">{f.verdict}</div>
+                      <div className="col-span-4 font-bold text-ink-900">{f.label}</div>
+                      <div className="col-span-6 text-ink-700">{f.verdict}</div>
                       <div className="col-span-2 text-right">
-                        <span
-                          className={
-                            f.tone === "ok" ? "inline-flex items-center px-3 py-1 text-xs font-semibold text-emerald-600 bg-emerald-50/50 border border-emerald-200/50 rounded-full backdrop-blur-sm shadow-[0_0_15px_rgba(16,185,129,0.1)]" : f.tone === "warn" ? "inline-flex items-center px-3 py-1 text-xs font-semibold text-amber-600 bg-amber-50/50 border border-amber-200/50 rounded-full backdrop-blur-sm shadow-[0_0_15px_rgba(245,158,11,0.1)]" : "inline-flex items-center px-3 py-1 text-xs font-semibold text-rose-600 bg-rose-50/50 border border-rose-200/50 rounded-full backdrop-blur-sm shadow-[0_0_15px_rgba(244,63,94,0.1)]"
-                          }
-                        >
+                        <Badge tone={f.tone === "ok" ? "success" : f.tone === "warn" ? "warn" : "danger"}>
                           {f.tone === "ok" ? "All clear" : f.tone === "warn" ? "Watch" : "Red flag"}
-                        </span>
+                        </Badge>
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
+              </Card>
             </motion.section>
 
             {/* PUBLISH OR REATTEMPT */}
             <motion.section variants={itemVariants} className="mt-12">
-              <div className="relative bg-white/50 backdrop-blur-2xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.06)] rounded-3xl overflow-hidden transition-all duration-300 p-6 sm:p-8">
+              <Card variant="frosted" className="rounded-xl3 overflow-hidden p-6 sm:p-8">
                 <div className="flex flex-wrap items-center justify-between gap-6">
                   <div className="max-w-xl">
-                    <div className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">Decision point · Per PRD §4.3</div>
-                    <h2 className="mt-2 text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
+                    <Eyebrow>Decision point · Per PRD §4.3</Eyebrow>
+                    <Heading className="mt-2 sm:text-3xl">
                       Publish your Fit Score or reattempt the assessment
-                    </h2>
-                    <p className="mt-2 text-sm text-slate-500 leading-relaxed">
+                    </Heading>
+                    <p className="mt-2 text-sm text-ink-500 leading-relaxed">
                       Publishing makes your score visible to all empanelled organizations
                       through the recruiter portal. Reattempting resets the assessment so you
                       can improve your score after a coaching sprint.
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-3">
-                    <Link
-                      href={`/student/${s.id}/interview/technical`}
-                      className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold text-slate-700 transition-all duration-300 bg-white/50 border border-white/65 rounded-2xl hover:bg-white/80 hover:shadow-lg hover:shadow-slate-200/20 hover:-translate-y-0.5 active:scale-95 backdrop-blur-md"
-                    >
-                      Reattempt
-                    </Link>
-                    <button className="relative inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold text-white transition-all duration-300 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-650 hover:shadow-xl hover:shadow-indigo-500/20 hover:-translate-y-0.5 active:scale-95 overflow-hidden ring-1 ring-white/10">
-                      Publish to recruiters
-                      <ArrowRight />
-                    </button>
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="flex flex-wrap gap-3">
+                      <Button
+                        type="button"
+                        onClick={reattempt}
+                        variant="ghost"
+                        size="lg"
+                      >
+                        Reattempt
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="lg"
+                        onClick={publishToRecruiters}
+                        disabled={publishState === "publishing" || publishState === "published"}
+                      >
+                        {publishState === "publishing"
+                          ? "Publishing..."
+                          : publishState === "published"
+                          ? "Published to recruiters"
+                          : "Publish to recruiters"}
+                        {publishState === "idle" || publishState === "error" ? <ArrowRight /> : null}
+                      </Button>
+                    </div>
+                    {publishState === "published" && (
+                      <p className="text-xs font-medium text-emerald-600">
+                        Published to recruiters. Your score is now visible in the recruiter portal.
+                      </p>
+                    )}
+                    {publishState === "error" && (
+                      <p className="text-xs font-medium text-rose-600">{publishError}</p>
+                    )}
                   </div>
                 </div>
-              </div>
+              </Card>
             </motion.section>
 
             {/* NEXT STEP */}
             <motion.section variants={itemVariants} className="mt-12">
-              <div className="rounded-3xl border border-indigo-200/50 bg-gradient-to-br from-indigo-500/10 to-blue-500/5 backdrop-blur-2xl p-6 sm:p-8 shadow-premium">
+              <div className="rounded-xl3 border border-brand-200/50 bg-gradient-to-br from-brand-500/10 to-accent-500/5 backdrop-blur-2xl p-6 sm:p-8 shadow-panel">
                 <div className="flex flex-wrap items-center justify-between gap-6">
                   <div>
-                    <div className="text-[10px] font-bold tracking-[0.2em] text-indigo-500 uppercase">Assessment Complete</div>
-                    <div className="mt-1 text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-700 drop-shadow-sm">
+                    <Eyebrow className="text-brand-500">Assessment Complete</Eyebrow>
+                    <Heading className="mt-1 sm:text-3xl">
                       Continue to your personalized Development Pathway
-                    </div>
-                    <p className="mt-2 max-w-2xl text-sm text-slate-650 leading-relaxed">
+                    </Heading>
+                    <p className="mt-2 max-w-2xl text-sm text-ink-600 leading-relaxed">
                       Translate these scores into a 6-week coach-matched sprint plan
                       with role-pivot pathways and longitudinal tracking.
                     </p>
                   </div>
-                  <Link
+                  <ButtonLink
                     href={`/student/${s.id}/development`}
-                    className="relative inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold text-white transition-all duration-300 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-705 hover:from-indigo-500 hover:to-indigo-650 hover:shadow-xl hover:shadow-indigo-500/20 hover:-translate-y-0.5 active:scale-95 overflow-hidden ring-1 ring-white/10"
+                    variant="primary"
+                    size="lg"
                   >
                     Continue to Development Pathway
                     <ArrowRight />
-                  </Link>
+                  </ButtonLink>
                 </div>
               </div>
             </motion.section>
           </div>
         )}
       </motion.section>
-    </div>
+    </PageShell>
   );
 }
 
@@ -574,64 +714,67 @@ function RubricSection({
   score: number;
   groups: { group: string; rows: (string | number)[][] }[];
 }) {
+  // Resilience: never assume `groups` (or any group's `rows`) is present.
+  const safeGroups = Array.isArray(groups) ? groups : [];
   return (
     <motion.section variants={itemVariants} className="mt-12 w-full">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.2em] text-indigo-600 uppercase rounded-full bg-indigo-50/80 border border-indigo-200/50 backdrop-blur-md shadow-sm">
-            <CheckCircle /> {tag}
-          </div>
-          <h2 className="mt-4 text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
+          <Eyebrow className="flex items-center gap-1.5 text-brand-500">
+            <span aria-hidden="true"><CheckCircle /></span> {tag}
+          </Eyebrow>
+          <Heading className="mt-3 sm:text-3xl">
             {title}
-          </h2>
-          <p className="mt-2 max-w-2xl text-sm text-slate-500">{desc}</p>
+          </Heading>
+          <p className="mt-2 max-w-2xl text-sm text-ink-500">{desc}</p>
         </div>
-        <div className="rounded-xl border border-white/40 bg-white/70 backdrop-blur-md px-4 py-3 shadow-sm">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+        <Card variant="default" className="rounded-xl px-4 py-3">
+          <Eyebrow>
             Component score
-          </div>
-          <div className="mt-1 text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm">
+          </Eyebrow>
+          <div className="mt-1 h-headline text-4xl sm:text-5xl md:text-6xl">
             {score === -1 ? "Pending" : `${score}%`}
           </div>
-        </div>
+        </Card>
       </div>
       <div className={`w-full grid gap-4 ${
-        groups.length === 1 
-          ? "grid-cols-1" 
-          : groups.length === 2 
-          ? "grid-cols-1 md:grid-cols-2" 
+        safeGroups.length === 1
+          ? "grid-cols-1"
+          : safeGroups.length === 2
+          ? "grid-cols-1 md:grid-cols-2"
           : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
       }`}>
-        {groups.length === 0 && (
-          <div className="w-full relative bg-white/50 backdrop-blur-2xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-3xl overflow-hidden transition-all duration-300 p-6 text-sm leading-relaxed text-slate-650 md:col-span-2 xl:col-span-3">
+        {safeGroups.length === 0 && (
+          <Card variant="frosted" className="w-full rounded-xl3 overflow-hidden p-6 text-sm leading-relaxed text-ink-600 md:col-span-2 xl:col-span-3">
             No generated sub-scores yet. Complete the interviews and generate the
             report to populate this component.
-          </div>
+          </Card>
         )}
-        {groups.map((g) => (
-          <motion.div 
-            key={g.group} 
+        {safeGroups.map((g) => (
+          <motion.div
+            key={g.group}
             whileHover={{ y: -4 }}
-            className="w-full relative bg-white/50 backdrop-blur-2xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-3xl overflow-hidden transition-all duration-300 p-6"
           >
-            <div className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">{g.group}</div>
-            <div className="mt-4 space-y-3">
-              {g.rows.map(([label, value]) => {
-                const v = Math.max(0, Math.min(100, Number(value)));
-                return (
-                  <div key={String(label)}>
-                    <div className="mb-1 flex items-center justify-between text-xs">
-                      <span className="text-slate-750 font-medium">{label}</span>
-                      <span className="tabular-nums font-bold text-slate-900">{v}%</span>
+            <Card variant="frosted" hover className="w-full rounded-xl3 overflow-hidden p-6">
+              <Eyebrow>{g.group}</Eyebrow>
+              <div className="mt-4 space-y-3">
+                {(Array.isArray(g.rows) ? g.rows : []).map(([label, value]) => {
+                  const v = Math.max(0, Math.min(100, Number(value)));
+                  return (
+                    <div key={String(label)}>
+                      <div className="mb-1 flex items-center justify-between text-xs">
+                        <span className="text-ink-700 font-medium">{label}</span>
+                        <span className="tabular-nums font-bold text-ink-900">{v}%</span>
+                      </div>
+                      <Bar
+                        value={v}
+                        tone={v >= 75 ? "success" : v >= 55 ? "dark" : "warn"}
+                      />
                     </div>
-                    <Bar
-                      value={v}
-                      tone={v >= 75 ? "success" : v >= 55 ? "dark" : "warn"}
-                    />
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            </Card>
           </motion.div>
         ))}
       </div>
@@ -657,25 +800,33 @@ function HeadlineStat({
       ? "border-emerald-200/50 bg-emerald-500/[0.04]"
       : tone === "warn"
       ? "border-amber-200/50 bg-amber-500/[0.04]"
-      : "border-white/60 bg-white/45";
+      : "border-ink-200/60 bg-white/45";
 
   const isText = typeof value === "string" && /[a-zA-Z]/.test(value);
+  const statTone = tone === "ok" ? "success" : tone === "warn" ? "warn" : "neutral";
 
   return (
-    <motion.div 
+    <motion.div
       variants={itemVariants}
       whileHover={{ y: -3, boxShadow: "0 10px 30px rgba(0,0,0,0.04)" }}
-      className={`rounded-3xl border ${accent} backdrop-blur-md p-5 flex flex-col justify-between min-h-[144px] transition-all duration-300 shadow-sm`}
+      className={`rounded-xl3 border ${accent} backdrop-blur-md p-5 flex flex-col justify-between min-h-[144px] transition-all duration-300 shadow-panel`}
     >
-      <div>
-        <div className="text-[9px] font-bold tracking-[0.2em] text-slate-450 uppercase">{label}</div>
-        <div className={`mt-2 font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-700 to-slate-500 drop-shadow-sm ${
-          isText ? "text-base sm:text-lg md:text-xl leading-snug font-bold" : "text-3xl sm:text-4xl md:text-5xl font-black"
-        }`}>
-          {value}
-        </div>
-      </div>
-      <div className="mt-2 text-[10px] text-slate-500 leading-tight">{hint}</div>
+      <Stat
+        label={label}
+        tone={statTone}
+        value={
+          <span
+            className={
+              isText
+                ? "text-base sm:text-lg md:text-xl leading-snug"
+                : "text-3xl sm:text-4xl md:text-5xl"
+            }
+          >
+            {value}
+          </span>
+        }
+      />
+      <div className="mt-2 text-[10px] text-ink-500 leading-tight">{hint}</div>
     </motion.div>
   );
 }
@@ -697,32 +848,28 @@ function GenStatusBanner({
 }) {
   if (status === "idle" || status === "checking") {
     return (
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/60 bg-white/40 backdrop-blur-xl px-5 py-4 text-xs shadow-md">
-        <div className="flex items-center gap-2.5 text-slate-600">
-          <span className="inline-block h-2 w-2 rounded-full bg-slate-400" />
+      <Card variant="frosted" className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-xl2 px-5 py-4 text-xs">
+        <div className="flex items-center gap-2.5 text-ink-600">
+          <span className="inline-block h-2 w-2 rounded-full bg-ink-400" />
           <span>No Fit Score report has been generated yet. Complete an interview, then return here to generate your personalized report with TalEdge AI.</span>
         </div>
-        <button
-          type="button"
-          onClick={onRegenerate}
-          className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-md hover:bg-slate-800 hover:-translate-y-0.5 transition-all"
-        >
+        <Button type="button" onClick={onRegenerate} variant="primary" size="sm" className="bg-ink-900 hover:bg-ink-800">
           Generate now
-        </button>
-      </div>
+        </Button>
+      </Card>
     );
   }
   if (status === "generating") {
     return (
-      <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 backdrop-blur-xl px-5 py-4 text-xs text-indigo-900 shadow-lg shadow-indigo-500/5 relative overflow-hidden w-full">
-        <LoaderIcon className="w-4 h-4 text-indigo-600 animate-spin shrink-0" />
+      <div className="mt-6 flex flex-wrap items-center gap-3 rounded-xl2 border border-brand-100 bg-brand-50/60 backdrop-blur-xl px-5 py-4 text-xs text-brand-900 shadow-panel relative overflow-hidden w-full">
+        <LoaderIcon className="w-4 h-4 text-brand-600 animate-spin shrink-0" />
         <div>
           <span className="font-bold">Synthesizing personalized Fit Score report... </span>
-          <span className="text-indigo-700/80">Grounding narrative, technical, and behavioural insights in your interview responses using TalEdge AI.</span>
+          <span className="text-brand-700/80">Grounding narrative, technical, and behavioural insights in your interview responses using TalEdge AI.</span>
         </div>
-        <div className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-100/50">
-          <motion.div 
-            className="h-full bg-indigo-600"
+        <div className="absolute bottom-0 left-0 w-full h-0.5 bg-brand-100/50">
+          <motion.div
+            className="h-full bg-brand-600"
             animate={{ x: ["-100%", "200%"] }}
             transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
             style={{ width: "50%" }}
@@ -737,37 +884,29 @@ function GenStatusBanner({
         ? `${Math.max(1, Math.round((Date.now() - generatedAt) / 1000))}s ago`
         : "just now";
     return (
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-emerald-200/50 bg-emerald-50/60 backdrop-blur-xl px-5 py-3.5 text-xs shadow-md">
-        <div className="flex items-center gap-2.5 text-slate-800">
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-xl2 border border-emerald-200/50 bg-emerald-50/60 backdrop-blur-xl px-5 py-3.5 text-xs shadow-panel">
+        <div className="flex items-center gap-2.5 text-ink-800">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
           <span>
             Personalized Fit Score report generated by{" "}
-            <span className="font-bold text-slate-900">TalEdge AI</span> · <span className="font-semibold text-emerald-700">{ago}</span>
+            <span className="font-bold text-ink-900">TalEdge AI</span> · <span className="font-semibold text-emerald-700">{ago}</span>
           </span>
         </div>
-        <button
-          type="button"
-          onClick={onRegenerate}
-          className="px-4 py-2 border border-slate-200 bg-white/80 hover:bg-white text-slate-700 rounded-xl text-xs font-bold shadow-sm transition-all hover:-translate-y-0.5"
-        >
+        <Button type="button" onClick={onRegenerate} variant="ghost" size="sm">
           Regenerate Report
-        </button>
+        </Button>
       </div>
     );
   }
   return (
-    <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-rose-200 bg-rose-50/60 backdrop-blur-xl px-5 py-3.5 text-xs shadow-md">
+    <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-xl2 border border-rose-200 bg-rose-50/60 backdrop-blur-xl px-5 py-3.5 text-xs shadow-panel">
       <div className="flex items-center gap-2.5 text-rose-800">
         <span className="inline-block h-2 w-2 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.8)] animate-pulse" />
         <span className="font-medium">{error}</span>
       </div>
-      <button
-        type="button"
-        onClick={onRegenerate}
-        className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-md transition-all hover:-translate-y-0.5"
-      >
+      <Button type="button" onClick={onRegenerate} variant="danger" size="sm">
         Retry
-      </button>
+      </Button>
     </div>
   );
 }
@@ -785,13 +924,6 @@ function ArrowRight() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
       <path d="M5 12h14M13 5l7 7-7 7" />
-    </svg>
-  );
-}
-function ScoreIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.8 5.8 21 7 14 2 9.3 9 8.5z" />
     </svg>
   );
 }
@@ -824,43 +956,43 @@ function ReportSkeleton() {
   return (
     <div className="space-y-8">
       {/* Skeleton Headline */}
-      <div className="bg-white/40 border border-white/60 rounded-3xl p-6 sm:p-8 flex flex-col lg:flex-row items-center gap-8 animate-pulse shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-        <div className="w-44 h-44 rounded-full bg-slate-200/50 flex items-center justify-center shrink-0">
-          <LoaderIcon className="w-8 h-8 text-indigo-500 animate-spin" />
+      <div className="bg-white/40 border border-ink-200/60 rounded-xl3 p-6 sm:p-8 flex flex-col lg:flex-row items-center gap-8 animate-pulse shadow-panel">
+        <div className="w-44 h-44 rounded-full bg-ink-200/50 flex items-center justify-center shrink-0">
+          <LoaderIcon className="w-8 h-8 text-brand-500 animate-spin" />
         </div>
         <div className="flex-1 w-full grid grid-cols-2 sm:grid-cols-3 gap-4">
           {[...Array(6)].map((_, i) => (
-            <div key={i} className="bg-slate-200/30 rounded-2xl p-4 h-36 flex flex-col justify-between">
-              <div className="h-3 bg-slate-350/50 rounded w-2/3" />
-              <div className="h-8 bg-slate-350/60 rounded w-1/2" />
-              <div className="h-2.5 bg-slate-350/30 rounded w-3/4" />
+            <div key={i} className="bg-ink-200/30 rounded-xl2 p-4 h-36 flex flex-col justify-between">
+              <div className="h-3 bg-ink-300/50 rounded w-2/3" />
+              <div className="h-8 bg-ink-300/60 rounded w-1/2" />
+              <div className="h-2.5 bg-ink-300/30 rounded w-3/4" />
             </div>
           ))}
         </div>
       </div>
 
       {/* Skeleton Narrative */}
-      <div className="bg-slate-200/20 border border-slate-200/20 rounded-3xl p-6 h-36 animate-pulse flex flex-col justify-between shadow-sm">
-        <div className="h-3 bg-slate-300/50 rounded w-1/6" />
+      <div className="bg-ink-200/20 border border-ink-200/20 rounded-xl3 p-6 h-36 animate-pulse flex flex-col justify-between shadow-panel">
+        <div className="h-3 bg-ink-300/50 rounded w-1/6" />
         <div className="space-y-2">
-          <div className="h-3 bg-slate-300/40 rounded w-full" />
-          <div className="h-3 bg-slate-300/40 rounded w-5/6" />
-          <div className="h-3 bg-slate-300/40 rounded w-4/5" />
+          <div className="h-3 bg-ink-300/40 rounded w-full" />
+          <div className="h-3 bg-ink-300/40 rounded w-5/6" />
+          <div className="h-3 bg-ink-300/40 rounded w-4/5" />
         </div>
       </div>
 
       {/* Skeleton Rubric */}
       <div className="space-y-6 animate-pulse">
-        <div className="h-8 bg-slate-200/40 rounded-xl w-1/4" />
+        <div className="h-8 bg-ink-200/40 rounded-xl w-1/4" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="bg-slate-200/20 border border-slate-200/20 rounded-3xl p-6 h-48 flex flex-col justify-between">
-              <div className="h-3 bg-slate-300/50 rounded w-1/3" />
+            <div key={i} className="bg-ink-200/20 border border-ink-200/20 rounded-xl3 p-6 h-48 flex flex-col justify-between">
+              <div className="h-3 bg-ink-300/50 rounded w-1/3" />
               <div className="space-y-3">
                 {[...Array(3)].map((_, j) => (
                   <div key={j} className="space-y-1.5">
-                    <div className="h-2.5 bg-slate-300/40 rounded w-full" />
-                    <div className="h-1.5 bg-slate-200/30 rounded w-full" />
+                    <div className="h-2.5 bg-ink-300/40 rounded w-full" />
+                    <div className="h-1.5 bg-ink-200/30 rounded w-full" />
                   </div>
                 ))}
               </div>
@@ -883,14 +1015,6 @@ function LoaderIcon({ className = "w-4 h-4" }: { className?: string }) {
       <line x1="18" y1="12" x2="22" y2="12" />
       <line x1="4.93" y1="19.07" x2="7.76" y2="16.24" />
       <line x1="16.24" y1="7.76" x2="19.07" y2="4.93" />
-    </svg>
-  );
-}
-
-function SparklesIcon({ className = "w-4 h-4" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 3l1.9 5.7L20 10l-5 4 1.5 6L12 17l-4.5 3L9 14l-5-4 6.1-1.3z" />
     </svg>
   );
 }

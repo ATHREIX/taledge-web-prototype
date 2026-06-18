@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateGeminiJson, getGeminiApiKey } from "@/lib/gemini";
 import { getSession } from "@/lib/session-store";
+import { getPrincipal, unauthorized, forbidden } from "@/lib/server-auth";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
+import { isProd } from "@/lib/flags";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -21,6 +25,13 @@ function clampScore(n: any, min = 0, max = 100): number {
 }
 
 export async function POST(req: NextRequest) {
+  const principal = await getPrincipal(req);
+  if (!principal) return unauthorized();
+  const uid = principal.uid;
+
+  const limited = enforceRateLimit(req, { uid, limit: 20, windowMs: 60000, scope: "interview-results" });
+  if (limited) return limited;
+
   const apiKey = getGeminiApiKey();
   let body: Body;
 
@@ -30,13 +41,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  if (!body.sessionId) {
+  if (!body.sessionId || typeof body.sessionId !== "string" || body.sessionId.length > 200) {
     return NextResponse.json({ error: "sessionId is required" }, { status: 400 });
   }
 
-  const session = getSession(body.sessionId);
+  const session = await getSession(body.sessionId);
   if (!session) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+
+  if (session.ownerUid !== uid) {
+    return forbidden();
   }
 
   if (!session.isDone) {
@@ -161,6 +176,11 @@ Return EXACTLY this JSON shape (no markdown fences, no commentary):
     });
   } catch (e: any) {
     const status = Number(e?.status) || 500;
+    logger.error("interview-results generation failed", {
+      sessionId: session.sessionId,
+      status,
+      detail: e?.upstreamError || e?.rawPreview || e?.message,
+    });
     return NextResponse.json(
       {
         ok: false,
@@ -168,7 +188,9 @@ Return EXACTLY this JSON shape (no markdown fences, no commentary):
           status === 422
             ? "The model didn't return a parseable report."
             : "Something went wrong while generating results.",
-        detail: e?.upstreamError || e?.rawPreview || e?.message?.slice(0, 200),
+        ...(isProd
+          ? {}
+          : { detail: e?.upstreamError || e?.rawPreview || e?.message?.slice(0, 200) }),
       },
       { status: status === 422 ? 422 : 502 }
     );

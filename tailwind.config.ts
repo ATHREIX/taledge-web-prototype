@@ -18,18 +18,35 @@ const config: Config = {
           900: "#18181b",
           950: "#0a0a0a",
         },
+        // Unified product brand (indigo). Replaces the old teal palette and
+        // every per-role color (violet/fuchsia/purple). Use brand-600 as the
+        // primary action color across ALL roles.
         brand: {
-          50: '#f0fdfa',
-          100: '#ccfbf1',
-          200: '#99f6e4',
-          300: '#5eead4',
-          400: '#2dd4bf',
-          500: '#14b8a6',
-          600: '#0d9488',
-          700: '#0f766e',
-          800: '#115e59',
-          900: '#134e4a',
-        }
+          50: "#eef2ff",
+          100: "#e0e7ff",
+          200: "#c7d2fe",
+          300: "#a5b4fc",
+          400: "#818cf8",
+          500: "#6366f1",
+          600: "#4f46e5",
+          700: "#4338ca",
+          800: "#3730a3",
+          900: "#312e81",
+          950: "#1e1b4b",
+        },
+        // Secondary accent used only for gradient pairings (brand -> accent).
+        accent: {
+          50: "#f0f9ff",
+          100: "#e0f2fe",
+          200: "#bae6fd",
+          300: "#7dd3fc",
+          400: "#38bdf8",
+          500: "#0ea5e9",
+          600: "#0284c7",
+          700: "#0369a1",
+        },
+        // Single canvas color for every page. No more #FAFAFA / slate-50 drift.
+        canvas: "#F8FAFC",
       },
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "sans-serif"],
@@ -72,6 +89,15 @@ const config: Config = {
         'premium': '0 4px 24px -6px rgba(0, 0, 0, 0.08), 0 0 1px rgba(0,0,0,0.2)',
         'premium-hover': '0 12px 32px -8px rgba(0, 0, 0, 0.12), 0 0 1px rgba(0,0,0,0.2)',
         'float': '0 20px 40px -12px rgba(0, 0, 0, 0.15)',
+        // Canonical panel/card elevation. Use shadow-panel everywhere instead
+        // of one-off shadow-[0_8px_30px_...] values.
+        'panel': '0 1px 2px rgba(16,24,40,0.04), 0 8px 24px -12px rgba(16,24,40,0.12)',
+        'panel-hover': '0 2px 4px rgba(16,24,40,0.05), 0 16px 40px -16px rgba(16,24,40,0.18)',
+      },
+      borderRadius: {
+        // Canonical radii. Cards = xl2 (1rem), surfaces/panels = xl3 (1.5rem).
+        'xl2': '1rem',
+        'xl3': '1.5rem',
       }
     },
   },

@@ -16,11 +16,17 @@ export default async function ExamPage({
   const last = <T,>(items: T[]) => items[items.length - 1];
   const clamp = (value: number) => Math.min(100, Math.max(0, value));
 
-  const stressTrend = e.moodTrend.map((mood, index, items) =>
+  // Guard against the empty-trend fallback (getExam returns empty arrays for
+  // unknown ids) so derived deltas never become NaN downstream.
+  const moodTrend = Array.isArray(e.moodTrend) ? e.moodTrend : [];
+  const consistencyTrend = Array.isArray(e.consistencyTrend) ? e.consistencyTrend : [];
+  const stressTrend = moodTrend.map((mood, index, items) =>
     clamp(Math.round(e.stressIndex + (items[0] - mood) * 0.55 + (index - items.length + 1) * 0.4))
   );
-  const consistencyDelta = last(e.consistencyTrend) - e.consistencyTrend[0];
-  const stressDelta = last(stressTrend) - stressTrend[0];
+  const consistencyDelta = consistencyTrend.length
+    ? last(consistencyTrend) - consistencyTrend[0]
+    : 0;
+  const stressDelta = stressTrend.length ? last(stressTrend) - stressTrend[0] : 0;
   const riskLevel =
     e.risks.some((risk) => risk.severity === "high") || e.stressIndex >= 70
       ? "Priority"

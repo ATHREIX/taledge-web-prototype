@@ -1,25 +1,17 @@
 "use client";
 
 import React from "react";
-import { motion, type Variants } from "framer-motion";
-
-const containerVariants: Variants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1, delayChildren: 0.1 },
-  },
-};
-
-const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 20, scale: 0.95 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    scale: 1,
-    transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
-  },
-};
+import { motion } from "framer-motion";
+import {
+  PageShell,
+  PageHeader,
+  Card,
+  Button,
+  Stat,
+  Heading,
+  Eyebrow,
+} from "@/components/ui";
+import { containerVariants, itemVariants } from "@/lib/motion";
 
 // Mock data for Candidate Heatmap
 // Tech Accuracy (X-axis: 0-100) vs Behavioural Resilience (Y-axis: 0-100)
@@ -34,189 +26,194 @@ const candidates = [
   { id: 8, name: "Hannah Abbott", tech: 88, res: 82, role: "Backend", img: "H" },
 ];
 
-export default function RecruiterPortal() {
-  return (
-    <div className="relative min-h-screen w-full bg-[#F8FAFC] text-slate-900 font-sans selection:bg-indigo-500/20 flex overflow-hidden">
-      {/* Background styling inherited from landing page */}
-      <div className="absolute inset-0 z-0 pointer-events-none fixed">
-        <div
-          className="absolute inset-0 opacity-40"
-          style={{
-            backgroundImage: `linear-gradient(to right, #cbd5e1 1px, transparent 1px), linear-gradient(to bottom, #cbd5e1 1px, transparent 1px)`,
-            backgroundSize: `60px 60px`,
-            maskImage: `radial-gradient(ellipse 120% 120% at 50% 50%, #000 40%, transparent 100%)`,
-            WebkitMaskImage: `radial-gradient(ellipse 120% 120% at 50% 50%, #000 40%, transparent 100%)`,
-          }}
-        />
-        <motion.div
-          animate={{ x: [0, 60, -60, 0], y: [0, -60, 60, 0] }}
-          transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
-          className="absolute top-[-10%] left-[0%] w-[50vw] h-[50vw] rounded-full bg-indigo-200/40 blur-[140px]"
-        />
-        <motion.div
-          animate={{ x: [0, -80, 80, 0], y: [0, 80, -80, 0] }}
-          transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
-          className="absolute bottom-[-20%] right-[-10%] w-[60vw] h-[60vw] rounded-full bg-sky-200/40 blur-[150px]"
-        />
-      </div>
+const topStats = [
+  { label: "Active Candidates", value: "1,204", trend: "+12%" },
+  { label: "High Resilience", value: "342", trend: "+5%" },
+  { label: "Avg Tech Accuracy", value: "76%", trend: "+2.4%" },
+];
 
+export default function RecruiterPortal() {
+  const candidateList = Array.isArray(candidates) ? candidates : [];
+
+  return (
+    <div className="relative flex min-h-screen w-full overflow-hidden bg-canvas font-sans text-ink-900">
       {/* Sidebar Mock */}
-      <div className="relative z-10 w-64 border-r border-slate-200/60 bg-white/40 backdrop-blur-xl hidden md:flex flex-col p-6 shadow-xl shadow-indigo-500/5">
-        <div className="flex items-center gap-3 mb-12">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-sky-500 text-white font-bold shadow-lg shadow-indigo-500/20">
+      <div className="relative z-10 hidden w-64 flex-col border-r border-ink-200/60 bg-white/60 p-6 shadow-panel backdrop-blur-xl md:flex">
+        <div className="mb-12 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-600 to-accent-500 font-bold text-white shadow-md">
             R
           </div>
-          <span className="font-bold text-lg tracking-tight">Recruiter<br/>Portal</span>
+          <span className="text-lg font-bold tracking-tight">Recruiter<br/>Portal</span>
         </div>
-        <nav className="space-y-3 flex-1">
+        <nav className="flex-1 space-y-3">
           {["Dashboard", "Jobs", "Candidates", "Interviews", "Analytics"].map((item, i) => (
             <div
               key={item}
-              className={`px-4 py-3 rounded-2xl text-sm font-bold transition-all cursor-pointer ${
+              className={`cursor-pointer rounded-xl2 px-4 py-3 text-sm font-bold transition-all ${
                 i === 0
-                  ? "bg-white/80 border border-indigo-100 text-indigo-600 shadow-sm shadow-indigo-500/10"
-                  : "text-slate-500 hover:bg-white/50 hover:text-slate-900 border border-transparent"
+                  ? "border border-brand-100 bg-brand-50 text-brand-700 shadow-sm"
+                  : "border border-transparent text-ink-500 hover:bg-white/60 hover:text-ink-900"
               }`}
             >
               {item}
             </div>
           ))}
         </nav>
-        <div className="mt-auto px-4 py-3 rounded-2xl bg-white/50 border border-white/60 shadow-sm flex items-center gap-3">
-          <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600">JP</div>
-          <div className="text-xs font-bold text-slate-700">Jane Premium</div>
+        <div className="mt-auto flex items-center gap-3 rounded-xl2 border border-ink-200/60 bg-white/60 px-4 py-3 shadow-sm">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-50 text-xs font-bold text-brand-700">JP</div>
+          <div className="text-xs font-bold text-ink-700">Jane Premium</div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="relative z-10 flex-1 flex flex-col h-screen overflow-y-auto overflow-x-hidden p-8 lg:p-12">
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-          className="max-w-6xl w-full mx-auto space-y-10"
-        >
-          {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+      <div className="relative z-10 flex h-screen flex-1 flex-col overflow-y-auto overflow-x-hidden">
+        <PageShell width="wide" className="w-full">
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="space-y-10"
+          >
+            {/* Header */}
             <motion.div variants={itemVariants}>
-              <h1 className="text-4xl lg:text-5xl font-black tracking-tight text-slate-900 drop-shadow-sm mb-2">
-                Talent <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-sky-500">Intelligence</span>
-              </h1>
-              <p className="text-slate-500 font-medium text-lg">
-                Evaluate candidates across technical accuracy and behavioural resilience.
-              </p>
+              <PageHeader
+                title={
+                  <>
+                    Talent <span className="text-gradient-brand">Intelligence</span>
+                  </>
+                }
+                description="Evaluate candidates across technical accuracy and behavioural resilience."
+                actions={
+                  <>
+                    <Button type="button" variant="ghost" className="rounded-full">
+                      Filter
+                    </Button>
+                    <Button type="button" variant="primary" className="rounded-full">
+                      New Requisition
+                    </Button>
+                  </>
+                }
+              />
             </motion.div>
-            <motion.div variants={itemVariants} className="flex gap-3">
-              <button className="px-6 py-2.5 rounded-full bg-white/60 border border-white/80 backdrop-blur-md font-bold text-slate-700 shadow-sm hover:bg-white hover:shadow-md transition-all">
-                Filter
-              </button>
-              <button className="px-6 py-2.5 rounded-full bg-indigo-600 font-bold text-white shadow-xl shadow-indigo-500/25 hover:bg-indigo-700 hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-indigo-500/40 transition-all">
-                New Requisition
-              </button>
+
+            {/* Top Stats */}
+            <motion.div variants={itemVariants} className="grid grid-cols-1 gap-6 md:grid-cols-3">
+              {topStats.map((stat, i) => (
+                <Card key={i} variant="frosted" hover className="rounded-xl3 p-6">
+                  <Stat
+                    label={stat.label}
+                    value={stat.value}
+                    sub={
+                      <span className="font-bold text-emerald-600">{stat.trend}</span>
+                    }
+                  />
+                </Card>
+              ))}
             </motion.div>
-          </div>
 
-          {/* Top Stats */}
-          <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              { label: "Active Candidates", value: "1,204", trend: "+12%" },
-              { label: "High Resilience", value: "342", trend: "+5%" },
-              { label: "Avg Tech Accuracy", value: "76%", trend: "+2.4%" },
-            ].map((stat, i) => (
-              <div key={i} className="rounded-[2rem] bg-white/50 border border-white/60 backdrop-blur-2xl p-6 shadow-xl shadow-indigo-500/5 hover:shadow-indigo-500/10 transition-shadow">
-                <div className="text-sm font-bold text-slate-500 mb-2">{stat.label}</div>
-                <div className="flex items-end gap-3">
-                  <div className="text-4xl font-black text-slate-900">{stat.value}</div>
-                  <div className="text-sm font-bold text-emerald-500 mb-1">{stat.trend}</div>
-                </div>
-              </div>
-            ))}
-          </motion.div>
-
-          {/* Candidate Heatmap Section */}
-          <motion.div variants={itemVariants} className="relative group mt-8">
-            <div className="absolute -inset-1 rounded-[2.5rem] bg-gradient-to-r from-indigo-500/20 to-sky-500/20 blur-xl opacity-60 group-hover:opacity-100 transition duration-1000" />
-            <div className="relative rounded-[2.5rem] bg-white/50 border border-white/60 backdrop-blur-2xl p-8 lg:p-12 shadow-2xl shadow-indigo-500/10">
-              <div className="flex justify-between items-center mb-8">
-                <div>
-                  <h2 className="text-2xl font-extrabold text-slate-900 mb-1">Candidate Heatmap</h2>
-                  <p className="text-sm font-medium text-slate-500">Tech Accuracy vs Behavioural Resilience</p>
-                </div>
-                <div className="flex items-center gap-4 text-xs font-bold text-slate-500">
-                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-emerald-400 shadow-sm" /> Ideal Fit</div>
-                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-400 shadow-sm" /> Trainable</div>
-                  <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-rose-400 shadow-sm" /> High Risk</div>
-                </div>
-              </div>
-
-              {/* Heatmap Graph */}
-              <div className="relative w-full aspect-video bg-slate-100/50 rounded-3xl border border-slate-200/60 p-6 sm:p-10">
-                {/* Y-Axis Label */}
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 -rotate-90 text-xs font-bold text-slate-400 tracking-widest uppercase">
-                  Behavioural Resilience
-                </div>
-                {/* X-Axis Label */}
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs font-bold text-slate-400 tracking-widest uppercase">
-                  Tech Accuracy
+            {/* Candidate Heatmap Section */}
+            <motion.div variants={itemVariants} className="mt-8">
+              <Card variant="frosted" className="rounded-xl3 p-8 shadow-panel lg:p-12">
+                <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <Eyebrow className="mb-2">Talent Map</Eyebrow>
+                    <Heading as="h2" className="mb-1 text-2xl">Candidate Heatmap</Heading>
+                    <p className="text-sm font-medium text-ink-500">Tech Accuracy vs Behavioural Resilience</p>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs font-bold text-ink-500">
+                    <div className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-emerald-400 shadow-sm" aria-hidden="true" /> Ideal Fit</div>
+                    <div className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-amber-400 shadow-sm" aria-hidden="true" /> Trainable</div>
+                    <div className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-rose-400 shadow-sm" aria-hidden="true" /> High Risk</div>
+                  </div>
                 </div>
 
-                {/* Grid Lines */}
-                <div className="absolute inset-8 sm:inset-12 border-l-2 border-b-2 border-slate-300/50 flex flex-col justify-between pb-0 pl-0">
-                  <div className="w-full h-px bg-slate-300/50 absolute top-1/4" />
-                  <div className="w-full h-px bg-slate-300/50 absolute top-2/4" />
-                  <div className="w-full h-px bg-slate-300/50 absolute top-3/4" />
-                  <div className="h-full w-px bg-slate-300/50 absolute left-1/4" />
-                  <div className="h-full w-px bg-slate-300/50 absolute left-2/4" />
-                  <div className="h-full w-px bg-slate-300/50 absolute left-3/4" />
+                {candidateList.length === 0 ? (
+                  /* Graceful empty state */
+                  <Card variant="flat" className="rounded-xl3 p-12 text-center">
+                    <Heading as="h3" className="mb-2 text-lg">No candidates yet</Heading>
+                    <p className="text-sm text-ink-500">
+                      Candidates will appear on the heatmap once they complete an evaluation.
+                    </p>
+                  </Card>
+                ) : (
+                  /* Heatmap Graph */
+                  <div
+                    role="img"
+                    aria-label="Scatter plot of candidates by technical accuracy (horizontal axis) and behavioural resilience (vertical axis)."
+                    className="relative aspect-video w-full rounded-xl3 border border-ink-200/60 bg-ink-50/50 p-6 sm:p-10"
+                  >
+                    {/* Y-Axis Label */}
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 -rotate-90 text-xs font-bold uppercase tracking-widest text-ink-500">
+                      Behavioural Resilience
+                    </div>
+                    {/* X-Axis Label */}
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs font-bold uppercase tracking-widest text-ink-500">
+                      Tech Accuracy
+                    </div>
 
-                  {/* Quadrant Backgrounds (Soft) */}
-                  <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-emerald-400/5 rounded-tr-2xl" />
-                  <div className="absolute bottom-0 left-0 w-1/2 h-1/2 bg-rose-400/5 rounded-bl-xl" />
+                    {/* Grid Lines */}
+                    <div className="absolute inset-8 flex flex-col justify-between border-b-2 border-l-2 border-ink-300/50 pb-0 pl-0 sm:inset-12">
+                      <div className="absolute top-1/4 h-px w-full bg-ink-300/50" />
+                      <div className="absolute top-2/4 h-px w-full bg-ink-300/50" />
+                      <div className="absolute top-3/4 h-px w-full bg-ink-300/50" />
+                      <div className="absolute left-1/4 h-full w-px bg-ink-300/50" />
+                      <div className="absolute left-2/4 h-full w-px bg-ink-300/50" />
+                      <div className="absolute left-3/4 h-full w-px bg-ink-300/50" />
 
-                  {/* Data Points */}
-                  {candidates.map((c, i) => {
-                    const left = `${c.tech}%`;
-                    const bottom = `${c.res}%`;
-                    const isIdeal = c.tech >= 75 && c.res >= 75;
-                    const isRisk = c.tech < 60 && c.res < 60;
-                    const colorClass = isIdeal ? "bg-emerald-400 text-emerald-900 border-emerald-200 shadow-emerald-500/40" 
-                                     : isRisk ? "bg-rose-400 text-rose-900 border-rose-200 shadow-rose-500/40" 
-                                     : "bg-amber-400 text-amber-900 border-amber-200 shadow-amber-500/40";
+                      {/* Quadrant Backgrounds (Soft) */}
+                      <div className="absolute right-0 top-0 h-1/2 w-1/2 rounded-tr-xl2 bg-emerald-400/5" />
+                      <div className="absolute bottom-0 left-0 h-1/2 w-1/2 rounded-bl-xl bg-rose-400/5" />
 
-                    return (
-                      <motion.div
-                        key={c.id}
-                        className="absolute group z-10 cursor-pointer"
-                        style={{ left, bottom, transform: "translate(-50%, 50%)" }}
-                        initial={{ scale: 0, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ delay: 0.5 + i * 0.1, type: "spring" }}
-                        whileHover={{ scale: 1.2, zIndex: 50 }}
-                      >
-                        <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 flex items-center justify-center font-bold text-xs sm:text-sm shadow-lg backdrop-blur-md transition-colors ${colorClass}`}>
-                          {c.img}
-                        </div>
-                        {/* Tooltip */}
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                          <div className="bg-slate-900 text-white text-xs font-medium py-2 px-3 rounded-xl whitespace-nowrap shadow-xl">
-                            <div className="font-bold text-sm mb-0.5">{c.name}</div>
-                            <div className="text-slate-300">{c.role}</div>
-                            <div className="mt-1 flex gap-2">
-                              <span className="text-sky-300">Tech: {c.tech}</span>
-                              <span className="text-indigo-300">Res: {c.res}</span>
+                      {/* Data Points */}
+                      {candidateList.map((c, i) => {
+                        const left = `${c.tech}%`;
+                        const bottom = `${c.res}%`;
+                        const isIdeal = c.tech >= 75 && c.res >= 75;
+                        const isRisk = c.tech < 60 && c.res < 60;
+                        const colorClass = isIdeal ? "bg-emerald-400 text-emerald-900 border-emerald-200 shadow-emerald-500/40"
+                                         : isRisk ? "bg-rose-400 text-rose-900 border-rose-200 shadow-rose-500/40"
+                                         : "bg-amber-400 text-amber-900 border-amber-200 shadow-amber-500/40";
+                        const fitLabel = isIdeal ? "Ideal Fit" : isRisk ? "High Risk" : "Trainable";
+
+                        return (
+                          <motion.div
+                            key={c.id}
+                            className="group absolute z-10 cursor-pointer rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+                            style={{ left, bottom, transform: "translate(-50%, 50%)" }}
+                            tabIndex={0}
+                            role="img"
+                            aria-label={`${c.name}, ${c.role}. Tech accuracy ${c.tech}, behavioural resilience ${c.res}. ${fitLabel}.`}
+                            initial={{ scale: 0, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ delay: 0.5 + i * 0.1, type: "spring" }}
+                            whileHover={{ scale: 1.2, zIndex: 50 }}
+                          >
+                            <div className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold shadow-lg backdrop-blur-md transition-colors sm:h-10 sm:w-10 sm:text-sm ${colorClass}`}>
+                              {c.img}
                             </div>
-                          </div>
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-900" />
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
+                            {/* Tooltip */}
+                            <div className="pointer-events-none absolute bottom-full left-1/2 mb-3 -translate-x-1/2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                              <div className="whitespace-nowrap rounded-xl bg-ink-900 px-3 py-2 text-xs font-medium text-white shadow-xl">
+                                <div className="mb-0.5 text-sm font-bold">{c.name}</div>
+                                <div className="text-ink-300">{c.role}</div>
+                                <div className="mt-1 flex gap-2">
+                                  <span className="text-accent-300">Tech: {c.tech}</span>
+                                  <span className="text-brand-300">Res: {c.res}</span>
+                                </div>
+                              </div>
+                              <div className="absolute left-1/2 top-full -mt-1 -translate-x-1/2 border-4 border-transparent border-t-ink-900" />
+                            </div>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </Card>
+            </motion.div>
+
           </motion.div>
-          
-        </motion.div>
+        </PageShell>
       </div>
     </div>
   );

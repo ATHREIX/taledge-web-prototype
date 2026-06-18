@@ -1,19 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session-store";
+import { getPrincipal, unauthorized, forbidden } from "@/lib/server-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 export async function GET(req: NextRequest) {
+  const principal = await getPrincipal(req);
+  if (!principal) return unauthorized();
+  const uid = principal.uid;
+
   const sessionId = req.nextUrl.searchParams.get("sessionId");
 
-  if (!sessionId) {
+  if (!sessionId || typeof sessionId !== "string" || sessionId.length > 200) {
     return NextResponse.json({ error: "sessionId query parameter is required" }, { status: 400 });
   }
 
-  const session = getSession(sessionId);
+  const session = await getSession(sessionId);
   if (!session) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+  if (session.ownerUid !== uid) {
+    return forbidden();
   }
 
   return NextResponse.json({

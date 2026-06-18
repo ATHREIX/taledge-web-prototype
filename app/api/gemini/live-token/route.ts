@@ -1,9 +1,26 @@
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { GEMINI_LIVE_MODEL, getGeminiApiKey } from "@/lib/gemini";
+import { getPrincipal, unauthorized } from "@/lib/server-auth";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { isProd } from "@/lib/flags";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const principal = await getPrincipal(req);
+  if (!principal) return unauthorized();
+  const uid = principal.uid;
+
+  const limited = enforceRateLimit(req, {
+    uid,
+    limit: 10,
+    windowMs: 60000,
+    scope: "live-token",
+  });
+  if (limited) return limited;
+
   const apiKey = getGeminiApiKey();
   if (!apiKey) {
     return NextResponse.json(
@@ -48,12 +65,21 @@ export async function POST() {
 
     if (!response.ok) {
       const upstreamError = await response.text();
+      logger.error("Gemini Live token upstream failure", {
+        uid,
+        upstreamStatus: response.status,
+        upstreamError: upstreamError.slice(0, 300),
+      });
       return NextResponse.json(
         {
           ok: false,
           error: "Gemini Live token service is unavailable.",
-          upstreamStatus: response.status,
-          upstreamError: upstreamError.slice(0, 300),
+          ...(isProd
+            ? {}
+            : {
+                upstreamStatus: response.status,
+                upstreamError: upstreamError.slice(0, 300),
+              }),
         },
         { status: 502 }
       );
@@ -68,11 +94,15 @@ export async function POST() {
       model: GEMINI_LIVE_MODEL,
     });
   } catch (e: any) {
+    logger.error("Gemini Live token request error", {
+      uid,
+      detail: e?.message?.slice(0, 200),
+    });
     return NextResponse.json(
       {
         ok: false,
         error: "Gemini Live token service is unavailable.",
-        detail: e?.message?.slice(0, 200),
+        ...(isProd ? {} : { detail: e?.message?.slice(0, 200) }),
       },
       { status: 500 }
     );

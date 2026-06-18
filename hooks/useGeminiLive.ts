@@ -40,8 +40,24 @@ export function useGeminiLive() {
 
   const connect = useCallback(async () => {
     try {
-      const response = await fetch("/api/gemini/token");
-      const { url } = await response.json();
+      // Mint a short-lived ephemeral token server-side. The raw GEMINI_API_KEY
+      // is never sent to the browser.
+      const response = await fetch("/api/gemini/live-token", { method: "POST" });
+      if (!response.ok) {
+        console.error("Failed to mint Gemini Live token", response.status);
+        return;
+      }
+      const data = await response.json();
+      const token = data?.token;
+      if (!token) {
+        console.error("Gemini Live token missing in response");
+        return;
+      }
+
+      // Connect using the ephemeral token as access_token, NOT the raw key.
+      const url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?access_token=${encodeURIComponent(
+        token
+      )}`;
 
       wsRef.current = new WebSocket(url);
 
@@ -73,7 +89,13 @@ export function useGeminiLive() {
         };
 
       wsRef.current.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+        let data: any;
+        try {
+          data = JSON.parse(event.data);
+        } catch (err) {
+          console.error("Failed to parse Gemini Live message", err);
+          return;
+        }
         if (data.serverContent?.modelTurn?.parts) {
           data.serverContent.modelTurn.parts.forEach((part: any) => {
             if (part.text) {
@@ -95,6 +117,10 @@ export function useGeminiLive() {
         }
       };
 
+      wsRef.current.onerror = (event) => {
+        console.error("Gemini Live WebSocket error", event);
+      };
+
       wsRef.current.onclose = () => setIsConnected(false);
     } catch (e) {
       console.error("Connection failed", e);
@@ -103,10 +129,27 @@ export function useGeminiLive() {
 
   const disconnect = useCallback(() => {
     wsRef.current?.close();
+    wsRef.current = null;
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    if (processorRef.current) {
+      processorRef.current.disconnect();
+      processorRef.current.onaudioprocess = null;
+      processorRef.current = null;
+    }
     audioContextRef.current?.close();
+    audioContextRef.current = null;
+    audioQueue.current = [];
+    isPlaying.current = false;
     setIsConnected(false);
   }, []);
+
+  // Tear everything down on unmount to avoid leaking sockets/audio nodes.
+  useEffect(() => {
+    return () => {
+      disconnect();
+    };
+  }, [disconnect]);
 
   const startMicrophone = useCallback(async () => {
     if (!audioContextRef.current) {
@@ -123,8 +166,8 @@ export function useGeminiLive() {
     processor.connect(audioContextRef.current.destination);
 
     processor.onaudioprocess = (e) => {
-      if (!isConnected || !wsRef.current) return;
-      
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
       const float32Data = e.inputBuffer.getChannelData(0);
       const int16Data = new Int16Array(float32Data.length);
       for (let i = 0; i < float32Data.length; i++) {
@@ -151,7 +194,7 @@ export function useGeminiLive() {
         wsRef.current.send(JSON.stringify(message));
       }
     };
-  }, [isConnected]);
+  }, []);
 
   const sendTextMessage = useCallback((text: string) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;

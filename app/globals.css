@@ -4,8 +4,10 @@
 
 :root {
   color-scheme: light;
-  --bg: #ffffff;
-  --bg-soft: #fafafa;
+  /* Single product canvas. Every page sits on this; cards use white on top. */
+  --bg: #f8fafc;
+  --bg-soft: #f1f5f9;
+  --surface: #ffffff;
   --ink: #09090b;
   --ink-2: #27272a;
   --ink-3: #52525b;
@@ -80,7 +82,7 @@ h3 {
   }
 
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-[#0a0a0a] px-6 py-3 text-sm font-semibold text-white transition-all duration-300 hover:bg-[#1a1a1a] hover:shadow-md active:scale-[0.98] border border-transparent;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white transition-all duration-300 hover:bg-brand-700 hover:shadow-md active:scale-[0.98] border border-transparent;
   }
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2 rounded-xl border border-ink-200 bg-white px-6 py-3 text-sm font-semibold text-ink-900 shadow-sm transition-all duration-300 hover:bg-ink-50 hover:border-ink-300 active:scale-[0.98];
@@ -100,6 +102,15 @@ h3 {
   }
   .h-display {
     @apply font-display font-medium tracking-tight text-ink-900;
+  }
+  /* Canonical brand gradient for hero words. Replaces every per-role
+     from-indigo / from-violet / from-purple gradient across pages. */
+  .text-gradient-brand {
+    @apply bg-gradient-to-r from-brand-600 to-accent-500 bg-clip-text text-transparent;
+  }
+  /* Frosted surface used for elevated panels (dashboards, side rails). */
+  .panel {
+    @apply rounded-xl3 border border-ink-200/70 bg-white/80 shadow-panel backdrop-blur-xl;
   }
   .input {
     @apply w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 outline-none transition-all placeholder:text-ink-400 focus:border-ink-900 focus:ring-1 focus:ring-ink-900 shadow-sm;
@@ -121,6 +132,22 @@ h3 {
 }
 .glass-panel {
   @apply rounded-3xl border border-ink-200 bg-white shadow-premium p-8 sm:p-10;
+}
+
+/* Accessibility: respect the user's reduced-motion preference (WCAG 2.3.3) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  html {
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Scrollbar polish */
