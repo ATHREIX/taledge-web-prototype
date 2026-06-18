@@ -62,6 +62,11 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   outputFileTracingRoot: projectRoot,
+  // Keep these server-only packages OUT of the webpack bundle (require them as
+  // normal node modules at runtime). unpdf/pdfkit use `import.meta` and native-
+  // style resolution that webpack mangles — bundling them crashed the
+  // /api/parse-resume function on Vercel (HTML 500 instead of JSON).
+  serverExternalPackages: ["unpdf", "pdfkit", "firebase-admin"],
   // NOTE: experimental.optimizePackageImports (framer-motion/lucide-react) was
   // removed — its dev-HMR rewriting intermittently produced corrupt module
   // chunks ("Cannot read properties of undefined (reading 'call')") at the

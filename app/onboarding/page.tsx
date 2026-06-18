@@ -121,7 +121,21 @@ export default function Onboarding() {
       const fd = new FormData();
       fd.append("file", file);
       const r = await authedFetch("/api/parse-resume", { method: "POST", body: fd });
-      const data = await r.json();
+      // The endpoint always returns JSON; if we got HTML (a platform 500/504
+      // error page), surface a clean message instead of a JSON parse crash.
+      const rawBody = await r.text();
+      let data: any;
+      try {
+        data = JSON.parse(rawBody);
+      } catch {
+        setResumeStatus("error");
+        setResumeError(
+          r.status >= 500
+            ? "Resume parsing failed on the server. Please try again in a moment."
+            : "Unexpected response from the server. Please try again."
+        );
+        return;
+      }
       const elapsed = Math.round(performance.now() - t0);
       setParseMs(elapsed);
 
