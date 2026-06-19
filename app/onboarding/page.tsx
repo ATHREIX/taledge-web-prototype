@@ -700,7 +700,15 @@ export default function Onboarding() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
                     <Choice
                       active={track === "placement"}
-                      onClick={() => setTrack("placement")}
+                      onClick={() => {
+                        setTrack("placement");
+                        // selectedRole is shared across tracks; reset it to a
+                        // sensible per-track value so an exam choice can't leak
+                        // into the placement role list (and vice-versa).
+                        setSelectedRole("Full-stack Software Engineer");
+                        setRoleSearch("");
+                        setExamSearch("");
+                      }}
                       tag="Track 01"
                       title="Placement & Career"
                       desc="Job preparation, mock interviews, and industry readiness."
@@ -708,7 +716,16 @@ export default function Onboarding() {
                     />
                     <Choice
                       active={track === "exam"}
-                      onClick={() => setTrack("exam")}
+                      onClick={() => {
+                        setTrack("exam");
+                        // No exam is preselected — the aspirant must pick one,
+                        // and a leftover placement role must not appear here.
+                        setSelectedRole("");
+                        setRoleSearch("");
+                        setExamSearch("");
+                        setIsJdUpload(false);
+                        setJdStatus("idle");
+                      }}
                       tag="Track 02"
                       title="Competitive Exams"
                       desc="Long-term preparation for UPSC, GATE, GMAT, etc."
