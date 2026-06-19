@@ -670,6 +670,20 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     }
   }, [messages, id, mode]);
 
+  // When the FINAL (behavioural) interview concludes, auto-open the Fit Score
+  // report so generation starts without depending on a manual button click.
+  // The transcript is already persisted by the effect above. The technical
+  // stage still hands off to the behavioural interview via its on-screen button
+  // (the two-stage flow is intentionally kept). The button below also remains
+  // as a fallback if the candidate navigates manually.
+  useEffect(() => {
+    if (!done || isTech) return;
+    const t = setTimeout(() => {
+      router.push(`/student/${id}/fit-score`);
+    }, 3500);
+    return () => clearTimeout(t);
+  }, [done, isTech, router, id]);
+
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -1504,7 +1518,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                   <p className="text-ink-500 text-sm mb-4">
                     {isTech
                       ? "Your technical responses have been analyzed. Next, complete the behavioural interview."
-                      : "Your responses have been analyzed. View your detailed Fit Score report."}
+                      : "Your responses have been analyzed. Generating your Fit Score report…"}
                   </p>
                   <button type="button" onClick={goToNextStep} className="px-8 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-500 shadow-panel transition-all inline-flex items-center justify-center gap-2">
                     {nextStep.label} <ArrowRight className="w-4 h-4" />
