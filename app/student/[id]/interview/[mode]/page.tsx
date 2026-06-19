@@ -157,6 +157,10 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const draftRef = useRef("");
   const modelRef = useRef<any>(null);
+  // BlazeFace model — face + eye/nose/ear landmarks used to estimate whether the
+  // candidate is looking AT the screen (gaze/eye-contact proctoring). Optional:
+  // proctoring still runs if it fails to load.
+  const faceModelRef = useRef<any>(null);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const connectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasStartedRef = useRef(false);
@@ -291,11 +295,23 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         document.body.appendChild(script1);
         
         script1.onload = () => {
+          // BlazeFace (face landmarks for eye-contact/gaze proctoring) — loads in
+          // parallel with COCO-SSD, both depend on tf (script1). Best-effort.
+          const faceScript = document.createElement("script");
+          faceScript.src = "https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js";
+          faceScript.async = true;
+          document.body.appendChild(faceScript);
+          faceScript.onload = () => {
+            try {
+              (window as any).blazeface?.load().then((m: any) => { faceModelRef.current = m; }).catch(() => {});
+            } catch { /* gaze detection is optional */ }
+          };
+
           const script2 = document.createElement("script");
           script2.src = "https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js";
           script2.async = true;
           document.body.appendChild(script2);
-          
+
           script2.onload = () => {
             try {
               (window as any).cocoSsd.load().then((model: any) => {
@@ -495,6 +511,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     let darkFrames = 0;
     let intrusionFrames = 0;
     let phoneFrames = 0;
+    let gazeAwayFrames = 0;
 
     // Background noise detection context and nodes
     let audioStream: MediaStream | null = null;
@@ -626,6 +643,42 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             }
           } else {
             missingFrames = 0;
+          }
+
+          // EYE-CONTACT / GAZE: when a person is present, use BlazeFace landmarks
+          // (eyes + nose) to estimate head orientation. A nose that sits well off
+          // the eye midline (head turned away), or a person with no detectable
+          // frontal face (turned away/down), means they are not looking at the
+          // screen. Warn only after this persists ~4s (5 frames) to avoid noise.
+          if (faceModelRef.current && personCount >= 1) {
+            try {
+              const faces = await faceModelRef.current.estimateFaces(videoRef.current, false);
+              let lookingAway = false;
+              if (faces && faces.length > 0 && Array.isArray(faces[0].landmarks)) {
+                const lm = faces[0].landmarks as number[][]; // [rEye,lEye,nose,mouth,rEar,lEar]
+                const rEye = lm[0], lEye = lm[1], nose = lm[2];
+                const eyeMidX = (rEye[0] + lEye[0]) / 2;
+                const interEye = Math.abs(lEye[0] - rEye[0]) || 1;
+                const eyeMidY = (rEye[1] + lEye[1]) / 2;
+                const yaw = (nose[0] - eyeMidX) / interEye;      // left/right turn
+                const pitch = (nose[1] - eyeMidY) / interEye;    // down-tilt
+                lookingAway = Math.abs(yaw) > 0.55 || pitch > 1.6;
+              } else {
+                // Person in frame but no frontal face detected = turned away.
+                lookingAway = true;
+              }
+              if (lookingAway) {
+                gazeAwayFrames++;
+                if (gazeAwayFrames >= 5) {
+                  issueWarning("Keep your eyes on the screen. The AI detected you looking away from the interview.");
+                  gazeAwayFrames = 0;
+                }
+              } else {
+                gazeAwayFrames = 0;
+              }
+            } catch { /* gaze estimation is best-effort */ }
+          } else {
+            gazeAwayFrames = 0;
           }
         } catch (e) {}
       }
