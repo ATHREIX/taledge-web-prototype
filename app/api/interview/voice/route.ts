@@ -48,7 +48,8 @@ async function callGeminiLLM(
   transcript: string,
   mode: "technical" | "behavioural",
   turnIndex: number,
-  priorRatings: number[]
+  priorRatings: number[],
+  track: "placement" | "exam" = "placement"
 ): Promise<{ question: string; isDone: boolean; rating: number | null }> {
   const apiKey = getGeminiApiKey();
   if (!apiKey) {
@@ -95,7 +96,23 @@ ADAPT to the real candidate — the schedule is secondary. ${lastRating === null
       : `No prior ratings yet.`;
   const outputFormat = `OUTPUT FORMAT (strict): On the FIRST line write "RATING: N" where N is an integer 0-10 scoring the candidate's MOST RECENT answer on correctness, depth, and clarity combined (write "RATING: 0" if there is no real answer yet). Then on the NEXT line write your single next question (or your [CONCLUDE] closing if concluding). Output nothing else.`;
 
-  const sysPrompt = mode === "technical"
+  // Exam track: a veteran mentor/examiner for the competitive exam (role = the
+  // exam name). Same adaptive ladder + output format, but the subject matter is
+  // exam preparation, not a job role.
+  const examSysPrompt = `You are a mentor and examiner with 15 years of experience coaching aspirants for the ${role} competitive exam. You are sharp, encouraging but rigorous, and you read each aspirant well, adapting in real time like a seasoned human mentor. ${multilingualInstruction}
+    Your goal is to assess this aspirant's readiness for ${role}: subject/syllabus mastery, conceptual depth, problem-solving and reasoning, preparation strategy, revision and mock-test discipline, time management, and mental resilience under exam pressure.${role.toLowerCase().includes("upsc") ? " Include current-affairs awareness and answer-writing/structuring where relevant." : ""}
+    Ground your questions in the ${role} syllabus and the aspirant's own answers about their preparation. Do not accept vague, surface-level answers.
+    ${dnlaInstruction}
+    Review their context and DNLA Report provided below.
+    ${turnInstruction}
+    ${difficultyLadder}
+    Then formulate your next question: probe a specific topic, their study method, a mock-test result, or how they handle a tricky exam scenario. ${noRepeatInstruction}
+    Be supportive but do NOT validate weak answers. CRITICAL: Ask EXACTLY ONE short question. Do NOT ask multi-part questions or combine multiple questions into one.
+    ${concludeRule} Keep responses under 50 words.`;
+
+  const sysPrompt = track === "exam"
+    ? examSysPrompt
+    : mode === "technical"
     ? `You are a senior technical interviewer with 15 years of experience interviewing and hiring engineers at top companies. You are sharp, calm, and read candidates well — you adapt in real time, listen to each answer, and ask the question a great human interviewer would ask next. ${multilingualInstruction}
     Your goal is to stress-test the candidate's actual depth based directly on their resume context (skills, projects, and target role/placement goals). Do not accept surface-level answers.
     You MUST ground your questions in their specific resume context (especially their projects, tech stack, and goals). For example, ask technical questions directly relating to a project or skill they listed, or how it helps them achieve their target goal.
@@ -341,7 +358,8 @@ export async function POST(req: NextRequest) {
           cleanTranscript,
           session.mode,
           nextTurn,
-          priorRatings
+          priorRatings,
+          session.track || "placement"
         ),
         25000
       );

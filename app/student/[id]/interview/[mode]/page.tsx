@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useEffect, useRef, useState, useCallback } from "react";
-import { useRouter, notFound } from "next/navigation";
+import { useRouter, notFound, usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, MicOff, Send, Camera, AlertTriangle, ShieldAlert, FileText, Loader2, Eye, Smartphone, Users, MonitorOff, Clipboard, Brain, Check, X, ArrowRight } from "lucide-react";
 import Editor from "@monaco-editor/react";
@@ -98,7 +98,14 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     notFound();
   }
   const router = useRouter();
+  const pathname = usePathname();
   const isTech = mode === "technical";
+  // This page is shared by both tracks. When mounted under /exam/[id]/... the
+  // candidate is a competitive-exam aspirant; the interviewer persona and all
+  // in-flow navigation (dashboard, fit-score) stay within that namespace.
+  const isExam = !!pathname && pathname.startsWith("/exam");
+  const track: "placement" | "exam" = isExam ? "exam" : "placement";
+  const flowBase = isExam ? "/exam" : "/student";
 
   const [sessionId, setSessionId] = useState("");
   const [messages, setMessages] = useState<{ role: string; text: string }[]>([]);
@@ -203,11 +210,12 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ 
-         studentId: id, 
+         studentId: id,
          candidateName: localProfile?.fullName || "Candidate",
-         role: localProfile?.targetRole || "Candidate", 
+         role: localProfile?.targetRole || (isExam ? "the exam" : "Candidate"),
          mode,
          stage: mode === "technical" ? 1 : 2,
+         track,
          resumeSummary: resumeContext,
          dnlaSummary: buildDnlaSummary(id)
       }),
@@ -653,7 +661,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     // Auto-return to the candidate dashboard after showing the termination
     // notice briefly. The manual button stays as an immediate fallback.
     const redirectTimer = setTimeout(() => {
-      router.push(`/student/${id}`);
+      router.push(`${flowBase}/${id}`);
     }, 5000);
     return () => clearTimeout(redirectTimer);
   }, [blocked, router, id]);
@@ -677,7 +685,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   useEffect(() => {
     if (!done) return;
     const t = setTimeout(() => {
-      router.push(`/student/${id}/fit-score`);
+      router.push(`${flowBase}/${id}/fit-score`);
     }, 3500);
     return () => clearTimeout(t);
   }, [done, router, id]);
@@ -813,9 +821,10 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         body: JSON.stringify({
           studentId: id,
           candidateName: profile?.fullName || "Candidate",
-          role: profile?.targetRole || "Candidate",
+          role: profile?.targetRole || (isExam ? "the exam" : "Candidate"),
           mode,
           stage: mode === "technical" ? 1 : 2,
+          track,
           resumeSummary: resumeContext,
           dnlaSummary: buildDnlaSummary(id)
         }),
@@ -935,7 +944,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   // The AI interview is the single conversational stage; after it concludes we
   // go straight to the Fit Score report (the behavioural/psychometric signal
   // comes from DNLA, which runs BEFORE the interview - not a second interview).
-  const nextStep = { href: `/student/${id}/fit-score`, label: "View Results & Report" };
+  const nextStep = { href: `${flowBase}/${id}/fit-score`, label: "View Results & Report" };
 
   const goToNextStep = () => router.push(nextStep.href);
 
@@ -1081,7 +1090,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 <Button type="button" onClick={() => window.location.reload()} size="lg">
                   Retry Camera Access
                 </Button>
-                <Button type="button" variant="ghost" onClick={() => router.push(`/student/${id}`)} size="lg">
+                <Button type="button" variant="ghost" onClick={() => router.push(`${flowBase}/${id}`)} size="lg">
                   Return to Dashboard
                 </Button>
               </div>
@@ -1265,7 +1274,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
               </div>
             )}
             <p className="text-xs text-ink-400 mb-4">Redirecting to your dashboard…</p>
-            <Button type="button" variant="danger" onClick={() => router.push(`/student/${id}`)} size="lg" className="px-8 py-3">
+            <Button type="button" variant="danger" onClick={() => router.push(`${flowBase}/${id}`)} size="lg" className="px-8 py-3">
               Return to Dashboard
             </Button>
             </Card>

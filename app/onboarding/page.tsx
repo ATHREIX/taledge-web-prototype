@@ -233,6 +233,9 @@ export default function Onboarding() {
         institution,
         yearCohort,
         aspiration,
+        // Track drives the AI interview persona + report framing downstream
+        // (placement = job role, exam = competitive-exam readiness).
+        track: track || "placement",
         targetRole: selectedRole,
         resumeSummary: parsedExtras?.summary || "",
         resumeSkills: parsedExtras?.skills || [],
@@ -917,7 +920,7 @@ export default function Onboarding() {
 
                   <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                     <Link
-                      href={track === "exam" ? "/exam/aspirant-001" : "/student/candidate-001/dnla"}
+                      href={track === "exam" ? "/exam/aspirant-001/dnla" : "/student/candidate-001/dnla"}
                       onClick={persistDemoProfile}
                       className="w-full sm:w-auto"
                     >

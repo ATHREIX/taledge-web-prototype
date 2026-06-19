@@ -25,6 +25,7 @@ type DnlaItem = {
 
 type Body = {
   studentId: string;
+  track?: "placement" | "exam";
   candidateName: string;
   targetRole: string;
   resumeSummary?: string;
@@ -299,9 +300,13 @@ export async function POST(req: NextRequest) {
     .map((p) => `${p.title} [${p.stack.join(", ")}] · ${p.impact}`)
     .join("\n");
 
-  const jdText = ROLE_JDS[body.targetRole] || `Required Skills and competencies for the ${body.targetRole} role, including foundational technical skills, communication, problem-solving, and role-aligned expertise.`;
+  const isExam = body.track === "exam";
+  const subjectLabel = isExam ? `${body.targetRole} competitive exam` : `${body.targetRole} role`;
+  const jdText = isExam
+    ? `Requirements for the ${body.targetRole} competitive exam: syllabus/subject mastery, conceptual depth, problem-solving speed and accuracy, revision and mock-test discipline, time management, and exam-day resilience under pressure.${body.targetRole.toLowerCase().includes("upsc") ? " Also current-affairs awareness and structured answer-writing." : ""}`
+    : ROLE_JDS[body.targetRole] || `Required Skills and competencies for the ${body.targetRole} role, including foundational technical skills, communication, problem-solving, and role-aligned expertise.`;
 
-  const prompt = `You are a senior talent intelligence analyst computing a candidate's Fit Score per the Taledge PRD §9 rubric.
+  const prompt = `You are a senior ${isExam ? "exam-readiness assessor evaluating a competitive-exam aspirant" : "talent intelligence analyst computing a candidate's Fit Score"} per the Taledge PRD §9 rubric.
 
 You will receive:
 - Target Job Description (JD) requirements
@@ -324,8 +329,8 @@ CRITICAL GROUNDING RULES:
 Your task is to compute every sub-score (0-100 scale) with brutal honesty grounded in the actual evidence provided below.
 
 Candidate: ${body.candidateName}
-Target role: ${body.targetRole}
-Target Job Description (JD):
+${isExam ? "Target exam" : "Target role"}: ${body.targetRole}
+${isExam ? `Target exam requirements (treat like the JD for scoring "${subjectLabel}"):` : "Target Job Description (JD):"}
 ${jdText}
 
 Resume summary: ${body.resumeSummary || "(not provided)"}

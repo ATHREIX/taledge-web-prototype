@@ -28,6 +28,9 @@ export interface SessionState {
   studentId: string;
   role: string;
   mode: "technical" | "behavioural";
+  /** Which product track this interview belongs to. Drives interviewer persona:
+   * "placement" = job/role interview, "exam" = competitive-exam readiness. */
+  track?: "placement" | "exam";
   resumeSummary?: string;
   /** Compact DNLA report (competency scores vs benchmark) used to tailor questions. */
   dnlaSummary?: string;
@@ -86,6 +89,7 @@ export async function createSession(params: {
   studentId: string;
   role: string;
   mode: "technical" | "behavioural";
+  track?: "placement" | "exam";
   resumeSummary?: string;
   dnlaSummary?: string;
 }): Promise<SessionState> {
@@ -96,6 +100,7 @@ export async function createSession(params: {
     studentId: params.studentId,
     role: params.role,
     mode: params.mode,
+    track: params.track || "placement",
     resumeSummary: params.resumeSummary,
     dnlaSummary: params.dnlaSummary,
     transcript: [],

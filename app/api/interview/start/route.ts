@@ -15,13 +15,14 @@ type Body = {
   role: string;
   mode?: "technical" | "behavioural";
   stage?: 1 | 2;
+  track?: "placement" | "exam";
   resumeSummary?: string;
   dnlaSummary?: string;
 };
 
 const MAX_STR = 4000;
 
-async function generateFirstQuestion(apiKey: string, mode: Body["mode"], role: string, resumeSummary?: string, candidateName?: string, dnlaSummary?: string): Promise<string> {
+async function generateFirstQuestion(apiKey: string, mode: Body["mode"], role: string, resumeSummary?: string, candidateName?: string, dnlaSummary?: string, track: "placement" | "exam" = "placement"): Promise<string> {
   const nameToUse = candidateName && candidateName !== "Candidate" ? candidateName : "the candidate";
   // The opening question stays a warm icebreaker, but for the behavioural round
   // we privately note the candidate's DNLA development areas so the interviewer
@@ -29,6 +30,23 @@ async function generateFirstQuestion(apiKey: string, mode: Body["mode"], role: s
   const dnlaNote = dnlaSummary
     ? `\nPrivate context (do NOT mention DNLA or scores aloud): this candidate's psychometric development areas to probe LATER in the interview are:\n${dnlaSummary}`
     : "";
+
+  // Exam track: the "role" is the competitive exam (UPSC, GATE, CAT, ...). The
+  // opener welcomes the aspirant to a readiness assessment for that exam.
+  if (track === "exam") {
+    const examPrompt = `You are a warm, experienced mentor and counsellor for the ${role} competitive exam. The aspirant's name is ${nameToUse}.
+Generate a simple, welcoming opening question. Greet them by name (Hello ${nameToUse}) and welcome them to their ${role} readiness assessment, then ask them to briefly introduce themselves and share where they currently are in their ${role} preparation journey. Do NOT ask any hard subject questions or about specific topics yet. Keep it to 2 sentences. Ask EXACTLY ONE short question.${dnlaNote}`;
+    if (apiKey) {
+      try {
+        const result = await generateGeminiContent(apiKey, examPrompt, { maxOutputTokens: 150, temperature: 0.7 });
+        if (result.text) return result.text.trim();
+      } catch (e) {
+        logger.error("interview-start: exam opener LLM failed, falling back", { err: String(e) });
+      }
+    }
+    return `Hello ${nameToUse}! Welcome to your TalEdge readiness assessment for ${role}. To start, please introduce yourself briefly and tell me where you are in your ${role} preparation.`;
+  }
+
   const prompt = mode === "technical"
     ? `You are a strict but professional technical interviewer. The candidate is applying for the ${role} position. Their name is ${nameToUse}.
 Generate a simple, welcoming opening question about their target role. For example, ask them to briefly introduce themselves and explain why they are interested in the ${role} position, or what their general placement goals are. Do NOT ask any specific technical questions or anything about their past projects/resume yet. CRITICAL: You MUST explicitly greet them by their name (Hello ${nameToUse}) and welcome them to the interview for the ${role} position. Keep it to 2 sentences. Ask EXACTLY ONE short question.${dnlaNote}`
@@ -85,6 +103,10 @@ export async function POST(req: NextRequest) {
   if (body.mode !== undefined && !["technical", "behavioural"].includes(body.mode)) {
     return NextResponse.json({ error: "mode must be 'technical' or 'behavioural'" }, { status: 400 });
   }
+  if (body.track !== undefined && !["placement", "exam"].includes(body.track)) {
+    return NextResponse.json({ error: "track must be 'placement' or 'exam'" }, { status: 400 });
+  }
+  const track: "placement" | "exam" = body.track === "exam" ? "exam" : "placement";
   if (body.stage !== undefined && body.stage !== 1 && body.stage !== 2) {
     return NextResponse.json({ error: "stage must be 1 or 2" }, { status: 400 });
   }
@@ -109,6 +131,7 @@ export async function POST(req: NextRequest) {
       studentId: body.studentId,
       role: body.role,
       mode: resolvedMode,
+      track,
       resumeSummary: body.resumeSummary,
       dnlaSummary: body.dnlaSummary,
     });
@@ -121,7 +144,7 @@ export async function POST(req: NextRequest) {
   }
 
   const apiKey = getGeminiApiKey();
-  const question = await generateFirstQuestion(apiKey || "", resolvedMode, body.role, body.resumeSummary, body.candidateName, body.dnlaSummary);
+  const question = await generateFirstQuestion(apiKey || "", resolvedMode, body.role, body.resumeSummary, body.candidateName, body.dnlaSummary, track);
 
   let audioBase64 = "";
   try {

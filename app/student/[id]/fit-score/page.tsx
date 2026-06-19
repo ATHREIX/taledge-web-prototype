@@ -1,6 +1,6 @@
 "use client";
 
-import { notFound, useParams, useRouter } from "next/navigation";
+import { notFound, useParams, useRouter, usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ScoreRing, Bar } from "@/components/score-ring";
@@ -94,9 +94,17 @@ type PublishState = "idle" | "publishing" | "published" | "error";
 export default function FitScorePage() {
   const params = useParams();
   const router = useRouter();
+  const pathname = usePathname();
   const id = String(params.id);
   const s = getStudent(id);
   if (!s) notFound();
+
+  // Shared by both tracks. Under /exam/[id]/fit-score this is an exam aspirant's
+  // readiness report; keep in-page navigation within that namespace and tell the
+  // generator to frame the report around exam preparation rather than a job role.
+  const isExam = !!pathname && pathname.startsWith("/exam");
+  const flowBase = isExam ? "/exam" : "/student";
+  const track: "placement" | "exam" = isExam ? "exam" : "placement";
 
   const emptyReport: GenReport = emptyReportDefaults;
 
@@ -169,8 +177,8 @@ export default function FitScorePage() {
     } catch {
       /* non-fatal: navigate even if cache clearing fails */
     }
-    router.push(`/student/${id}/dnla`);
-  }, [id, router]);
+    router.push(`${flowBase}/${id}/dnla`);
+  }, [id, router, flowBase]);
 
   const readTranscripts = useCallback(() => {
     try {
@@ -210,6 +218,7 @@ export default function FitScorePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           studentId: id,
+          track,
           candidateName: profile.fullName || s.name,
           targetRole: profile.targetRole || s.targetRole,
           resumeSummary: [
@@ -248,7 +257,7 @@ export default function FitScorePage() {
       setStatus("error");
       setGenError(e?.message || "Network error while generating.");
     }
-  }, [id, s, readTranscripts, readWorkspaceProfile]);
+  }, [id, s, track, readTranscripts, readWorkspaceProfile]);
 
   useEffect(() => {
     setStatus("checking");
@@ -308,7 +317,7 @@ export default function FitScorePage() {
             title={`Structured feedback report for ${candidateFirst}`}
             description="Composite Fit Score synthesized from technical interview, behavioural interview, resume signals, and cross-component checks. DNLA remains pending until import is connected."
             actions={
-              <ButtonLink href={`/student/${s.id}`} variant="ghost" size="sm" aria-label="Back to student dashboard">
+              <ButtonLink href={`${flowBase}/${s.id}`} variant="ghost" size="sm" aria-label="Back to student dashboard">
                 <ArrowLeft /> Back to Dashboard
               </ButtonLink>
             }
@@ -343,7 +352,7 @@ export default function FitScorePage() {
               </p>
               <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
                 <ButtonLink
-                  href={`/student/${s.id}/dnla`}
+                  href={`${flowBase}/${s.id}/dnla`}
                   variant="primary"
                   size="lg"
                 >
@@ -435,7 +444,7 @@ export default function FitScorePage() {
                       Reattempt assessment
                     </Button>
                     <ButtonLink
-                      href={`/student/${s.id}/development`}
+                      href={`${flowBase}/${s.id}/development`}
                       variant="ghost"
                       size="lg"
                       className="w-full"
@@ -550,7 +559,7 @@ export default function FitScorePage() {
                     import is connected. No placeholder psychometric scores are shown.
                   </p>
                 </div>
-                <ButtonLink href={`/student/${s.id}/dnla`} variant="ghost" size="sm">
+                <ButtonLink href={`${flowBase}/${s.id}/dnla`} variant="ghost" size="sm">
                   View full DNLA report
                   <ArrowRight />
                 </ButtonLink>
@@ -687,7 +696,7 @@ export default function FitScorePage() {
                     </p>
                   </div>
                   <ButtonLink
-                    href={`/student/${s.id}/development`}
+                    href={`${flowBase}/${s.id}/development`}
                     variant="primary"
                     size="lg"
                   >

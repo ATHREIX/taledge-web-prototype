@@ -11,6 +11,7 @@ import {
   Heading,
   Eyebrow,
   Stat,
+  ButtonLink,
 } from "@/components/ui";
 import { containerVariants, itemVariants } from "@/lib/motion";
 
@@ -87,6 +88,45 @@ export default function ExamClient({
             />
           </div>
         </motion.header>
+
+        {/* AI Readiness Assessment flow — DNLA → AI interview → readiness report,
+            mirroring the placement track's flow for exam aspirants. */}
+        <motion.section variants={itemVariants}>
+          <Card variant="frosted" className="rounded-xl3 overflow-hidden p-6 sm:p-8 border border-brand-200/50 bg-gradient-to-br from-brand-500/10 to-accent-500/5">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div className="max-w-xl">
+                <Eyebrow className="text-brand-500">AI Readiness Assessment</Eyebrow>
+                <Heading as="h2" className="mt-2 sm:text-2xl">
+                  Run your {e.exam} readiness interview
+                </Heading>
+                <p className="mt-2 text-sm leading-relaxed text-ink-600">
+                  Three steps, just like the placement track: complete your DNLA
+                  profile, take the adaptive AI mentor interview tailored to{" "}
+                  {e.exam}, then get a structured readiness report with scores and
+                  next steps.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-ink-500">
+                  <span>1 · DNLA</span>
+                  <span aria-hidden="true">→</span>
+                  <span>2 · AI Interview</span>
+                  <span aria-hidden="true">→</span>
+                  <span>3 · Readiness Report</span>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2.5 sm:flex-row lg:flex-col">
+                <ButtonLink href={`/exam/${e.id}/dnla`} variant="primary" size="lg">
+                  Start assessment
+                </ButtonLink>
+                <ButtonLink href={`/exam/${e.id}/interview/technical`} variant="ghost" size="lg">
+                  Go straight to AI interview
+                </ButtonLink>
+                <ButtonLink href={`/exam/${e.id}/fit-score`} variant="ghost" size="lg">
+                  View readiness report
+                </ButtonLink>
+              </div>
+            </div>
+          </Card>
+        </motion.section>
 
         {/* Bento Grid */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6">

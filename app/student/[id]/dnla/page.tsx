@@ -1,6 +1,6 @@
 "use client";
 
-import { notFound, useParams } from "next/navigation";
+import { notFound, useParams, usePathname } from "next/navigation";
 import { getStudent, type DnlaScore } from "@/lib/data";
 import {
   PageShell,
@@ -139,9 +139,14 @@ function CompetencyRadar({ items }: { items: DnlaScore[] }) {
 
 export default function DnlaReport() {
   const params = useParams();
+  const pathname = usePathname();
   const id = String(params.id);
   const s = getStudent(id);
   if (!s) notFound();
+
+  // Shared by both tracks; keep navigation within the current namespace
+  // (/exam for competitive-exam aspirants, /student for placement candidates).
+  const flowBase = pathname && pathname.startsWith("/exam") ? "/exam" : "/student";
 
   const dnla = s.dnla ?? [];
   const hasData = dnla.length > 0;
@@ -169,7 +174,7 @@ export default function DnlaReport() {
         actions={
           <div className="flex items-center gap-3">
             <Badge tone="warn">Sample DNLA data · provider import pending</Badge>
-            <ButtonLink href={`/student/${id}`} variant="ghost">
+            <ButtonLink href={`${flowBase}/${id}`} variant="ghost">
               Back to workspace
             </ButtonLink>
           </div>
@@ -373,7 +378,7 @@ export default function DnlaReport() {
             </p>
           </div>
           <ButtonLink
-            href={`/student/${id}/interview/technical`}
+            href={`${flowBase}/${id}/interview/technical`}
             size="lg"
             className="w-full shrink-0 sm:w-auto"
           >
