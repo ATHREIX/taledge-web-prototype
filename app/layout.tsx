@@ -1,24 +1,22 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, Fraunces, JetBrains_Mono } from "next/font/google";
+import { Sora, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Nav } from "@/components/nav";
 import { AuthProvider } from "@/components/AuthProvider";
 import { MotionProvider } from "@/components/motion-provider";
 
-// Primary UI/body + headline typeface - premium geometric sans.
-const sans = Plus_Jakarta_Sans({
+// SINGLE product typeface — Sora. One premium geometric variable sans powers
+// EVERY surface (body, UI, and display headings) for a cohesive, world-class
+// edtech feel. Exposed as `--font-sans`; tailwind's `font-sans` AND
+// `font-display` tokens both resolve here, so there is one typeface everywhere.
+const sans = Sora({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-sans",
   display: "swap",
 });
 
-// Optional editorial display serif.
-const serif = Fraunces({
-  subsets: ["latin"],
-  variable: "--font-serif",
-  display: "swap",
-});
-
+// Code-only monospace (interview code editor, snippets). Functional, not a
+// competing brand font.
 const mono = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
@@ -38,7 +36,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${sans.variable} ${serif.variable} ${mono.variable} antialiased bg-canvas text-ink-900 min-h-screen flex flex-col`}>
+      <body className={`${sans.variable} ${mono.variable} antialiased bg-canvas text-ink-900 min-h-screen flex flex-col`}>
         <AuthProvider>
           <MotionProvider>
             <Nav />

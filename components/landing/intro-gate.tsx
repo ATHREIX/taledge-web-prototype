@@ -77,7 +77,7 @@ export default function IntroGate({ children }: { children: React.ReactNode }) {
                 color: "rgba(255,255,255,0.85)",
                 fontSize: 14,
                 fontWeight: 500,
-                fontFamily: "var(--font-inter), 'Plus Jakarta Sans', system-ui, sans-serif",
+                fontFamily: "var(--font-sans), system-ui, sans-serif",
                 cursor: "pointer",
                 backdropFilter: "blur(8px)",
                 WebkitBackdropFilter: "blur(8px)",

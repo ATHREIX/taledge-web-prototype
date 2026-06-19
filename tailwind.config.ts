@@ -49,9 +49,20 @@ const config: Config = {
         canvas: "#F8FAFC",
       },
       fontFamily: {
-        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
-        display: ["var(--font-serif)", "Georgia", "serif"],
+        // One typeface everywhere: sans AND display both resolve to Sora.
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        display: ["var(--font-sans)", "system-ui", "sans-serif"],
         mono: ["var(--font-mono)", "ui-monospace", "monospace"],
+      },
+      // Canonical type scale (line-height + weight baked in) so headings stop
+      // hand-rolling text-3xl/4xl/5xl combos. Additive — defaults still work.
+      fontSize: {
+        display: ["3.5rem", { lineHeight: "1.05", fontWeight: "800", letterSpacing: "-0.02em" }],
+        h1: ["2.5rem", { lineHeight: "1.1", fontWeight: "800", letterSpacing: "-0.02em" }],
+        h2: ["2rem", { lineHeight: "1.15", fontWeight: "700", letterSpacing: "-0.01em" }],
+        h3: ["1.5rem", { lineHeight: "1.2", fontWeight: "700", letterSpacing: "-0.01em" }],
+        body: ["1rem", { lineHeight: "1.6" }],
+        caption: ["0.8125rem", { lineHeight: "1.4" }],
       },
       animation: {
         marquee: "marquee 30s linear infinite",

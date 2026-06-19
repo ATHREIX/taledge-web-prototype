@@ -54,7 +54,7 @@ export function ScoreRing({
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <div className="font-display text-xl font-medium leading-none text-ink-900">
+        <div className="font-sans text-xl font-semibold leading-none text-ink-900">
           {value === -1 ? (
             "Pending"
           ) : (

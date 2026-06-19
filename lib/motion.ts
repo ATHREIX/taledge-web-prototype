@@ -28,3 +28,22 @@ export const fadeVariants: Variants = {
   hidden: { opacity: 0 },
   visible: { opacity: 1, transition: { duration: 0.7, ease: EASE } },
 };
+
+/** Scroll-reveal (use with framer `whileInView`) — one source of truth. */
+export const scrollRevealVariants: Variants = {
+  hidden: { opacity: 0, y: 24 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.7, ease: EASE } },
+};
+
+/** Section/page enter presets shared by dashboards and routed views. */
+export const sectionEnter = {
+  initial: { opacity: 0, y: 16 },
+  animate: { opacity: 1, y: 0 },
+  transition,
+} as const;
+
+export const pageEnter = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.45, ease: EASE },
+} as const;

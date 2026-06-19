@@ -364,9 +364,9 @@ const C = {
   white: "#ffffff",
 };
 
-// Site typeface (Plus Jakarta Sans, exposed by layout.tsx as --font-inter) so
-// the animation matches the rest of the app rather than falling back to Inter.
-const FONT = "var(--font-inter), 'Plus Jakarta Sans', system-ui, sans-serif";
+// Site typeface (Sora, exposed by layout.tsx as --font-sans) so the animation
+// matches the rest of the app rather than falling back to a system font.
+const FONT = "var(--font-sans), system-ui, sans-serif";
 
 // Canonical brand gradient — mirrors the `.text-gradient-brand` utility used on
 // the live landing hero (from-brand-600 to-accent-500).

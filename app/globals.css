@@ -98,10 +98,7 @@ h3 {
     @apply text-[11px] font-bold uppercase tracking-[0.1em] text-ink-500;
   }
   .h-headline {
-    @apply font-sans font-black tracking-tighter text-ink-900;
-  }
-  .h-display {
-    @apply font-display font-medium tracking-tight text-ink-900;
+    @apply font-sans font-extrabold tracking-tight text-ink-900;
   }
   /* Canonical brand gradient for hero words. Replaces every per-role
      from-indigo / from-violet / from-purple gradient across pages. */
