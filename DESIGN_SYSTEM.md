@@ -47,9 +47,16 @@ Do NOT redefine motion variants inline. The `motion.tsx` helpers
 
 ## Fonts
 
-- Sans = Inter (`font-sans`, default) — body, UI, headlines via `.h-headline`.
-- Display serif = Source Serif (`font-display`) — optional editorial headers.
-- Mono = JetBrains (`font-mono`) — code/editor only.
+- **Single family = Sora** (`--font-sans`). `font-sans` AND `font-display` both
+  resolve to it — body, UI, and all headings (`.h-headline`). No serif.
+- Mono = JetBrains Mono (`font-mono`) — code/editor only.
+- Canonical type scale tokens (line-height + weight baked in): `text-display`,
+  `text-h1`, `text-h2`, `text-h3`, `text-body`, `text-caption`.
+- Motion: Framer Motion = interaction (hover/tap/stagger/page transitions via
+  `lib/motion`); GSAP via `<Reveal>` / `useScrollReveal` (`lib/motion-gsap`) =
+  scroll-triggered reveals only (reduced-motion safe, never leaves content hidden).
+- Dashboards: compose `components/dashboard` (DashboardShell, DashboardHeader,
+  KPIGrid, Section, EmptyState, LoadingSpinner) + `lib/dashboard-theme`.
 
 ## Migration rules
 
