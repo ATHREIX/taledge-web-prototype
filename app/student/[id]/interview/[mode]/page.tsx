@@ -419,14 +419,33 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       });
     };
 
-    // 1. Tab switching detection (ONLY visibilitychange - blur is too aggressive and causes false positives)
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        setProctoringStatus(prev => ({ ...prev, tabFocused: false }));
-        issueWarning("You switched away from the interview tab.");
-      } else {
-        setProctoringStatus(prev => ({ ...prev, tabFocused: true }));
+    // 1. Focus / attention tracking. The candidate must stay ON the interview
+    // screen. We warn only after they have been off-screen (tab hidden OR the
+    // window lost focus — e.g. alt-tabbed to another app) for longer than a
+    // threshold, so a momentary blur never triggers a false positive.
+    const FOCUS_LOSS_THRESHOLD_MS = 4000;
+    let unfocusTimer: ReturnType<typeof setTimeout> | null = null;
+    const clearUnfocusTimer = () => {
+      if (unfocusTimer) {
+        clearTimeout(unfocusTimer);
+        unfocusTimer = null;
       }
+    };
+    const onScreenLost = () => {
+      setProctoringStatus(prev => ({ ...prev, tabFocused: false }));
+      if (!hasStartedRef.current || proctoringRef.current.blocked || unfocusTimer) return;
+      unfocusTimer = setTimeout(() => {
+        unfocusTimer = null;
+        issueWarning("You looked away from the interview screen for too long. Keep your focus on the screen.");
+      }, FOCUS_LOSS_THRESHOLD_MS);
+    };
+    const onScreenBack = () => {
+      clearUnfocusTimer();
+      setProctoringStatus(prev => ({ ...prev, tabFocused: true }));
+    };
+    const handleVisibilityChange = () => {
+      if (document.hidden) onScreenLost();
+      else onScreenBack();
     };
 
     // 2. Keyboard shortcut blocking
@@ -463,6 +482,10 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    // Window blur/focus catches leaving the screen even when the tab stays
+    // technically visible (alt-tab to another app, second monitor, devtools).
+    window.addEventListener("blur", onScreenLost);
+    window.addEventListener("focus", onScreenBack);
     document.addEventListener("keydown", handleKeyDown, true);
     document.addEventListener("dragstart", handleDragStart);
     window.addEventListener("resize", handleResize);
@@ -611,6 +634,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
 
      return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", onScreenLost);
+      window.removeEventListener("focus", onScreenBack);
+      clearUnfocusTimer();
       document.removeEventListener("keydown", handleKeyDown, true);
       document.removeEventListener("dragstart", handleDragStart);
       window.removeEventListener("resize", handleResize);
