@@ -1,10 +1,12 @@
 "use client";
 import { motion } from "framer-motion";
-import { Star, User, ArrowLeft, ArrowRight, Zap, Target, Compass, TrendingUp, Brain, Play, Rocket, ClipboardList } from "lucide-react";
+import { Star, User, ArrowRight, Zap, Target, Compass, TrendingUp, Brain, Play, Rocket, ClipboardList, Gauge, Award, BarChart3, Activity } from "lucide-react";
 import { Student } from "@/lib/data";
-import { PageShell, PageHeader, Card, Button, ButtonLink, Badge, Eyebrow, Heading, Stat } from "@/components/ui";
+import { Card, Button, ButtonLink, Badge, Eyebrow, Heading, Stat } from "@/components/ui";
 import { Bar } from "@/components/score-ring";
-import { containerVariants, itemVariants } from "@/lib/motion";
+import { itemVariants } from "@/lib/motion";
+import { DashboardShell, DashboardHeader, KPIGrid } from "@/components/dashboard";
+import { scoreToTone } from "@/lib/dashboard-theme";
 
 type Coach = { name: string; role: string; rating: number; sessions: number; focus: string };
 
@@ -37,31 +39,30 @@ export default function DashboardClient({ student }: { student: Student }) {
     ? "Pick up where you left off. Your assessment progress is saved - jump back into the pilot flow or review your results."
     : "Begin your assessment with the DNLA behavioural profile (step 1), then move on to the technical and behavioural interviews.";
 
+  const fitScore = student?.fit?.fit ?? -1;
+  const successProb = student?.fit?.successProbability ?? -1;
+  const fmt = (n: number) => (n < 0 ? "—" : `${n}`);
+
   return (
-    <PageShell>
-      <motion.div
-        initial="hidden"
-        animate="visible"
-        variants={containerVariants}
-      >
-        {/* Back to the dashboard hub */}
-        <motion.div variants={itemVariants} className="mb-6">
-          <ButtonLink href="/dashboard" variant="ghost" size="sm" className="rounded-full" aria-label="Back to dashboard">
-            <ArrowLeft className="h-4 w-4" /> Back to Dashboard
-          </ButtonLink>
-        </motion.div>
+    <DashboardShell>
+      <DashboardHeader
+        eyebrow="Analytics Dashboard"
+        title="Development & Analytics"
+        description={`Comprehensive breakdown of your competencies, actionable gaps, and personalized path to achieving your target role as ${targetRole}.`}
+      />
 
-        {/* Header */}
-        <motion.div variants={itemVariants}>
-          <PageHeader
-            eyebrow="Analytics Dashboard"
-            title={<span className="text-gradient-brand">Development &amp; Analytics</span>}
-            description={`Comprehensive breakdown of your competencies, actionable gaps, and personalized path to achieving your target role as ${targetRole}.`}
-          />
-        </motion.div>
+      {/* KPI strip — the same top-line metric pattern every dashboard now shares */}
+      <KPIGrid
+        items={[
+          { label: "Fit Score", value: fmt(fitScore), hint: "Weighted composite", tone: scoreToTone(fitScore), icon: <Gauge size={16} /> },
+          { label: "Success Probability", value: fitScore < 0 ? "—" : `${fmt(successProb)}%`, hint: "Placement likelihood", tone: scoreToTone(successProb), icon: <Award size={16} /> },
+          { label: "Technical", value: `${techScore}`, hint: "Tech interview + coding", tone: scoreToTone(techScore), icon: <BarChart3 size={16} /> },
+          { label: "Behavioural", value: `${behavScore}`, hint: "Behavioural + DNLA", tone: scoreToTone(behavScore), icon: <Activity size={16} /> },
+        ]}
+      />
 
-        {/* Assessment CTA - keeps the pilot flow reachable from the hub */}
-        <motion.div variants={itemVariants} className="mb-12">
+      {/* Assessment CTA - keeps the pilot flow reachable from the hub */}
+      <motion.div variants={itemVariants} className="mb-12">
           <Card
             variant="frosted"
             className="rounded-xl3 shadow-panel p-6 sm:p-8 bg-gradient-to-br from-brand-500/10 to-accent-500/5 border-brand-200/50"
@@ -390,7 +391,6 @@ export default function DashboardClient({ student }: { student: Student }) {
             </div>
           )}
         </motion.div>
-      </motion.div>
-    </PageShell>
+    </DashboardShell>
   );
 }

@@ -1,19 +1,21 @@
 "use client";
 import React from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Search, Bell, Briefcase, Filter, UserCheck, CheckCircle2, ChevronRight, MoreHorizontal } from "lucide-react";
-import Link from "next/link";
-import { Logo } from "@/components/logo";
 import {
-  PageShell,
-  PageHeader,
-  Card,
-  Button,
-  Badge,
-  Stat,
-  Heading,
-} from "@/components/ui";
-import { containerVariants, itemVariants } from "@/lib/motion";
+  Search,
+  Bell,
+  Briefcase,
+  Filter,
+  UserCheck,
+  Users,
+  Gauge,
+  ChevronRight,
+  MoreHorizontal,
+  Inbox,
+} from "lucide-react";
+import { Card, Button, Badge } from "@/components/ui";
+import { DashboardShell, DashboardHeader, KPIGrid, Section, EmptyState } from "@/components/dashboard";
+import { scoreToTone } from "@/lib/dashboard-theme";
 
 const pipelineStats = [
   { label: "Sourced", value: "1,248", change: "+12%", tone: "neutral" as const },
@@ -53,9 +55,14 @@ export default function RecruiterDashboard() {
 
   const stub = (message: string) => () => setNotice(message);
 
-  return (
-    <div className="relative min-h-screen bg-canvas text-ink-900 overflow-x-hidden font-sans selection:bg-brand-500/20 flex flex-col">
+  // Average fit score across the current shortlist (score-derived KPI).
+  const avgFit =
+    shortlist.length > 0
+      ? Math.round(shortlist.reduce((sum, c) => sum + c.score, 0) / shortlist.length)
+      : 0;
 
+  return (
+    <>
       {/* Stub action feedback */}
       {notice && (
         <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4">
@@ -65,223 +72,241 @@ export default function RecruiterDashboard() {
         </div>
       )}
 
-      {/* Navbar */}
-      <nav className="relative z-20 w-full border-b border-ink-200/60 bg-white/60 backdrop-blur-xl">
-        <div className="max-w-[90rem] mx-auto px-6 sm:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard" aria-label="Back to dashboard" className="text-ink-500 hover:text-brand-600 transition-colors">
-              <ArrowLeft size={20} />
-            </Link>
-            <div className="h-6 w-px bg-ink-200"></div>
-            <Logo />
-            <Badge tone="brand" className="ml-2 uppercase tracking-widest text-[10px]">Recruiter</Badge>
-          </div>
-          <div className="flex items-center gap-4 text-ink-500">
-            <button type="button" onClick={stub("Search is coming soon in the live build.")} aria-label="Search" className="hover:text-brand-600 transition-colors p-2 rounded-full hover:bg-ink-100"><Search size={18} /></button>
-            <button type="button" onClick={stub("No new notifications.")} aria-label="Notifications" className="hover:text-brand-600 transition-colors p-2 rounded-full hover:bg-ink-100 relative">
-              <Bell size={18} />
-            </button>
-            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-brand-600 to-accent-500 flex items-center justify-center text-white font-bold text-sm shadow-sm cursor-pointer border-2 border-white ml-2">
-              RC
-            </div>
-          </div>
-        </div>
-      </nav>
+      <DashboardShell>
+        <DashboardHeader
+          eyebrow="Recruiter Command Center"
+          title="Candidate Pipeline"
+          description="Track every active requisition, surface high-fit talent, and shortlist top candidates from one command center."
+          actions={
+            <>
+              <Button
+                type="button"
+                onClick={stub("Search is coming soon in the live build.")}
+                variant="ghost"
+                aria-label="Search"
+                className="rounded-full"
+              >
+                <Search size={16} aria-hidden="true" /> Search
+              </Button>
+              <Button
+                type="button"
+                onClick={stub("No new notifications.")}
+                variant="ghost"
+                aria-label="Notifications"
+                className="rounded-full"
+              >
+                <Bell size={16} aria-hidden="true" /> Alerts
+              </Button>
+              <Button
+                type="button"
+                onClick={stub("Filter panel is coming soon.")}
+                variant="ghost"
+                className="rounded-full"
+              >
+                <Filter size={16} aria-hidden="true" /> Filter
+              </Button>
+              <Button
+                type="button"
+                onClick={stub("Job posting is coming soon in the live build.")}
+                variant="primary"
+                className="rounded-full"
+              >
+                Post New Job
+              </Button>
+            </>
+          }
+        />
 
-      {/* Content */}
-      <PageShell width="wide" className="flex-1">
-        <motion.div
-          initial="hidden"
-          animate="visible"
-          variants={containerVariants}
+        {/* KPI strip — top-line pipeline metrics, shared across dashboards */}
+        <KPIGrid
+          items={[
+            {
+              label: "Active Candidates",
+              value: pipelineStats[0].value,
+              hint: "Sourced this cycle",
+              tone: "brand",
+              icon: <Users size={16} />,
+              trend: pipelineStats[0].change,
+            },
+            {
+              label: "Shortlisted",
+              value: `${shortlist.length}`,
+              hint: ">85% fit for open roles",
+              tone: "success",
+              icon: <UserCheck size={16} />,
+              trend: pipelineStats[3].change,
+            },
+            {
+              label: "Avg Fit Score",
+              value: `${avgFit}%`,
+              hint: "Across shortlisted talent",
+              tone: scoreToTone(avgFit),
+              icon: <Gauge size={16} />,
+            },
+            {
+              label: "Open Roles",
+              value: `${activeJobs.length}`,
+              hint: "Requisitions in progress",
+              tone: "neutral",
+              icon: <Briefcase size={16} />,
+            },
+          ]}
+        />
+
+        {/* Conversion funnel */}
+        <Section
+          title="Conversion Funnel"
+          description="Candidate flow from sourced to offered across all active requisitions."
+          actions={<Badge tone="success" className="uppercase tracking-widest text-[10px]">Healthy</Badge>}
         >
-          {/* Header */}
-          <motion.div variants={itemVariants}>
-            <PageHeader
-              eyebrow="Pipeline Management"
-              title="Candidate Pipeline"
-              description="Manage your active job postings, evaluate fit scores, and shortlist top talent seamlessly."
-              className="mb-10"
-              actions={
-                <>
-                  <Button type="button" onClick={stub("Filter panel is coming soon.")} variant="ghost" className="rounded-full">
-                    <Filter size={16} aria-hidden="true" /> Filter Candidates
-                  </Button>
-                  <Button type="button" onClick={stub("Job posting is coming soon in the live build.")} variant="primary" className="rounded-full">
-                    Post New Job
-                  </Button>
-                </>
-              }
-            />
-          </motion.div>
-
-          {/* Pipeline Stats & Funnel Visualization */}
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
-            <motion.div variants={itemVariants} className="lg:col-span-1 flex flex-col gap-4">
-              {pipelineStats.map((stat, i) => (
-                <Card key={i} variant="frosted" hover className="p-5 flex items-center justify-between group cursor-pointer">
-                  <Stat label={stat.label} value={stat.value} tone={stat.tone} />
-                  <Badge tone={stat.tone}>
-                    {stat.change}
-                  </Badge>
-                </Card>
-              ))}
-            </motion.div>
-
-            <motion.div variants={itemVariants} className="lg:col-span-3">
-              <Card variant="frosted" className="h-full rounded-xl3 p-6 sm:p-8 flex flex-col">
-                <Heading as="h3" className="text-lg mb-6 flex items-center gap-2">
-                  Conversion Funnel
-                  <Badge tone="success" className="uppercase tracking-widest text-[10px]">Healthy</Badge>
-                </Heading>
-                <div
-                  role="img"
-                  aria-label="Conversion funnel: 1,248 sourced, 342 screened, 84 in interview, 12 offered."
-                  className="flex-1 flex flex-col justify-center gap-4"
-                >
-                  {funnelSteps.map((step, i) => (
-                    <div key={i} className="flex items-center gap-4 group cursor-pointer">
-                      <div className="w-24 text-right text-sm font-bold text-ink-500 group-hover:text-brand-600 transition-colors">
-                        {step.stage}
-                      </div>
-                      <div className="flex-1 h-10 sm:h-12 bg-white/60 rounded-full border border-white p-1 relative flex items-center shadow-inner">
-                        <motion.div
-                          initial={{ width: 0, opacity: 0 }}
-                          animate={{ width: `${step.percentage}%`, opacity: 1 }}
-                          transition={{ duration: 1.2, delay: i * 0.15, type: "spring", bounce: 0.2 }}
-                          className={`h-full rounded-full bg-gradient-to-r ${step.color} shadow-sm relative min-w-[3.5rem] group-hover:brightness-110 transition-all`}
-                        >
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white text-[10px] sm:text-xs font-bold opacity-90 sm:opacity-80 sm:group-hover:opacity-100 transition-opacity">
-                            {step.percentage.toFixed(1)}%
-                          </span>
-                        </motion.div>
-                      </div>
-                      <div className="w-16 text-left text-sm font-extrabold text-ink-700 group-hover:text-ink-900">
-                        {step.count}
-                      </div>
+          <Card variant="frosted" className="rounded-xl3 shadow-panel p-6 sm:p-8">
+            <div className="overflow-x-auto">
+              <div
+                role="img"
+                aria-label="Conversion funnel: 1,248 sourced, 342 screened, 84 in interview, 12 offered."
+                className="flex min-w-[28rem] flex-col justify-center gap-4"
+              >
+                {funnelSteps.map((step, i) => (
+                  <div key={i} className="flex items-center gap-4 group cursor-pointer">
+                    <div className="w-24 text-right text-sm font-bold text-ink-500 group-hover:text-brand-600 transition-colors">
+                      {step.stage}
                     </div>
-                  ))}
-                </div>
-              </Card>
-            </motion.div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Active Jobs */}
-            <motion.div variants={itemVariants} className="flex flex-col">
-               <Card variant="frosted" className="h-full rounded-xl3 p-6">
-                  <Heading as="h2" className="text-lg mb-6 flex items-center gap-2">
-                    <Briefcase className="text-brand-500" size={18} aria-hidden="true" />
-                    Active Requisitions
-                  </Heading>
-
-                  <div className="space-y-4">
-                    {(activeJobs ?? []).length === 0 ? (
-                      <Card variant="flat" className="p-6 text-center text-sm font-medium text-ink-500">
-                        No active requisitions yet.
-                      </Card>
-                    ) : (
-                      (activeJobs ?? []).map((job, i) => (
-                        <Card key={i} variant="flat" hover className="group p-4 cursor-pointer hover:border-brand-200">
-                          <div className="flex items-start justify-between mb-2">
-                             <div>
-                                <div className="font-bold text-ink-800 text-sm">{job.title}</div>
-                                <div className="text-xs font-medium text-ink-500 mt-0.5">{job.dept}</div>
-                             </div>
-                             <MoreHorizontal size={16} aria-hidden="true" className="text-ink-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </div>
-                          <div className="flex items-center justify-between mt-4 pt-4 border-t border-ink-100">
-                             <Badge tone="brand">
-                               {job.matches} High Matches
-                             </Badge>
-                             <div className="text-[10px] font-bold text-ink-500 uppercase tracking-widest">
-                               {job.status}
-                             </div>
-                          </div>
-                        </Card>
-                      ))
-                    )}
-                  </div>
-               </Card>
-            </motion.div>
-
-            {/* Shortlisted Candidates */}
-            <motion.div variants={itemVariants} className="lg:col-span-2">
-               <Card variant="frosted" className="h-full rounded-xl3 p-6 sm:p-8 flex flex-col">
-                  <div className="flex items-center justify-between mb-8">
-                    <div>
-                      <Heading as="h2" className="text-xl">Top Shortlists</Heading>
-                      <p className="text-sm text-ink-500 mt-1 font-medium">Candidates with &gt;85% Fit Score for active roles</p>
+                    <div className="flex-1 h-10 sm:h-12 bg-white/60 rounded-full border border-white p-1 relative flex items-center shadow-inner">
+                      <motion.div
+                        initial={{ width: 0, opacity: 0 }}
+                        animate={{ width: `${step.percentage}%`, opacity: 1 }}
+                        transition={{ duration: 1.2, delay: i * 0.15, type: "spring", bounce: 0.2 }}
+                        className={`h-full rounded-full bg-gradient-to-r ${step.color} shadow-sm relative min-w-[3.5rem] group-hover:brightness-110 transition-all`}
+                      >
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white text-[10px] sm:text-xs font-bold opacity-90 sm:opacity-80 sm:group-hover:opacity-100 transition-opacity">
+                          {step.percentage.toFixed(1)}%
+                        </span>
+                      </motion.div>
+                    </div>
+                    <div className="w-16 text-left text-sm font-extrabold text-ink-700 group-hover:text-ink-900">
+                      {step.count}
                     </div>
                   </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+        </Section>
 
-                  <div className="flex-1 overflow-x-auto">
-                    {(shortlist ?? []).length === 0 ? (
-                      <Card variant="flat" className="p-8 text-center text-sm font-medium text-ink-500">
-                        No shortlisted candidates yet.
-                      </Card>
-                    ) : (
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="border-b border-ink-200 text-xs font-bold text-ink-500 uppercase tracking-wider">
-                            <th className="pb-4 pl-2">Candidate</th>
-                            <th className="pb-4">Applied Role</th>
-                            <th className="pb-4">Fit Score</th>
-                            <th className="pb-4">Status</th>
-                            <th className="pb-4"></th>
-                          </tr>
-                        </thead>
-                        <tbody className="text-sm">
-                          {(shortlist ?? []).map((c, i) => (
-                            <tr key={i} className="border-b border-ink-100/50 hover:bg-white/40 transition-colors group">
-                              <td className="py-4 pl-2">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-brand-100 text-brand-700">
-                                    {c.initials}
-                                  </div>
-                                  <span className="font-bold text-ink-800">{c.name}</span>
-                                </div>
-                              </td>
-                              <td className="py-4 font-medium text-ink-600">{c.role}</td>
-                              <td className="py-4">
-                                <div
-                                  role="img"
-                                  aria-label={`Fit score ${c.score} percent`}
-                                  className="flex items-center gap-2"
-                                >
-                                  <div className="w-full max-w-[80px] bg-ink-100 h-2 rounded-full overflow-hidden">
-                                    <div className="bg-gradient-to-r from-brand-600 to-accent-500 h-full rounded-full" style={{ width: `${c.score}%` }}></div>
-                                  </div>
-                                  <span className="font-bold text-ink-700">{c.score}%</span>
-                                </div>
-                              </td>
-                              <td className="py-4">
-                                <Badge tone="neutral" className="uppercase tracking-wider text-[10px]">
-                                  {c.status}
-                                </Badge>
-                              </td>
-                              <td className="py-4 text-right pr-2">
-                                <button type="button" onClick={stub(`Opening ${c.name}'s profile is coming soon.`)} aria-label={`View ${c.name}`} className="text-ink-500 hover:text-brand-600 transition-colors p-1 rounded-full hover:bg-ink-100 opacity-100 sm:opacity-70 sm:group-hover:opacity-100">
-                                  <ChevronRight size={18} aria-hidden="true" />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Active Requisitions */}
+          <Section
+            title="Active Requisitions"
+            icon={<Briefcase size={18} aria-hidden="true" />}
+            className="flex flex-col"
+          >
+            <Card variant="frosted" className="h-full rounded-xl3 shadow-panel p-6">
+              <div className="space-y-4">
+                {(activeJobs ?? []).length === 0 ? (
+                  <EmptyState
+                    icon={<Briefcase size={20} aria-hidden="true" />}
+                    title="No active requisitions yet"
+                    description="Post a new job to start sourcing matched candidates."
+                  />
+                ) : (
+                  (activeJobs ?? []).map((job, i) => (
+                    <Card key={i} variant="flat" hover className="group p-4 cursor-pointer hover:border-brand-200">
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <div className="font-bold text-ink-800 text-sm">{job.title}</div>
+                          <div className="text-xs font-medium text-ink-500 mt-0.5">{job.dept}</div>
+                        </div>
+                        <MoreHorizontal size={16} aria-hidden="true" className="text-ink-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                      <div className="flex items-center justify-between mt-4 pt-4 border-t border-ink-100">
+                        <Badge tone="brand">{job.matches} High Matches</Badge>
+                        <div className="text-[10px] font-bold text-ink-500 uppercase tracking-widest">
+                          {job.status}
+                        </div>
+                      </div>
+                    </Card>
+                  ))
+                )}
+              </div>
+            </Card>
+          </Section>
 
-                  <div className="mt-6 flex justify-center">
-                    <Button type="button" onClick={stub("All shortlisted candidates are shown in this demo.")} variant="link">
-                      Load More Candidates
-                    </Button>
-                  </div>
-               </Card>
-            </motion.div>
-          </div>
-        </motion.div>
-      </PageShell>
-    </div>
+          {/* Top Shortlists */}
+          <Section
+            title="Top Shortlists"
+            description="Candidates with >85% Fit Score for active roles"
+            icon={<UserCheck size={18} aria-hidden="true" />}
+            className="lg:col-span-2"
+          >
+            <Card variant="frosted" className="h-full rounded-xl3 shadow-panel p-6 sm:p-8 flex flex-col">
+              <div className="flex-1 overflow-x-auto">
+                {(shortlist ?? []).length === 0 ? (
+                  <EmptyState
+                    icon={<Inbox size={20} aria-hidden="true" />}
+                    title="No shortlisted candidates yet"
+                    description="High-fit candidates for your active roles will appear here."
+                  />
+                ) : (
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-ink-200 text-xs font-bold text-ink-500 uppercase tracking-wider">
+                        <th className="pb-4 pl-2">Candidate</th>
+                        <th className="pb-4">Applied Role</th>
+                        <th className="pb-4">Fit Score</th>
+                        <th className="pb-4">Status</th>
+                        <th className="pb-4"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-sm">
+                      {(shortlist ?? []).map((c, i) => (
+                        <tr key={i} className="border-b border-ink-100/50 hover:bg-white/40 transition-colors group">
+                          <td className="py-4 pl-2">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-brand-100 text-brand-700">
+                                {c.initials}
+                              </div>
+                              <span className="font-bold text-ink-800">{c.name}</span>
+                            </div>
+                          </td>
+                          <td className="py-4 font-medium text-ink-600">{c.role}</td>
+                          <td className="py-4">
+                            <div
+                              role="img"
+                              aria-label={`Fit score ${c.score} percent`}
+                              className="flex items-center gap-2"
+                            >
+                              <div className="w-full max-w-[80px] bg-ink-100 h-2 rounded-full overflow-hidden">
+                                <div className="bg-gradient-to-r from-brand-600 to-accent-500 h-full rounded-full" style={{ width: `${c.score}%` }}></div>
+                              </div>
+                              <span className="font-bold text-ink-700">{c.score}%</span>
+                            </div>
+                          </td>
+                          <td className="py-4">
+                            <Badge tone="neutral" className="uppercase tracking-wider text-[10px]">
+                              {c.status}
+                            </Badge>
+                          </td>
+                          <td className="py-4 text-right pr-2">
+                            <button type="button" onClick={stub(`Opening ${c.name}'s profile is coming soon.`)} aria-label={`View ${c.name}`} className="text-ink-500 hover:text-brand-600 transition-colors p-1 rounded-full hover:bg-ink-100 opacity-100 sm:opacity-70 sm:group-hover:opacity-100">
+                              <ChevronRight size={18} aria-hidden="true" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              <div className="mt-6 flex justify-center">
+                <Button type="button" onClick={stub("All shortlisted candidates are shown in this demo.")} variant="link">
+                  Load More Candidates
+                </Button>
+              </div>
+            </Card>
+          </Section>
+        </div>
+      </DashboardShell>
+    </>
   );
 }

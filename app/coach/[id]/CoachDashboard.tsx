@@ -1,20 +1,35 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import {
+  Users,
+  ListChecks,
+  ShieldAlert,
+  Target,
+  LineChart,
+  Calendar,
+  Clock,
+  Gauge,
+} from "lucide-react";
 import { examAspirants, students } from "@/lib/data";
 import {
-  PageShell,
-  PageHeader,
   Card,
   Button,
   ButtonLink,
   Badge,
-  Heading,
   Eyebrow,
   Stat,
 } from "@/components/ui";
-import { EASE } from "@/lib/motion";
+import {
+  DashboardShell,
+  DashboardHeader,
+  KPIGrid,
+  Section,
+  EmptyState,
+} from "@/components/dashboard";
+import { scoreToTone } from "@/lib/dashboard-theme";
+import { itemVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 // --- TYPES ---
@@ -139,42 +154,6 @@ function toExamQueueItem(item: QueueItem): QueueViewItem | null {
   };
 }
 
-// --- HELPER COMPONENTS ---
-
-const GlassCard = ({
-  children,
-  className = "",
-  delay = 0,
-}: {
-  children: React.ReactNode;
-  className?: string;
-  delay?: number;
-}) => (
-  <motion.div
-    initial={{ opacity: 0, y: 30 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.6, delay, ease: EASE }}
-    whileHover={{ y: -5, scale: 1.01 }}
-  >
-    <Card variant="frosted" className={cn("p-6 overflow-hidden relative group", className)}>
-      {children}
-    </Card>
-  </motion.div>
-);
-
-const AnimatedNumber = ({ value }: { value: string }) => {
-  return (
-    <motion.span
-      initial={{ opacity: 0, scale: 0.5 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ type: "spring", stiffness: 200, damping: 15 }}
-      className="inline-block"
-    >
-      {value}
-    </motion.span>
-  );
-};
-
 // --- MAIN DASHBOARD ---
 
 export default function CoachDashboard({ coachId }: { coachId: string }) {
@@ -189,50 +168,42 @@ export default function CoachDashboard({ coachId }: { coachId: string }) {
   const hasQueue = allQueue.length > 0;
   const urgentCount = urgentItems.length;
   const activeGoals = interventionGoals.filter((goal) => goal.progress < 100).length;
+  const avgReadiness = allQueue.length
+    ? Math.round(allQueue.reduce((sum, item) => sum + item.scoreValue, 0) / allQueue.length)
+    : 0;
   const coachName = coachId === "coach-001" ? "Lead Coach" : "Coach Workspace";
 
   const [activeTab, setActiveTab] = useState<"overview" | "placement" | "exam">("overview");
 
   return (
-    <PageShell>
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.7, ease: "easeOut" }}
-      >
-        <Badge tone="brand" className="mb-6">
-          <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
-          Workspace Active
-        </Badge>
-      </motion.div>
-
-      <PageHeader
+    <DashboardShell>
+      <DashboardHeader
+        eyebrow="Coaching Command Center"
         title={coachName}
         description="Command center for placement coaching and exam counselling. Monitor risks, track interventions, and review outcomes in real-time."
         actions={
           <>
             <Button type="button" variant="ghost">
-              <IconCalendar aria-hidden="true" />
+              <Calendar size={16} aria-hidden="true" />
               <span>Schedule</span>
             </Button>
             <Button type="button" variant="primary">
-              <IconClock aria-hidden="true" />
+              <Clock size={16} aria-hidden="true" />
               <span>Open Slot</span>
             </Button>
           </>
         }
       />
 
-      {/* KPI Grid */}
-      <section className="mb-16 relative z-10">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-          <KPICard label="Placement Queue" value={String(placementItems.length)} subtitle="Active mentees" delay={0.1} icon={<IconUsers />} />
-          <KPICard label="Exam Counselling" value={String(examItems.length)} subtitle="Active aspirants" delay={0.2} icon={<IconQueue />} />
-          <KPICard label="Urgent Reviews" value={String(urgentCount)} subtitle="Critical priority" delay={0.3} tone="danger" icon={<IconShield />} />
-          <KPICard label="Active Goals" value={String(activeGoals)} subtitle="Tracked interventions" delay={0.4} icon={<IconTarget />} />
-        </div>
-      </section>
+      {/* KPI strip — same top-line metric pattern every dashboard shares */}
+      <KPIGrid
+        items={[
+          { label: "Placement Queue", value: String(placementItems.length), hint: "Active mentees", tone: "brand", icon: <Users size={16} /> },
+          { label: "Exam Counselling", value: String(examItems.length), hint: "Active aspirants", tone: "neutral", icon: <ListChecks size={16} /> },
+          { label: "Urgent Reviews", value: String(urgentCount), hint: "Critical priority", tone: urgentCount > 0 ? "danger" : "success", icon: <ShieldAlert size={16} /> },
+          { label: "Avg Readiness", value: hasQueue ? String(avgReadiness) : "—", hint: "Across active mentees", tone: scoreToTone(hasQueue ? avgReadiness : -1), icon: <Gauge size={16} /> },
+        ]}
+      />
 
       {/* Main Content Tabs */}
       <section className="relative z-10">
@@ -247,7 +218,7 @@ export default function CoachDashboard({ coachId }: { coachId: string }) {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 + i * 0.1 }}
-              onClick={() => setActiveTab(tab as any)}
+              onClick={() => setActiveTab(tab as typeof activeTab)}
               className={cn(
                 "px-6 py-2.5 rounded-full text-sm font-medium transition-all duration-300 capitalize border",
                 activeTab === tab
@@ -268,16 +239,9 @@ export default function CoachDashboard({ coachId }: { coachId: string }) {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.4 }}
-              className="space-y-12"
             >
               {/* Urgent Items */}
-              <div>
-                <div className="flex items-center gap-3 mb-6">
-                  <div aria-hidden="true" className="w-8 h-8 rounded-full bg-rose-500/15 flex items-center justify-center text-rose-600">
-                    <IconShield />
-                  </div>
-                  <Heading as="h2">Requires Attention</Heading>
-                </div>
+              <Section title="Requires Attention" icon={<ShieldAlert size={20} />} className="mt-0">
                 {urgentItems.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {urgentItems.map((item, i) => (
@@ -285,41 +249,64 @@ export default function CoachDashboard({ coachId }: { coachId: string }) {
                     ))}
                   </div>
                 ) : (
-                  <EmptyState message={hasQueue ? "Nothing needs urgent attention right now." : "No sessions yet."} />
+                  <EmptyState
+                    icon={<ListChecks size={22} />}
+                    title={hasQueue ? "Nothing needs urgent attention right now." : "No sessions yet."}
+                    description="Sessions will appear here once mentees are added to the coaching queue."
+                  />
                 )}
-              </div>
+              </Section>
 
               {/* Goals & Outcomes */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div>
-                  <div className="flex items-center gap-3 mb-6">
-                    <div aria-hidden="true" className="w-8 h-8 rounded-full bg-brand-500/15 flex items-center justify-center text-brand-600">
-                      <IconTarget />
-                    </div>
-                    <Heading as="h2">Active Goals</Heading>
-                  </div>
-                  <GlassCard delay={0.2} className="p-0">
+                <Section title="Active Goals" icon={<Target size={20} />}>
+                  <Card variant="frosted" className="rounded-xl3 p-0 shadow-panel overflow-hidden">
                     <div className="divide-y divide-ink-200/60">
                       {interventionGoals.map((goal) => (
                         <GoalRow key={goal.id} goal={goal} />
                       ))}
                     </div>
-                  </GlassCard>
-                </div>
-                <div>
-                  <div className="flex items-center gap-3 mb-6">
-                    <div aria-hidden="true" className="w-8 h-8 rounded-full bg-emerald-500/15 flex items-center justify-center text-emerald-600">
-                      <IconLine />
-                    </div>
-                    <Heading as="h2">Outcome Impact</Heading>
-                  </div>
+                  </Card>
+                </Section>
+
+                <Section title="Outcome Impact" icon={<LineChart size={20} />}>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {outcomeMetrics.map((metric, i) => (
-                      <OutcomeCard key={metric.label} metric={metric} delay={0.3 + i * 0.1} />
+                    {outcomeMetrics.map((metric) => (
+                      <OutcomeCard key={metric.label} metric={metric} />
                     ))}
                   </div>
-                </div>
+                </Section>
               </div>
+
+              {/* Recent Sessions */}
+              <Section title="Recent Sessions" icon={<Calendar size={20} />}>
+                {sessionHistory.length > 0 ? (
+                  <Card variant="frosted" className="rounded-xl3 p-0 shadow-panel overflow-hidden">
+                    <div className="divide-y divide-ink-200/60">
+                      {sessionHistory.map((session) => (
+                        <div key={session.id} className="p-5 hover:bg-ink-50/60 transition-colors">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h4 className="font-semibold text-ink-800">{session.topic}</h4>
+                            <div className="flex items-center gap-2 text-xs text-ink-500">
+                              <Badge tone="neutral">{session.mode}</Badge>
+                              <span>{session.date}</span>
+                            </div>
+                          </div>
+                          <p className="mt-1 text-xs text-ink-500">{session.mentee}</p>
+                          <p className="mt-2 text-sm text-ink-700">{session.outcome}</p>
+                          <p className="mt-1 text-xs text-ink-500">Follow-up: {session.followUp}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                ) : (
+                  <EmptyState
+                    icon={<Calendar size={22} />}
+                    title="No sessions logged yet."
+                    description="Completed coaching sessions will be recorded here."
+                  />
+                )}
+              </Section>
             </motion.div>
           )}
 
@@ -338,7 +325,11 @@ export default function CoachDashboard({ coachId }: { coachId: string }) {
                   ))}
                 </div>
               ) : (
-                <EmptyState message="No sessions yet." />
+                <EmptyState
+                  icon={<ListChecks size={22} />}
+                  title="No sessions yet."
+                  description="Sessions will appear here once mentees are added to the coaching queue."
+                />
               )}
             </motion.div>
           )}
@@ -358,72 +349,75 @@ export default function CoachDashboard({ coachId }: { coachId: string }) {
                   ))}
                 </div>
               ) : (
-                <EmptyState message="No sessions yet." />
+                <EmptyState
+                  icon={<ListChecks size={22} />}
+                  title="No sessions yet."
+                  description="Sessions will appear here once mentees are added to the coaching queue."
+                />
               )}
             </motion.div>
           )}
         </AnimatePresence>
       </section>
-    </PageShell>
+    </DashboardShell>
   );
 }
 
 // --- SUB-COMPONENTS ---
 
-function KPICard({ label, value, subtitle, delay, tone = "default", icon }: any) {
-  const isDanger = tone === "danger";
-  return (
-    <GlassCard delay={delay} className={cn("group", isDanger && "border-rose-200 bg-rose-50/60")}>
-      <Stat
-        tone={isDanger ? "danger" : "neutral"}
-        icon={icon}
-        label={label}
-        value={<AnimatedNumber value={value} />}
-        sub={subtitle}
-      />
-    </GlassCard>
-  );
-}
-
-function QueueCard({ item, delay, fullWidth = false }: { item: QueueViewItem, delay: number, fullWidth?: boolean }) {
+function QueueCard({ item, delay, fullWidth = false }: { item: QueueViewItem; delay: number; fullWidth?: boolean }) {
   const isCritical = item.priority === "critical";
   const isHigh = item.priority === "high";
 
   return (
-    <GlassCard delay={delay} className={cn("flex flex-col", isCritical && "border-rose-200", isHigh && "border-amber-200")}>
-      <div className="flex justify-between items-start mb-6">
-        <div className="flex items-center gap-4">
-          <div aria-hidden="true" className="w-12 h-12 rounded-xl2 bg-gradient-to-br from-brand-600 to-accent-500 flex items-center justify-center font-bold text-white shadow-panel">
-            {item.initials}
+    <motion.div
+      variants={itemVariants}
+      whileHover={{ y: -4 }}
+      transition={{ delay }}
+      className={cn("h-full", fullWidth && "w-full")}
+    >
+      <Card
+        variant="frosted"
+        className={cn(
+          "flex h-full flex-col rounded-xl3 p-6 shadow-panel",
+          isCritical && "border-rose-200",
+          isHigh && "border-amber-200"
+        )}
+      >
+        <div className="flex justify-between items-start mb-6">
+          <div className="flex items-center gap-4">
+            <div aria-hidden="true" className="w-12 h-12 rounded-xl2 bg-gradient-to-br from-brand-600 to-accent-500 flex items-center justify-center font-bold text-white shadow-panel">
+              {item.initials}
+            </div>
+            <div>
+              <h3 className="font-bold text-lg text-ink-900">{item.name}</h3>
+              <p className="text-xs text-ink-500">{item.subtitle}</p>
+            </div>
           </div>
+          <PriorityBadge priority={item.priority} />
+        </div>
+
+        <div className="mb-6 space-y-4 flex-1">
           <div>
-            <h3 className="font-bold text-lg text-ink-900">{item.name}</h3>
-            <p className="text-xs text-ink-500">{item.subtitle}</p>
+            <Eyebrow className="mb-1 block">Focus Area</Eyebrow>
+            <p className="text-sm font-medium text-ink-800">{item.focus}</p>
+          </div>
+          <div className="p-3 rounded-xl bg-ink-50/60 border border-ink-200/60">
+            <Eyebrow className="mb-1 block">Reason</Eyebrow>
+            <p className="text-xs text-ink-600 leading-relaxed">{item.queueReason}</p>
           </div>
         </div>
-        <PriorityBadge priority={item.priority} />
-      </div>
 
-      <div className="mb-6 space-y-4 flex-1">
-        <div>
-          <Eyebrow className="mb-1 block">Focus Area</Eyebrow>
-          <p className="text-sm font-medium text-ink-800">{item.focus}</p>
+        <div className="mt-auto flex gap-3 pt-4 border-t border-ink-200/60">
+          <ButtonLink href={item.href} variant="ghost" size="sm" className="flex-1">
+            View Profile
+          </ButtonLink>
+          <Button type="button" variant="primary" size="sm" className="flex-1 bg-ink-900 hover:bg-ink-800">
+            Action
+          </Button>
         </div>
-        <div className="p-3 rounded-xl bg-ink-50/60 border border-ink-200/60">
-          <Eyebrow className="mb-1 block">Reason</Eyebrow>
-          <p className="text-xs text-ink-600 leading-relaxed">{item.queueReason}</p>
-        </div>
-      </div>
-
-      <div className="mt-auto flex gap-3 pt-4 border-t border-ink-200/60">
-        <ButtonLink href={item.href} variant="ghost" size="sm" className="flex-1">
-          View Profile
-        </ButtonLink>
-        <Button type="button" variant="primary" size="sm" className="flex-1 bg-ink-900 hover:bg-ink-800">
-          Action
-        </Button>
-      </div>
-    </GlassCard>
+      </Card>
+    </motion.div>
   );
 }
 
@@ -477,39 +471,17 @@ function GoalRow({ goal }: { goal: GoalRecord }) {
   );
 }
 
-function OutcomeCard({ metric, delay }: { metric: OutcomeMetric, delay: number }) {
+function OutcomeCard({ metric }: { metric: OutcomeMetric }) {
   return (
-    <GlassCard delay={delay} className="p-5">
-      <Stat
-        tone={metric.tone === "success" ? "success" : "neutral"}
-        label={metric.label}
-        value={metric.value}
-        sub={metric.detail}
-      />
-    </GlassCard>
+    <motion.div variants={itemVariants} whileHover={{ y: -3 }} className="h-full">
+      <Card variant="frosted" className="h-full rounded-xl3 p-5 shadow-panel">
+        <Stat
+          tone={metric.tone === "success" ? "success" : "neutral"}
+          label={metric.label}
+          value={metric.value}
+          sub={metric.detail}
+        />
+      </Card>
+    </motion.div>
   );
 }
-
-function EmptyState({ message = "No sessions yet." }: { message?: string }) {
-  return (
-    <Card variant="frosted" className="p-10 flex flex-col items-center justify-center text-center">
-      <div aria-hidden="true" className="w-12 h-12 rounded-xl2 bg-ink-50 text-ink-500 flex items-center justify-center mb-4">
-        <IconQueue />
-      </div>
-      <Heading as="h3" className="text-ink-900">{message}</Heading>
-      <p className="mt-2 text-sm text-ink-500 max-w-sm">
-        Sessions will appear here once mentees are added to the coaching queue.
-      </p>
-    </Card>
-  );
-}
-
-// --- ICONS ---
-type IconProps = React.SVGProps<SVGSVGElement>;
-function IconUsers(props: IconProps) { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>; }
-function IconQueue(props: IconProps) { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}><path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h10" /></svg>; }
-function IconShield(props: IconProps) { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}><path d="M20 13c0 5-3.5 7.5-7.7 8.9a2 2 0 0 1-1.3 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.3a1.5 1.5 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1v7Z" /><path d="m9 12 2 2 4-4" /></svg>; }
-function IconTarget(props: IconProps) { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" /></svg>; }
-function IconLine(props: IconProps) { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}><path d="M3 3v18h18" /><path d="m7 17 4-4 4 4 5-5" /></svg>; }
-function IconCalendar(props: IconProps) { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4" /><path d="M8 2v4" /><path d="M3 10h18" /></svg>; }
-function IconClock(props: IconProps) { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>; }

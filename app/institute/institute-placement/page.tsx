@@ -1,11 +1,7 @@
 "use client";
 
 import React from "react";
-import { motion } from "framer-motion";
-import Link from "next/link";
-import { Logo } from "@/components/logo";
 import {
-  ArrowLeft,
   Users,
   Sparkles,
   Gauge,
@@ -19,10 +15,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import {
-  PageShell,
-  PageHeader,
   Card,
-  CardHeader,
   CardBody,
   Button,
   ButtonLink,
@@ -30,6 +23,13 @@ import {
   Stat,
   Heading,
 } from "@/components/ui";
+import {
+  DashboardShell,
+  DashboardHeader,
+  KPIGrid,
+  Section,
+  EmptyState,
+} from "@/components/dashboard";
 import { Bar } from "@/components/score-ring";
 import { BellCurve } from "@/components/institute/bell-curve";
 import {
@@ -39,7 +39,7 @@ import {
   studentSemesters,
   type Student,
 } from "@/lib/data";
-import { containerVariants, itemVariants } from "@/lib/motion";
+import { scoreToTone } from "@/lib/dashboard-theme";
 import { cn } from "@/lib/utils";
 
 type Tier = "best" | "average" | "below";
@@ -182,6 +182,15 @@ export default function InstitutePlacementDashboard() {
   // Split + tiers recompute whenever the population changes.
   const { rows, bands, total } = React.useMemo(() => computeSplit(allStudents), [allStudents]);
 
+  // KPI roll-ups from the existing cohort data (no new data sources).
+  const kpis = React.useMemo(() => {
+    const fits = allStudents.map((s) => s.fit?.fit ?? 0);
+    const readyCount = fits.filter((f) => f >= 70).length;
+    const avgFit = total === 0 ? 0 : Math.round(fits.reduce((sum, f) => sum + f, 0) / total);
+    const readyPct = total === 0 ? 0 : Math.round((readyCount / total) * 100);
+    return { readyCount, readyPct, avgFit };
+  }, [allStudents, total]);
+
   // ── Filters ──────────────────────────────────────────────────────────────
   const [branch, setBranch] = React.useState("");
   const [semester, setSemester] = React.useState("");
@@ -257,48 +266,36 @@ export default function InstitutePlacementDashboard() {
   };
 
   return (
-    <div className="relative min-h-screen bg-canvas text-ink-900 font-sans selection:bg-brand-500/20">
-      {/* Navbar */}
-      <nav className="relative z-20 w-full border-b border-ink-200/60 bg-white/60 backdrop-blur-xl">
-        <div className="max-w-[90rem] mx-auto px-6 sm:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard" aria-label="Back to dashboard" className="text-ink-500 hover:text-brand-600 transition-colors">
-              <ArrowLeft size={20} />
-            </Link>
-            <div className="h-6 w-px bg-ink-200" />
-            <Logo />
-            <Badge tone="brand" className="ml-2 uppercase tracking-widest text-[10px]">Institute</Badge>
-          </div>
-          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-brand-600 to-accent-500 flex items-center justify-center text-white font-bold text-sm shadow-sm border-2 border-white">
-            IU
-          </div>
-        </div>
-      </nav>
+    <DashboardShell>
+      <DashboardHeader
+        eyebrow="Institute Placement Cell"
+        title="Placement Command Center"
+        description="Cohort distribution, candidate readiness, campus drives and profile sharing - everything you need to run a placement season."
+        actions={
+          <Badge tone="neutral" className="gap-1.5">
+            <Gauge size={13} aria-hidden="true" /> Live · {total} students
+          </Badge>
+        }
+      />
 
-      <PageShell width="wide">
-        <motion.div initial="hidden" animate="visible" variants={containerVariants}>
-          <motion.div variants={itemVariants}>
-            <PageHeader
-              eyebrow="Institute · Placement"
-              title="Placement Command Center"
-              description="Cohort distribution, candidate readiness, campus drives and profile sharing - everything you need to run a placement season."
-            />
-          </motion.div>
+      {/* KPI strip — the shared top-line metric pattern every dashboard uses */}
+      <KPIGrid
+        items={[
+          { label: "Cohort size", value: total, hint: "Students in the placement pool", tone: "brand", icon: <Users size={16} /> },
+          { label: "Placement-ready", value: `${kpis.readyPct}%`, hint: `${kpis.readyCount} of ${total} at fit 70+`, tone: scoreToTone(kpis.readyPct), icon: <Sparkles size={16} /> },
+          { label: "Average fit", value: kpis.avgFit, hint: "Overall fit across cohort", tone: scoreToTone(kpis.avgFit), icon: <Gauge size={16} /> },
+          { label: "At-risk", value: bands.below.count, hint: `Bottom ${bands.below.pct}% — needs intervention`, tone: "danger", icon: <AlertTriangle size={16} /> },
+        ]}
+      />
 
+      <div>
           {/* ── Section 1: KPI bell curve (20/60/20) ── */}
-          <motion.div variants={itemVariants}>
-            <Card variant="frosted" className="rounded-xl3 mb-8">
-              <CardHeader className="flex flex-wrap items-end justify-between gap-4">
-                <div>
-                  <Heading as="h2" className="text-xl">Cohort fit distribution</Heading>
-                  <p className="text-sm text-ink-500 mt-1">
-                    {total} candidates split into a 20 / 60 / 20 readiness curve by overall fit.
-                  </p>
-                </div>
-                <Badge tone="neutral" className="gap-1.5">
-                  <Gauge size={13} aria-hidden="true" /> Live · {total} students
-                </Badge>
-              </CardHeader>
+          <Section
+            icon={<Gauge size={20} />}
+            title="Cohort fit distribution"
+            description={`${total} candidates split into a 20 / 60 / 20 readiness curve by overall fit.`}
+          >
+            <Card variant="frosted" className="rounded-xl3">
               <CardBody>
                 <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-8 items-center">
                   <div className="rounded-xl2 border border-ink-200/60 bg-white/50 p-4">
@@ -336,21 +333,20 @@ export default function InstitutePlacementDashboard() {
                 </div>
               </CardBody>
             </Card>
-          </motion.div>
+          </Section>
 
           {/* ── Section 2: Bulk upload ── */}
-          <motion.div variants={itemVariants}>
-            <Card variant="frosted" className="mb-8">
-              <CardHeader className="flex items-center gap-2">
-                <Upload size={18} className="text-brand-600" aria-hidden="true" />
-                <div>
-                  <Heading as="h2" className="text-lg">Upload students</Heading>
-                  <p className="text-sm text-ink-500 mt-0.5">
-                    Paste CSV rows or upload a .csv file - one student per line:{" "}
-                    <span className="font-mono text-ink-700">Name, Branch, Semester</span>.
-                  </p>
-                </div>
-              </CardHeader>
+          <Section
+            icon={<Upload size={20} />}
+            title="Upload students"
+            description={
+              <>
+                Paste CSV rows or upload a .csv file - one student per line:{" "}
+                <span className="font-mono text-ink-700">Name, Branch, Semester</span>.
+              </>
+            }
+          >
+            <Card variant="frosted">
               <CardBody>
                 <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 items-start">
                   <div>
@@ -387,39 +383,40 @@ export default function InstitutePlacementDashboard() {
                 )}
               </CardBody>
             </Card>
-          </motion.div>
+          </Section>
 
           {/* ── Section 3 + 4 + 7: Filters, list, selection, share ── */}
-          <motion.div variants={itemVariants}>
-            <Card variant="frosted" className="mb-8">
-              <CardHeader className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <Heading as="h2" className="text-xl">All students</Heading>
-                  <p className="text-sm text-ink-500 mt-0.5" aria-live="polite">
-                    {filtered.length} of {total} shown
-                    {selectedCount > 0 ? ` · ${selectedCount} selected` : ""}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {selectedCount > 0 && (
-                    <Button type="button" variant="soft" size="sm" onClick={() => setSelected(new Set())}>
-                      Clear selection
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => {
-                      setConfirmation(null);
-                      setShareOpen(true);
-                    }}
-                    disabled={selectedCount === 0}
-                  >
-                    <Share2 size={14} aria-hidden="true" /> Share selected
+          <Section
+            icon={<Users size={20} />}
+            title="All students"
+            description={
+              <span aria-live="polite">
+                {filtered.length} of {total} shown
+                {selectedCount > 0 ? ` · ${selectedCount} selected` : ""}
+              </span>
+            }
+            actions={
+              <>
+                {selectedCount > 0 && (
+                  <Button type="button" variant="soft" size="sm" onClick={() => setSelected(new Set())}>
+                    Clear selection
                   </Button>
-                </div>
-              </CardHeader>
-
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    setConfirmation(null);
+                    setShareOpen(true);
+                  }}
+                  disabled={selectedCount === 0}
+                >
+                  <Share2 size={14} aria-hidden="true" /> Share selected
+                </Button>
+              </>
+            }
+          >
+            <Card variant="frosted">
               {/* Filters */}
               <div className="px-5 sm:px-6 pb-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -493,15 +490,18 @@ export default function InstitutePlacementDashboard() {
 
               <CardBody className="pt-0">
                 {filtered.length === 0 ? (
-                  <div className="rounded-xl2 border border-dashed border-ink-200 bg-ink-50/50 p-10 text-center">
-                    <p className="text-sm font-semibold text-ink-700">No students match these filters.</p>
-                    <p className="text-xs text-ink-500 mt-1">Try widening the branch, semester or tier.</p>
-                    {hasFilters && (
-                      <Button type="button" variant="soft" size="sm" className="mt-4" onClick={clearFilters}>
-                        Clear filters
-                      </Button>
-                    )}
-                  </div>
+                  <EmptyState
+                    icon={<Search size={22} />}
+                    title="No students match these filters."
+                    description="Try widening the branch, semester or tier."
+                    action={
+                      hasFilters ? (
+                        <Button type="button" variant="soft" size="sm" onClick={clearFilters}>
+                          Clear filters
+                        </Button>
+                      ) : undefined
+                    }
+                  />
                 ) : (
                   <div className="overflow-x-auto rounded-xl2 border border-ink-200/70">
                     <table className="w-full min-w-[920px] text-sm">
@@ -592,23 +592,22 @@ export default function InstitutePlacementDashboard() {
                 )}
               </CardBody>
             </Card>
-          </motion.div>
+          </Section>
 
           {/* ── Section 6: Organisations ── */}
-          <motion.div variants={itemVariants}>
+          <Section
+            icon={<Building2 size={20} />}
+            title="Campus drives"
+            description={`${organisations.length} organisations planning visits this season.`}
+          >
             <Card variant="frosted">
-              <CardHeader className="flex items-center gap-2">
-                <Building2 size={18} className="text-brand-600" aria-hidden="true" />
-                <div>
-                  <Heading as="h2" className="text-xl">Campus drives</Heading>
-                  <p className="text-sm text-ink-500 mt-0.5">
-                    {organisations.length} organisations planning visits this season.
-                  </p>
-                </div>
-              </CardHeader>
               <CardBody>
                 {organisations.length === 0 ? (
-                  <p className="text-sm text-ink-500">No campus drives scheduled yet.</p>
+                  <EmptyState
+                    icon={<Building2 size={22} />}
+                    title="No campus drives scheduled yet."
+                    description="Organisations planning visits this season will appear here."
+                  />
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {organisations.map((o) => (
@@ -647,9 +646,8 @@ export default function InstitutePlacementDashboard() {
                 )}
               </CardBody>
             </Card>
-          </motion.div>
-        </motion.div>
-      </PageShell>
+          </Section>
+      </div>
 
       {/* Confirmation toast */}
       {confirmation && (
@@ -678,7 +676,7 @@ export default function InstitutePlacementDashboard() {
           setSelected(new Set());
         }}
       />
-    </div>
+    </DashboardShell>
   );
 }
 
