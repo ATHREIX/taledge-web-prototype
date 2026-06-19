@@ -10,8 +10,12 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const MAX_TRANSCRIPT_LEN = 8000;
-// Conclusion is only permitted once enough depth has been gathered.
-const MIN_CONCLUDE_TURN = 6;
+// Conclusion is only permitted once enough depth has been gathered. Raised so
+// the interview runs longer and climbs the full basic->medium->hard ladder
+// before the model is allowed to wrap up.
+const MIN_CONCLUDE_TURN = 8;
+// Absolute hard stop on interview length (turns), regardless of model intent.
+const MAX_TURNS = 13;
 
 /**
  * Remove any candidate-supplied control tokens so untrusted transcript text can
@@ -56,13 +60,22 @@ async function callGeminiLLM(
   const multilingualInstruction = `You possess lingual abilities to conduct the interview seamlessly in English, Hindi, and Hinglish. Adapt to the language the user speaks.`;
   const turnInstruction = turnIndex === 1
     ? "Note: The candidate is just answering the introductory question. Do NOT ask about preferred programming language or deep technical details yet. Acknowledge their introduction briefly and warmly, and ask a random soft icebreaker question (e.g., how they prepared for this assessment, what their favorite tech tools are, or what inspired them to pursue this path) to build rapport before moving to resume projects."
-    : "First, critically evaluate the candidate's previous answer. Start with simpler foundational questions in the early turns. As the interview progresses, gradually increase the complexity based on their responses. Check their behavior and adapt the difficulty accordingly. If they answered well, increase complexity. If they were incorrect or surface-level, call it out briefly and adjust the question.";
+    : "First, critically and SPECIFICALLY evaluate the candidate's MOST RECENT answer: what was correct, what was vague, what was missing or wrong. Your next question MUST build directly on what they just said — drill into a claim they made, expose a gap they revealed, or follow the thread of their own example. Do NOT jump to an unrelated topic. This must feel like a real conversation where you genuinely listened.";
+
+  // Difficulty ladder: the interview climbs basic -> medium -> hard as it
+  // progresses, but the candidate's DEMONSTRATED level (per-answer ratings)
+  // overrides the schedule so a strong candidate is pushed and a struggling one
+  // is met where they are — exactly how an experienced human interviewer adapts.
+  const lastRating = priorRatings.length ? priorRatings[priorRatings.length - 1] : null;
+  const ladderStage = turnIndex <= 3 ? "BASIC" : turnIndex <= 7 ? "MEDIUM" : "HARD";
+  const difficultyLadder = `DIFFICULTY LADDER: Open with BASIC, foundational questions for this domain, then move to MEDIUM, then HARD senior-level questions (edge cases, trade-offs, system/design decisions, failure modes, and deep "why"/"what-if" follow-ups). By turn schedule you are at the ${ladderStage} stage.
+ADAPT to the real candidate — the schedule is secondary. ${lastRating === null ? "" : `Their last answer rated ${lastRating}/10. `}If recent answers are strong (>=7), climb faster and raise difficulty hard. If they are struggling (<=4), DROP a level: ask a simpler, more concrete question that pinpoints exactly what they do not understand, offer a small nudge if useful, and only climb again once they recover. Never pile hard questions on a struggling candidate; never waste a strong candidate's time on basics.`;
 
   // Server-side gate: the model may only conclude once enough turns have passed.
   // We tell the model the rule, but we ALSO enforce it server-side after the call.
   const concludeRule = turnIndex >= MIN_CONCLUDE_TURN
-    ? `If you feel you have gathered enough depth to evaluate the candidate (this usually takes 6 to 9 questions), you may conclude the interview. To conclude, start your response with the token [CONCLUDE] followed by a warm closing summary (e.g. '[CONCLUDE] Thank you for your responses today. That concludes all my questions. We have recorded your responses.').`
-    : `You must NOT conclude the interview yet. Do NOT use the [CONCLUDE] token. Ask your next question.`;
+    ? `If you have genuinely gathered enough depth across the full basic->medium->hard ladder to evaluate the candidate (this usually takes 9 to 12 questions), you may conclude. To conclude, start your response with the token [CONCLUDE] followed by a warm closing summary (e.g. '[CONCLUDE] Thank you for your responses today. That concludes all my questions. We have recorded your responses.').`
+    : `You must NOT conclude the interview yet — keep probing and climbing the difficulty ladder. Do NOT use the [CONCLUDE] token. Ask your next question.`;
 
   // The DNLA report (when present) lists the candidate's behavioural
   // competencies vs benchmark; sub-benchmark items are explicit development
@@ -83,22 +96,24 @@ async function callGeminiLLM(
   const outputFormat = `OUTPUT FORMAT (strict): On the FIRST line write "RATING: N" where N is an integer 0-10 scoring the candidate's MOST RECENT answer on correctness, depth, and clarity combined (write "RATING: 0" if there is no real answer yet). Then on the NEXT line write your single next question (or your [CONCLUDE] closing if concluding). Output nothing else.`;
 
   const sysPrompt = mode === "technical"
-    ? `You are an elite, highly rigorous senior technical interviewer. ${multilingualInstruction}
+    ? `You are a senior technical interviewer with 15 years of experience interviewing and hiring engineers at top companies. You are sharp, calm, and read candidates well — you adapt in real time, listen to each answer, and ask the question a great human interviewer would ask next. ${multilingualInstruction}
     Your goal is to stress-test the candidate's actual depth based directly on their resume context (skills, projects, and target role/placement goals). Do not accept surface-level answers.
     You MUST ground your questions in their specific resume context (especially their projects, tech stack, and goals). For example, ask technical questions directly relating to a project or skill they listed, or how it helps them achieve their target goal.
     ${dnlaInstruction}
     Review their Resume Context and DNLA Report provided below.
     ${turnInstruction}
+    ${difficultyLadder}
     Then, formulate your next question. Make sure it explicitly probes a project, skill, or goal listed in their Resume Context. Ask about trade-offs, system failures, or edge cases related to their stack. Cover technical and problem-solving ability.
     ${noRepeatInstruction}
     Apply cognitive load by combining concepts. Do NOT be overly friendly. CRITICAL: Ask EXACTLY ONE short question. Do NOT ask multi-part questions or combine multiple questions into one.
     ${concludeRule} Keep responses under 50 words.`
-    : `You are an elite, highly rigorous behavioural psychologist and HR director. ${multilingualInstruction}
+    : `You are a behavioural interviewer and HR director with 15 years of experience assessing candidates. You are sharp and perceptive — you listen closely, follow up on what the candidate actually said, and adapt your depth to how they respond, exactly like a seasoned human interviewer. ${multilingualInstruction}
     Your goal is to map their response to advanced psychometric DNLA markers (Achievement Dynamics, Interpersonal Skills, Execution, Stress & Resilience).
     You MUST ground your questions in their specific resume context AND their DNLA Report. Ask how their specific past experiences or aspirations map to these behavioural situations.
     ${dnlaInstruction}
     Review their Resume Context and DNLA Report provided below.
     ${turnInstruction}
+    ${difficultyLadder}
     Then, formulate your next question targeting their DNLA development areas and their specific past experiences, projects, or placement goals. Do not accept generic STAR answers. Ask adversarial follow-ups regarding their failures, conflicts, and ethical boundaries.
     ${noRepeatInstruction}
     Probe their emotional regulation under stress. Do NOT validate generic answers. CRITICAL: Ask EXACTLY ONE short question. Do NOT ask multi-part questions or combine multiple questions into one.
@@ -296,8 +311,8 @@ export async function POST(req: NextRequest) {
       cleanLower.includes("end assessment") ||
       cleanLower.includes("finish assessment");
 
-    // Hard limit at 10 turns or user requests termination
-    if (session.turnIndex >= 10 || isExitWord) {
+    // Hard limit on interview length or user requests termination
+    if (session.turnIndex >= MAX_TURNS || isExitWord) {
       isDone = true;
       terminationReason = isExitWord ? "user-exit" : "max-turns";
       nextQuestion = "Thank you for completing this assessment. Your responses have been recorded and analyzed. Click below to view your detailed results.";
@@ -346,11 +361,12 @@ export async function POST(req: NextRequest) {
         nextQuestion = nextQuestion.replace(/\[\s*CONCLUDE\s*\]/gi, "").trim();
         if (nextTurn >= MIN_CONCLUDE_TURN) {
           // Adaptive gate: if the candidate has been scoring poorly, keep probing
-          // (up to turn 9) to gather more evidence before concluding on thin data.
+          // (until near the hard cap) to gather more evidence before concluding
+          // on thin data.
           const avgRating = priorRatings.length
             ? priorRatings.reduce((a, b) => a + b, 0) / priorRatings.length
             : 5;
-          if (avgRating < 4 && nextTurn < 9) {
+          if (avgRating < 4 && nextTurn < MAX_TURNS - 1) {
             // Suppress the conclusion; the (de-tokenized) question text continues.
           } else {
             isDone = true;
