@@ -24,7 +24,10 @@ const PROTECTED_PAGE_PREFIXES = [
   "/recruiter",
   "/coach",
   "/institute",
+  "/exam",
   "/onboarding",
+  "/dashboard",
+  "/profile",
 ];
 
 // API endpoints that must stay reachable without auth even in enforced mode

@@ -33,7 +33,18 @@ export default function LoginPage() {
       } catch {
         /* role lookup is non-fatal; default to candidate funnel */
       }
-      router.push(postAuthPath(role, cred.user.uid));
+      // Honor a deep-link `?next=` set by middleware (so a protected URL the
+      // user requested is restored after login). Only same-origin relative
+      // paths are allowed — never an absolute/protocol-relative open redirect.
+      const nextParam =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("next")
+          : null;
+      const dest =
+        nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
+          ? nextParam
+          : postAuthPath(role, cred.user.uid);
+      router.push(dest);
     } catch (err: any) {
       const code = err?.code || "";
       setError(

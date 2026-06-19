@@ -52,7 +52,19 @@ export default function RegisterPage() {
       } catch {
         /* profile persistence is non-fatal in demo */
       }
-      router.push(postAuthPath(role, uid));
+      // Honor a same-origin deep-link `?next=`; otherwise a brand-new candidate
+      // starts the assessment funnel (onboarding), while other roles go to the hub.
+      const nextParam =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("next")
+          : null;
+      const dest =
+        nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
+          ? nextParam
+          : role === "candidate"
+          ? "/onboarding"
+          : postAuthPath(role, uid);
+      router.push(dest);
     } catch (err: any) {
       const code = err?.code || "";
       setError(
