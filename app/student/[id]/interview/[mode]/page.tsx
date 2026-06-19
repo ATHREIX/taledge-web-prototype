@@ -616,33 +616,39 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
 
   // CRITICAL: When blocked, immediately kill all audio and speech recognition
   useEffect(() => {
-    if (blocked) {
-      // Stop speech recognition
-      if (recognitionRef.current) {
-        recognitionRef.current.shouldListen = false;
-        try { recognitionRef.current.stop(); } catch(e) {}
-      }
-      // Stop any playing audio
-      if (audioSourceRef.current) {
-        try { audioSourceRef.current.stop(); } catch(e) {}
-        audioSourceRef.current = null;
-      }
-      // Close audio context
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close();
-        audioCtxRef.current = null;
-      }
-      // Clear silence timer
-      if (silenceTimerRef.current) {
-        clearTimeout(silenceTimerRef.current);
-        silenceTimerRef.current = null;
-      }
-      setAiSpeaking(false);
-      setAiVolume(0);
-      setRecording(false);
-      setIsProcessing(false);
+    if (!blocked) return;
+    // Stop speech recognition
+    if (recognitionRef.current) {
+      recognitionRef.current.shouldListen = false;
+      try { recognitionRef.current.stop(); } catch(e) {}
     }
-  }, [blocked]);
+    // Stop any playing audio
+    if (audioSourceRef.current) {
+      try { audioSourceRef.current.stop(); } catch(e) {}
+      audioSourceRef.current = null;
+    }
+    // Close audio context
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close();
+      audioCtxRef.current = null;
+    }
+    // Clear silence timer
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    setAiSpeaking(false);
+    setAiVolume(0);
+    setRecording(false);
+    setIsProcessing(false);
+
+    // Auto-return to the candidate dashboard after showing the termination
+    // notice briefly. The manual button stays as an immediate fallback.
+    const redirectTimer = setTimeout(() => {
+      router.push(`/student/${id}`);
+    }, 5000);
+    return () => clearTimeout(redirectTimer);
+  }, [blocked, router, id]);
 
   // Sync messages to localStorage for the Fit Score generator
   useEffect(() => {
@@ -1237,6 +1243,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 <p className="text-xs text-ink-500">No detailed violation log is available for this session.</p>
               </div>
             )}
+            <p className="text-xs text-ink-400 mb-4">Redirecting to your dashboard…</p>
             <Button type="button" variant="danger" onClick={() => router.push(`/student/${id}`)} size="lg" className="px-8 py-3">
               Return to Dashboard
             </Button>
