@@ -161,7 +161,13 @@ The PDF document is attached. Return strictly valid JSON. No prose before or aft
       // output-token budget reasoning, leaving empty text and an unparseable
       // JSON failure. We only need the extracted fields, not chain-of-thought.
       thinkingBudget: 0,
-      // Use the default flash model (supports PDF inlineData; flash-lite does not).
+      // Pin a PDF-capable model HERE rather than inheriting the shared
+      // GEMINI_TEXT_MODEL env - flash-lite (a common cost-saving override for
+      // text-only routes) does NOT accept PDF inlineData and would fail every
+      // upload. gemini-2.5-flash parses PDFs natively and stays under Vercel's
+      // 60s function cap. Override via GEMINI_PDF_MODEL with another
+      // document-capable model (e.g. gemini-2.5-pro) only if ever needed.
+      model: process.env.GEMINI_PDF_MODEL || "gemini-2.5-flash",
       parts: [{ inlineData: { mimeType: "application/pdf", data: base64Pdf } }],
     });
 
