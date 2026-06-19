@@ -63,6 +63,7 @@ export function Nav() {
     pathname === "/onboarding" ||
     pathname === "/login" ||
     pathname === "/register" ||
+    pathname === "/profile" ||
     pathname?.startsWith("/student/") ||
     // Singleton dashboards + immersive screens ship their own in-page header;
     // hide the global marketing nav there to avoid stacked double headers.
