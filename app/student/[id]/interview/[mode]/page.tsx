@@ -212,7 +212,15 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
          dnlaSummary: buildDnlaSummary(id)
       }),
     }).then(r => r.json()).then(data => {
-      if (data.ok) setPreloadedSession(data);
+      if (data.ok) {
+        setPreloadedSession(data);
+        // Expose the session id immediately (the server already created the
+        // session). Face verification runs in the setup step BEFORE the
+        // interview is started, and needs this ref to persist faceVerified -
+        // otherwise the voice endpoint 403s every answer. The `sessionId` state
+        // is still set later in startInterview() to flip the "Live" UI.
+        sessionIdRef.current = data.sessionId;
+      }
     });
 
     const timer = setInterval(() => setElapsed(e => e + 1), 1000);
@@ -842,7 +850,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           const vRes = await authedFetch("/api/interview/verify-face", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ imageBase64: base64Image })
+            // Pass the session so the server records faceVerified atomically with
+            // the passing check (no reliance on the separate proctor POST below).
+            body: JSON.stringify({ imageBase64: base64Image, sessionId: sessionIdRef.current })
           });
           const vData = await vRes.json();
           if (!vData.ok || !vData.verified) {

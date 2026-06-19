@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateGeminiContent, getGeminiApiKey } from "@/lib/gemini";
 import { getPrincipal, unauthorized } from "@/lib/server-auth";
+import { getSession, updateSession } from "@/lib/session-store";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { DEMO_MODE } from "@/lib/flags";
@@ -52,9 +53,31 @@ export async function POST(req: NextRequest) {
     }
 
     const imageBase64 = (body as { imageBase64?: unknown })?.imageBase64;
+    const sessionId = (body as { sessionId?: unknown })?.sessionId;
     if (typeof imageBase64 !== "string" || imageBase64.length === 0) {
       return NextResponse.json({ ok: false, error: "No image provided" }, { status: 400 });
     }
+
+    /**
+     * Persist the passing face check directly on the session (owner-scoped) so
+     * the voice endpoint's `faceVerified` gate is satisfied. Previously this
+     * relied on a separate fire-and-forget client POST to /api/interview/proctor
+     * which, if it raced or failed, left faceVerified=false and 403'd every
+     * answer. Doing it here makes verification atomic with the check itself.
+     */
+    const markFaceVerified = async () => {
+      if (typeof sessionId !== "string" || !sessionId) return;
+      try {
+        const session = await getSession(sessionId);
+        if (session && session.ownerUid === uid) {
+          await updateSession(sessionId, { faceVerified: true });
+        }
+      } catch (e) {
+        logger.error("verify-face: failed to persist faceVerified", {
+          message: String((e as any)?.message || e),
+        });
+      }
+    };
     if (imageBase64.length > MAX_IMAGE_BASE64_LENGTH) {
       return NextResponse.json({ ok: false, error: "Image too large" }, { status: 400 });
     }
@@ -106,6 +129,7 @@ The "verified" field MUST be a strict JSON boolean (true or false), never a stri
     }
 
     if (verified) {
+      await markFaceVerified();
       return NextResponse.json({ ok: true, verified: true });
     }
     return NextResponse.json({ ok: true, verified: false, reason: reason || "No single clear face detected" });
