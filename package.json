@@ -50,5 +50,10 @@
     "tsx": "^4.22.4",
     "typescript": "^5.7.3"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@10.23.0",
+  "pnpm": {
+    "overrides": {
+      "jose": "^5.9.6"
+    }
+  }
 }
