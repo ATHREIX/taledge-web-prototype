@@ -87,6 +87,8 @@ type ProctoringStatus = {
   cameraCovered: boolean;
   tabFocused: boolean;
   noiseDetected: boolean;
+  /** True when a second/external display (HDMI, etc.) is attached. */
+  externalDisplay: boolean;
 };
 
 export default function InterviewPage({ params }: { params: Promise<{ id: string; mode: string }> }) {
@@ -132,7 +134,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const [aiVolume, setAiVolume] = useState(0);
   const [aiSpeaking, setAiSpeaking] = useState(false);
   const [proctoringStatus, setProctoringStatus] = useState<ProctoringStatus>({
-    faceVisible: false, personCount: 0, phoneDetected: false, cameraCovered: false, tabFocused: true, noiseDetected: false,
+    faceVisible: false, personCount: 0, phoneDetected: false, cameraCovered: false, tabFocused: true, noiseDetected: false, externalDisplay: false,
   });
   const [violationLog, setViolationLog] = useState<string[]>([]);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -506,6 +508,45 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     document.addEventListener("dragstart", handleDragStart);
     window.addEventListener("resize", handleResize);
 
+    // 4b. External display / HDMI detection. A second or extended monitor during
+    // a proctored interview is a hard integrity breach -> warn + terminate.
+    // NOTE: browsers cannot passively detect generic USB/HID device plug-ins
+    // (sandbox); `screen.isExtended` is the reliable signal for an external
+    // display, which is the actual screen-mirroring/second-screen cheat vector.
+    let extDisplayFlagged = false;
+    const checkExternalDisplay = () => {
+      const extended =
+        typeof window !== "undefined" && (window.screen as any)?.isExtended === true;
+      setProctoringStatus((prev) =>
+        prev.externalDisplay === extended ? prev : { ...prev, externalDisplay: extended }
+      );
+      if (!hasStartedRef.current || proctoringRef.current.blocked) return;
+      if (extended && !extDisplayFlagged) {
+        extDisplayFlagged = true;
+        const reason = "External display / HDMI detected. Disconnect all extra monitors to continue.";
+        setViolationLog((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${reason}`]);
+        if (sessionIdRef.current) {
+          authedFetch("/api/interview/proctor", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId: sessionIdRef.current, event: "violation", reason }),
+          }).catch(() => {});
+        }
+        // An external display is not a 3-strike nudge — terminate immediately.
+        proctoringRef.current.blocked = true;
+        setBlocked(true);
+      } else if (!extended) {
+        extDisplayFlagged = false;
+      }
+    };
+    checkExternalDisplay();
+    const displayInterval = setInterval(checkExternalDisplay, 1500);
+    try {
+      (window.screen as any)?.addEventListener?.("change", checkExternalDisplay);
+    } catch {
+      /* screen change event not supported */
+    }
+
     // 5. Advanced AI Vision Tracking + Canvas brightness detection
     let missingFrames = 0;
     let darkFrames = 0;
@@ -693,6 +734,12 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       document.removeEventListener("keydown", handleKeyDown, true);
       document.removeEventListener("dragstart", handleDragStart);
       window.removeEventListener("resize", handleResize);
+      clearInterval(displayInterval);
+      try {
+        (window.screen as any)?.removeEventListener?.("change", checkExternalDisplay);
+      } catch {
+        /* noop */
+      }
       clearInterval(visionInterval);
       clearInterval(timer);
       if (connectTimerRef.current) clearTimeout(connectTimerRef.current);
@@ -1493,6 +1540,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                   <StatusDot ok={!proctoringStatus.cameraCovered} label="Cam clear" />
                   <StatusDot ok={proctoringStatus.tabFocused} label="Tab focused" />
                   <StatusDot ok={!proctoringStatus.noiseDetected} label="Quiet Env" />
+                  <StatusDot ok={!proctoringStatus.externalDisplay} label="Single screen" />
                   <StatusDot ok={warnings === 0} label={`${warnings}/3 warns`} />
                 </div>
                 </Card>
