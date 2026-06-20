@@ -116,8 +116,14 @@ export function Nav() {
     pathname?.startsWith("/interview");
   if (hideNav) return null;
 
-  // Signed-in users see their role nav; otherwise the demo role switcher.
-  const links: NavLink[] = (role && ROLE_NAV[role]) || demoLinks;
+  // Link resolution:
+  //  - role known        -> that stakeholder's nav (the four logins diverge here)
+  //  - signed in, role still resolving -> a clean neutral (Home) — NEVER the
+  //    4-role demo switcher (that would mislabel a logged-in candidate)
+  //  - signed out / demo  -> the role switcher so seeded personas stay browsable
+  const loggedInNeutral: NavLink[] = [{ href: "/dashboard", label: "Home", icon: LayoutDashboard }];
+  const links: NavLink[] =
+    role && ROLE_NAV[role] ? ROLE_NAV[role] : user ? loggedInNeutral : demoLinks;
   const topSegment = (p?: string | null) => p?.split("/").filter(Boolean)[0] ?? "";
   const isActive = (href: string) =>
     href === "/dashboard" ? pathname === "/dashboard" : topSegment(pathname) === topSegment(href);

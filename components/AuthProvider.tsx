@@ -40,6 +40,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<Role | null>(null);
 
+  // Hydrate role from cache on mount so the role-aware nav renders instantly on
+  // repeat visits, instead of flashing a neutral nav while Firestore is read.
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem('taledge:role');
+      if (cached) setRole(cached as Role);
+    } catch {
+      /* no-op */
+    }
+  }, []);
+
   useEffect(() => {
     if (!auth) {
       setLoading(false);
@@ -55,16 +66,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {
         /* cookie mirror is best-effort */
       }
-      // Resolve the stakeholder role once per sign-in (best-effort).
+      // Resolve the stakeholder role once per sign-in (best-effort), and cache
+      // it so the role-aware nav is instant next time.
       if (!user) {
         setRole(null);
+        try { localStorage.removeItem('taledge:role'); } catch { /* no-op */ }
       } else {
         try {
           const snap = await getDoc(doc(db, 'users', user.uid));
           const r = snap.exists() ? (snap.data().role as Role | undefined) : undefined;
-          setRole(r ?? null);
+          if (r) {
+            setRole(r);
+            try { localStorage.setItem('taledge:role', r); } catch { /* no-op */ }
+          }
+          // If the doc has no role, keep any cached value rather than blanking it.
         } catch {
-          setRole(null);
+          /* keep cached role on a transient read failure */
         }
       }
     });
