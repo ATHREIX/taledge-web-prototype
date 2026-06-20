@@ -3,7 +3,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onIdTokenChanged } from 'firebase/auth';
 import type { User } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
+import type { Role } from '@/lib/roles';
 
 // Mirror the Firebase ID token into a cookie the Edge middleware can read.
 // Firebase client auth lives in IndexedDB (no cookie), so without this the
@@ -24,15 +26,19 @@ function setTokenCookie(token: string | null) {
 type AuthContextType = {
   user: User | null;
   loading: boolean;
+  /** The signed-in user's stakeholder role (from users/{uid}.role), or null
+   * in demo/unknown — drives role-aware navigation. */
+  role: Role | null;
 };
 
-const AuthContext = createContext<AuthContextType>({ user: null, loading: true });
+const AuthContext = createContext<AuthContextType>({ user: null, loading: true, role: null });
 
 export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [role, setRole] = useState<Role | null>(null);
 
   useEffect(() => {
     if (!auth) {
@@ -49,13 +55,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {
         /* cookie mirror is best-effort */
       }
+      // Resolve the stakeholder role once per sign-in (best-effort).
+      if (!user) {
+        setRole(null);
+      } else {
+        try {
+          const snap = await getDoc(doc(db, 'users', user.uid));
+          const r = snap.exists() ? (snap.data().role as Role | undefined) : undefined;
+          setRole(r ?? null);
+        } catch {
+          setRole(null);
+        }
+      }
     });
 
     return () => unsubscribe();
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading }}>
+    <AuthContext.Provider value={{ user, loading, role }}>
       {children}
     </AuthContext.Provider>
   );
