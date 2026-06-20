@@ -16,26 +16,26 @@ gsap.registerPlugin(ScrollTrigger, useGSAP);
 const ACTS = [
   {
     n: "01",
-    title: "Résumé becomes signal",
-    body: "Upload a résumé and Taledge extracts skills, projects and target role into structured candidate context.",
-    chips: ["Skills", "Projects", "Target role"],
+    title: "AI technical interview",
+    body: "Upload a résumé or job description, then a proctored voice AI runs an adaptive technical interview grounded in the candidate's skills, projects and target role - transcribed and rubric-scored live.",
+    chips: ["Résumé / JD", "Adaptive", "Proctored"],
   },
   {
     n: "02",
     title: "DNLA psychometrics",
-    body: "First, the candidate completes the DNLA questionnaire (administered by our licensed partner in Germany); behavioural competencies map across achievement, interpersonal, execution and resilience.",
+    body: "The candidate completes the DNLA questionnaire (administered by our licensed partner in Germany), mapping behavioural competencies across achievement, interpersonal, execution and resilience.",
     chips: ["Motivation", "Resilience", "Execution"],
   },
   {
     n: "03",
-    title: "AI interviews, live",
-    body: "Then a proctored voice AI runs the technical interview, followed by a behavioural round tailored to the DNLA report - transcribed and rubric-scored.",
-    chips: ["Technical", "Behavioural", "Proctored"],
+    title: "AI behavioural interview",
+    body: "A second AI round, tailored to the DNLA report, probes the candidate's development areas with situational and adversarial follow-ups - again transcribed and scored.",
+    chips: ["Behavioural", "DNLA-targeted", "Scored"],
   },
   {
     n: "04",
     title: "The Fit Score, crystallised",
-    body: "Everything fuses into one defensible Fit Score and success probability - then fans out to recruiters on consent.",
+    body: "Interview evidence, DNLA and résumé signals fuse into one defensible Fit Score and success probability - then fan out to recruiters on consent.",
     chips: ["Fit Score", "Success %", "Published"],
   },
 ];
