@@ -3,22 +3,26 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
+import { Users, Building2, Briefcase, GraduationCap, Sparkles, LogOut, LayoutDashboard, UserRound, type LucideIcon } from "lucide-react";
 import { Logo } from "./logo";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { auth } from "@/lib/firebase";
+import { cn } from "@/lib/utils";
 
 const SHOW_PHASE_2 = false;
 
-const phaseOneLinks = [
-  { href: "/student/candidate-001", label: "Candidates" },
-  { href: "/institute/institute-placement", label: "Institutes" },
-  { href: "/recruiter/recruiter-001", label: "Recruiters" },
-  { href: "/coach/coach-001", label: "Coaches" },
+type NavLink = { href: string; label: string; icon: LucideIcon };
+
+const phaseOneLinks: NavLink[] = [
+  { href: "/student/candidate-001", label: "Candidates", icon: Users },
+  { href: "/institute/institute-placement", label: "Institutes", icon: Building2 },
+  { href: "/recruiter/recruiter-001", label: "Recruiters", icon: Briefcase },
+  { href: "/coach/coach-001", label: "Coaches", icon: GraduationCap },
 ];
 
 // Phase 2 stays in the codebase but is hidden from production navigation.
-const phaseTwoLinks = [{ href: "/coach-ai", label: "AI Coach · P2" }];
+const phaseTwoLinks: NavLink[] = [{ href: "/coach-ai", label: "AI Coach · P2", icon: Sparkles }];
 const links = SHOW_PHASE_2 ? [...phaseOneLinks, ...phaseTwoLinks] : phaseOneLinks;
 
 export function Nav() {
@@ -75,24 +79,33 @@ export function Nav() {
     pathname?.startsWith("/interview");
   if (hideNav) return null;
 
+  const topSegment = (p?: string | null) => p?.split("/").filter(Boolean)[0] ?? "";
+
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-ink-100 bg-white/80 backdrop-blur-xl transition-all">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8">
-        <div className="flex items-center gap-8">
-          <Link href="/" className="flex items-center text-ink-900 transition-opacity hover:opacity-80">
+    <header className="sticky top-0 z-50 w-full border-b border-ink-200/50 bg-white/70 backdrop-blur-xl supports-[backdrop-filter]:bg-white/60">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-8">
+        <div className="flex items-center gap-2 sm:gap-5">
+          <Link href="/dashboard" className="flex items-center text-ink-900 transition-opacity hover:opacity-80" aria-label="Taledge home">
             <Logo />
           </Link>
-          <nav className="hidden items-center gap-7 text-sm font-semibold text-ink-500 md:flex">
+          <span aria-hidden className="hidden h-6 w-px bg-ink-200/70 md:block" />
+          <nav className="hidden items-center gap-1 md:flex">
             {links.map((l) => {
-              const topSegment = (p?: string | null) => p?.split("/").filter(Boolean)[0] ?? "";
               const active = topSegment(pathname) === topSegment(l.href);
+              const Icon = l.icon;
               return (
                 <Link
                   key={l.href}
                   href={l.href}
                   aria-current={active ? "page" : undefined}
-                  className={`transition-colors hover:text-ink-900 ${active ? "text-ink-900" : ""}`}
+                  className={cn(
+                    "flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all duration-200",
+                    active
+                      ? "bg-brand-50 text-brand-700 shadow-sm"
+                      : "text-ink-500 hover:bg-ink-50 hover:text-ink-900"
+                  )}
                 >
+                  <Icon className={cn("h-4 w-4", active ? "text-brand-600" : "text-ink-400")} aria-hidden />
                   {l.label}
                 </Link>
               );
@@ -120,21 +133,25 @@ export function Nav() {
                 </svg>
               </button>
               {menuOpen && (
-                <div role="menu" className="absolute right-0 mt-2 w-52 overflow-hidden rounded-xl border border-ink-200 bg-white py-1 shadow-panel">
-                  <Link href="/dashboard" role="menuitem" className="block px-4 py-2.5 text-sm font-semibold text-ink-700 hover:bg-ink-50 hover:text-ink-900">
-                    Dashboard
+                <div role="menu" className="absolute right-0 mt-2 w-64 overflow-hidden rounded-xl2 border border-ink-200/70 bg-white py-1.5 shadow-panel">
+                  <div className="border-b border-ink-100 px-4 py-2.5">
+                    <p className="truncate text-sm font-bold text-ink-900">{user.displayName || "Your account"}</p>
+                    <p className="truncate text-xs text-ink-500">{user.email}</p>
+                  </div>
+                  <Link href="/dashboard" role="menuitem" className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-semibold text-ink-700 hover:bg-ink-50 hover:text-ink-900">
+                    <LayoutDashboard className="h-4 w-4 text-ink-400" aria-hidden /> Dashboard
                   </Link>
-                  <Link href="/profile" role="menuitem" className="block px-4 py-2.5 text-sm font-semibold text-ink-700 hover:bg-ink-50 hover:text-ink-900">
-                    My Profile
+                  <Link href="/profile" role="menuitem" className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-semibold text-ink-700 hover:bg-ink-50 hover:text-ink-900">
+                    <UserRound className="h-4 w-4 text-ink-400" aria-hidden /> My Profile
                   </Link>
                   <div className="my-1 border-t border-ink-100" />
                   <button
                     type="button"
                     role="menuitem"
                     onClick={handleLogout}
-                    className="block w-full px-4 py-2.5 text-left text-sm font-semibold text-rose-600 hover:bg-rose-50"
+                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm font-semibold text-rose-600 hover:bg-rose-50"
                   >
-                    Log out
+                    <LogOut className="h-4 w-4" aria-hidden /> Log out
                   </button>
                 </div>
               )}
@@ -177,21 +194,32 @@ export function Nav() {
         <div id="mobile-nav-menu" className="border-t border-ink-100 bg-white md:hidden">
           <div className="mx-auto max-w-7xl px-5 py-3">
             <div className="grid grid-cols-2 gap-2">
-              {links.map((l) => (
+              {links.map((l) => {
+                const active = topSegment(pathname) === topSegment(l.href);
+                const Icon = l.icon;
+                return (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      "flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors",
+                      active ? "bg-brand-50 text-brand-700" : "text-ink-700 hover:bg-ink-50 hover:text-ink-900"
+                    )}
+                  >
+                    <Icon className={cn("h-4 w-4", active ? "text-brand-600" : "text-ink-400")} aria-hidden />
+                    {l.label}
+                  </Link>
+                );
+              })}
+              {!user && (
                 <Link
-                  key={l.href}
-                  href={l.href}
-                  className="rounded-lg border border-transparent px-3 py-2.5 text-sm font-semibold text-ink-700 hover:bg-ink-50 hover:text-ink-900 transition-colors"
+                  href="/register"
+                  className="col-span-2 mt-2 rounded-xl bg-brand-600 px-3 py-2.5 text-center text-sm font-bold text-white hover:bg-brand-700 transition-colors"
                 >
-                  {l.label}
+                  Get Started
                 </Link>
-              ))}
-              <Link
-                href="/register"
-                className="col-span-2 mt-2 rounded-lg bg-brand-600 px-3 py-2.5 text-center text-sm font-bold text-white hover:bg-brand-700 transition-colors"
-              >
-                Get Started
-              </Link>
+              )}
             </div>
           </div>
         </div>
