@@ -415,22 +415,6 @@ export default function Onboarding() {
 
   return (
     <PageShell width="default" className="py-5 sm:py-6">
-      {/* Header */}
-      <motion.header
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex justify-between items-center mb-5"
-      >
-        <Badge tone="brand" className="px-4 py-2">
-          <SparklesIcon className="w-4 h-4 text-brand-600" aria-hidden="true" />
-          <span className="text-sm font-bold tracking-wide">Onboarding</span>
-        </Badge>
-        <Link href="/" className="group flex items-center gap-2 text-sm text-ink-500 hover:text-ink-900 transition-colors font-medium">
-          <ArrowLeftIcon className="w-4 h-4 group-hover:-translate-x-1 transition-transform" aria-hidden="true" />
-          All roles
-        </Link>
-      </motion.header>
-
       {/* Stepper */}
       <div className="max-w-5xl mx-auto w-full mb-6">
         <div className="flex justify-between items-center relative">
