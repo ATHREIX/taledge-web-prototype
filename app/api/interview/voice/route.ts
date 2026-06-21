@@ -190,6 +190,11 @@ ${outputFormat}`;
     const result = await generateGeminiContent(apiKey, prompt, {
       maxOutputTokens: 250,
       temperature: 0.7,
+      // Gemini 2.5 "thinking" otherwise consumes the whole 250-token budget and
+      // returns truncated/empty text (the "RATING: N\n<question>" output is short
+      // by design), which surfaces as a 502 mid-interview. Disable it so the
+      // visible answer is never starved by reasoning tokens.
+      thinkingBudget: 0,
     });
     const raw = (result.text || "").trim();
     if (!raw) {

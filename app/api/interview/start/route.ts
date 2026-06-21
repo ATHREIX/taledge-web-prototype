@@ -54,7 +54,7 @@ async function generateFirstQuestion(apiKey: string, mode: Body["mode"], role: s
 Generate a simple, welcoming opening question. Greet them by name (Hello ${nameToUse}), tell them this is a short behavioural round, and ask them to briefly describe a recent situation where they had to stay motivated or organised under pressure. Keep it to 2 sentences. Ask EXACTLY ONE short question.${dnlaNote}`;
     if (apiKey) {
       try {
-        const result = await generateGeminiContent(apiKey, dnlaPrompt, { maxOutputTokens: 150, temperature: 0.7 });
+        const result = await generateGeminiContent(apiKey, dnlaPrompt, { maxOutputTokens: 150, temperature: 0.7, thinkingBudget: 0 });
         if (result.text) return result.text.trim();
       } catch (e) {
         logger.error("interview-start: dnla opener LLM failed, falling back", { err: String(e) });
@@ -74,7 +74,7 @@ Generate a simple, welcoming opening question. Greet them by name (Hello ${nameT
 Generate a warm opening question. Greet them by name (Hello ${nameToUse}), tell them this is the final combined round that brings together their technical and behavioural rounds, and ask one broad opening question inviting them to reflect on how they performed so far and what they would most like to demonstrate now. Keep it to 2 sentences. Ask EXACTLY ONE short question.${priorNote}${dnlaNote}`;
     if (apiKey) {
       try {
-        const result = await generateGeminiContent(apiKey, finalPrompt, { maxOutputTokens: 180, temperature: 0.7 });
+        const result = await generateGeminiContent(apiKey, finalPrompt, { maxOutputTokens: 180, temperature: 0.7, thinkingBudget: 0 });
         if (result.text) return result.text.trim();
       } catch (e) {
         logger.error("interview-start: final opener LLM failed, falling back", { err: String(e) });
@@ -90,7 +90,7 @@ Generate a warm opening question. Greet them by name (Hello ${nameToUse}), tell 
 Generate a simple, welcoming opening question. Greet them by name (Hello ${nameToUse}) and welcome them to their ${role} readiness assessment, then ask them to briefly introduce themselves and share where they currently are in their ${role} preparation journey. Do NOT ask any hard subject questions or about specific topics yet. Keep it to 2 sentences. Ask EXACTLY ONE short question.${dnlaNote}`;
     if (apiKey) {
       try {
-        const result = await generateGeminiContent(apiKey, examPrompt, { maxOutputTokens: 150, temperature: 0.7 });
+        const result = await generateGeminiContent(apiKey, examPrompt, { maxOutputTokens: 150, temperature: 0.7, thinkingBudget: 0 });
         if (result.text) return result.text.trim();
       } catch (e) {
         logger.error("interview-start: exam opener LLM failed, falling back", { err: String(e) });
@@ -110,7 +110,7 @@ Generate a simple, welcoming opening question about their target role. For examp
   }
 
   try {
-    const result = await generateGeminiContent(apiKey, prompt, { maxOutputTokens: 150, temperature: 0.7 });
+    const result = await generateGeminiContent(apiKey, prompt, { maxOutputTokens: 150, temperature: 0.7, thinkingBudget: 0 });
     if (result.text) return result.text.trim();
   } catch (e) {
     logger.error("interview-start: failed to generate first question via LLM, falling back", { err: String(e) });

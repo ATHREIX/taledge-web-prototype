@@ -158,6 +158,9 @@ Return ONLY the question text, nothing else.`;
     const result = await generateGeminiContent(apiKey, prompt, {
       maxOutputTokens: 150,
       temperature: 0.7,
+      // Disable Gemini 2.5 thinking — otherwise reasoning tokens consume the
+      // 150-token budget and the question comes back truncated/empty.
+      thinkingBudget: 0,
     });
     question = result.text.trim();
   } catch (e: any) {
