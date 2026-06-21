@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateGeminiContent, getGeminiApiKey, generateGeminiTTS } from "@/lib/gemini";
+import { generateGeminiContent, getGeminiApiKey, synthesizeInterviewSpeech } from "@/lib/gemini";
 import { fetchDnlaQuestion } from "@/lib/dnla-questions";
 import { getSession, updateSession, createSession } from "@/lib/session-store";
 import { getPrincipal, unauthorized, forbidden } from "@/lib/server-auth";
@@ -424,7 +424,7 @@ export async function POST(req: NextRequest) {
 
       try {
         const apiKey = getGeminiApiKey();
-        if (apiKey) audioBase64 = await generateGeminiTTS(apiKey, nextQuestion);
+        audioBase64 = await synthesizeInterviewSpeech(nextQuestion, apiKey || "");
       } catch (ttsErr) {
         logger.error("[voice] TTS generation failed for exit", { error: String((ttsErr as any)?.message || ttsErr) });
       }
@@ -510,7 +510,7 @@ export async function POST(req: NextRequest) {
 
       try {
         const apiKey = getGeminiApiKey();
-        if (apiKey) audioBase64 = await generateGeminiTTS(apiKey, nextQuestion);
+        audioBase64 = await synthesizeInterviewSpeech(nextQuestion, apiKey || "");
       } catch (ttsErr) {
         logger.error("[voice] TTS generation failed", { error: String((ttsErr as any)?.message || ttsErr) });
       }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSession, updateSession } from "@/lib/session-store";
-import { generateGeminiTTS, getGeminiApiKey, generateGeminiContent } from "@/lib/gemini";
+import { synthesizeInterviewSpeech, getGeminiApiKey, generateGeminiContent } from "@/lib/gemini";
 import { fetchDnlaQuestion } from "@/lib/dnla-questions";
 import { getPrincipal, unauthorized } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
@@ -216,7 +216,7 @@ export async function POST(req: NextRequest) {
 
   let audioBase64 = "";
   try {
-    if (apiKey) audioBase64 = await generateGeminiTTS(apiKey, question);
+    audioBase64 = await synthesizeInterviewSpeech(question, apiKey || "");
   } catch (ttsErr) {
     logger.error("interview-start: TTS generation failed", { err: String(ttsErr) });
   }
