@@ -203,27 +203,23 @@ export async function generateGoogleCloudTTS(text: string): Promise<string> {
 }
 
 /**
- * Synthesize the interviewer's speech with the best available voice:
- *   1) Gemini TTS — the default (the original interviewer voice),
- *   2) Google Cloud TTS Chirp 3 HD — ONLY when GOOGLE_TTS_API_KEY is set (opt-in HD upgrade),
- *   3) "" → the client falls back to the browser voice.
- * Never throws; returns "" if all options fail.
+ * Server-side interviewer speech.
+ *
+ * Voice policy: ALL interviews use the SAME consistent in-browser female voice
+ * (handled client-side) — so this returns "" by default, and the client speaks
+ * the question with its own voice. Server TTS is only produced for the OPT-IN HD
+ * upgrade (Google Cloud Chirp 3 HD) when GOOGLE_TTS_API_KEY is configured.
+ * This avoids the Gemini/browser voice flip, the preview-TTS rate limit, and the
+ * per-question latency of generating audio the client wouldn't use.
+ * Never throws.
  */
-export async function synthesizeInterviewSpeech(text: string, geminiApiKey: string): Promise<string> {
+export async function synthesizeInterviewSpeech(text: string, _geminiApiKey?: string): Promise<string> {
   if (!text) return "";
-  // Opt-in HD voice: only attempt Cloud TTS when an explicit key is configured.
   if (getGoogleTtsApiKey()) {
     try {
       return await generateGoogleCloudTTS(text);
     } catch {
-      /* Cloud TTS unavailable (API not enabled / key restricted) — try Gemini. */
-    }
-  }
-  if (geminiApiKey) {
-    try {
-      return await generateGeminiTTS(geminiApiKey, text);
-    } catch {
-      /* rate-limited / unavailable — client falls back to the browser voice */
+      /* HD unavailable — client uses its consistent browser voice. */
     }
   }
   return "";
