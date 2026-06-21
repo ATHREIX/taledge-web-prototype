@@ -221,9 +221,16 @@ export async function POST(req: NextRequest) {
     logger.error("interview-start: TTS generation failed", { err: String(ttsErr) });
   }
 
-  await updateSession(session.sessionId, {
-    transcript: [{ timestamp: Date.now(), role: "assistant", content: question }],
-  });
+  // Best-effort: persisting the opening question must never 500 the start. The
+  // client receives firstQuestion directly, and the voice route can rebuild the
+  // session from client context if this write didn't land.
+  try {
+    await updateSession(session.sessionId, {
+      transcript: [{ timestamp: Date.now(), role: "assistant", content: question }],
+    });
+  } catch (e) {
+    logger.error("interview-start: updateSession (seed question) failed", { err: String(e), uid });
+  }
 
   return NextResponse.json({
     ok: true,
