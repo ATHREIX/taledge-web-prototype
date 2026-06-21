@@ -220,6 +220,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const recognitionRef = useRef<any>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  // Selected browser fallback voice — a female English voice to match the
+  // previous (female) Gemini interviewer voice. Populated once voices load.
+  const ttsVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const proctoringRef = useRef({ blocked: false, isWarningVisible: false });
   // Mirror of sessionId for use inside long-lived proctoring closures, so each
   // violation can be reported to the server-authoritative proctor endpoint.
@@ -1158,6 +1161,26 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
 
   const stripMarkdown = (text: string) => text.replace(/\*/g, "");
 
+  // Pick a female English voice for the browser fallback (voices load async, so
+  // re-pick on voiceschanged). Matches the previous female Gemini interviewer.
+  useEffect(() => {
+    const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
+    if (!synth) return;
+    const FEMALE = /female|zira|samantha|aria|jenny|eva|susan|linda|heera|fiona|karen|moira|tessa|veena|google us english|google uk english female/i;
+    const pick = () => {
+      const voices = synth.getVoices();
+      if (!voices.length) return;
+      const en = voices.filter((v) => /^en/i.test(v.lang));
+      const pool = en.length ? en : voices;
+      ttsVoiceRef.current = pool.find((v) => FEMALE.test(v.name)) || pool[0] || null;
+    };
+    pick();
+    synth.addEventListener?.("voiceschanged", pick);
+    return () => {
+      try { synth.removeEventListener?.("voiceschanged", pick); } catch (e) {}
+    };
+  }, []);
+
   // Browser fallback voice. Used when the server returns no TTS audio — e.g. in
   // production where the GEMINI key/project may not have the preview TTS model
   // enabled (text questions still work, but audioBase64 comes back empty). This
@@ -1171,9 +1194,15 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       }
       synth.cancel();
       const utter = new SpeechSynthesisUtterance(stripMarkdown(text));
-      utter.lang = "en-US";
+      // Prefer the selected female English voice; lang as a fallback hint.
+      if (ttsVoiceRef.current) {
+        utter.voice = ttsVoiceRef.current;
+        utter.lang = ttsVoiceRef.current.lang || "en-US";
+      } else {
+        utter.lang = "en-US";
+      }
       utter.rate = 1;
-      utter.pitch = 1;
+      utter.pitch = 1.05;
       setAiSpeaking(true);
       const finish = () => {
         setAiSpeaking(false);
