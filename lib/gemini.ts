@@ -150,11 +150,11 @@ export async function generateGeminiJson<T = any>(
 // Default is a female Chirp 3 HD voice to match the prior interviewer voice.
 const DEFAULT_TTS_VOICE = "en-US-Chirp3-HD-Leda";
 
-/** Cloud TTS key. Falls back to the (same-project) Firebase web key so enabling
- *  the Cloud Text-to-Speech API is the only step needed. Override with a
- *  dedicated server key via GOOGLE_TTS_API_KEY if the Firebase key is restricted. */
+/** Cloud TTS key. Cloud TTS (Chirp 3 HD) is OPT-IN: only used when an explicit
+ *  GOOGLE_TTS_API_KEY is set (and the Cloud Text-to-Speech API is enabled).
+ *  Otherwise the interviewer voice uses Gemini TTS — the original behaviour. */
 export function getGoogleTtsApiKey(): string {
-  return process.env.GOOGLE_TTS_API_KEY || process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "";
+  return process.env.GOOGLE_TTS_API_KEY || "";
 }
 
 /** Strip the WAV/RIFF header off a LINEAR16 payload, returning base64 of the raw
@@ -204,23 +204,26 @@ export async function generateGoogleCloudTTS(text: string): Promise<string> {
 
 /**
  * Synthesize the interviewer's speech with the best available voice:
- *   1) Google Cloud TTS Chirp 3 HD (preferred — natural female voice),
- *   2) Gemini preview TTS,
+ *   1) Gemini TTS — the default (the original interviewer voice),
+ *   2) Google Cloud TTS Chirp 3 HD — ONLY when GOOGLE_TTS_API_KEY is set (opt-in HD upgrade),
  *   3) "" → the client falls back to the browser voice.
  * Never throws; returns "" if all options fail.
  */
 export async function synthesizeInterviewSpeech(text: string, geminiApiKey: string): Promise<string> {
   if (!text) return "";
-  try {
-    return await generateGoogleCloudTTS(text);
-  } catch {
-    /* Cloud TTS unavailable (API not enabled / key restricted) — try Gemini. */
+  // Opt-in HD voice: only attempt Cloud TTS when an explicit key is configured.
+  if (getGoogleTtsApiKey()) {
+    try {
+      return await generateGoogleCloudTTS(text);
+    } catch {
+      /* Cloud TTS unavailable (API not enabled / key restricted) — try Gemini. */
+    }
   }
   if (geminiApiKey) {
     try {
       return await generateGeminiTTS(geminiApiKey, text);
     } catch {
-      /* fall through to browser voice on the client */
+      /* rate-limited / unavailable — client falls back to the browser voice */
     }
   }
   return "";
