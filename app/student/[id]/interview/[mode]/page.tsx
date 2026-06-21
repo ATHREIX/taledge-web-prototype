@@ -1479,6 +1479,28 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       if (textAreaRef.current) textAreaRef.current.value = currentText;
     };
 
+    // Self-healing context: carry enough to rebuild this session if the server
+    // lost it (serverless without a shared store). `messages` here is the prior
+    // conversation (the current answer is sent separately as `text`).
+    const recovery = {
+      studentId: id,
+      role: profile?.targetRole || (isExam ? "the exam" : "Candidate"),
+      mode,
+      track,
+      resumeSummary: profile ? [
+        profile.resumeSummary,
+        profile.resumeSkills && profile.resumeSkills.length > 0 ? `Skills: ${profile.resumeSkills.join(", ")}` : "",
+        profile.resumeProjects && profile.resumeProjects.length > 0 ? `Projects: ${profile.resumeProjects.map((p: any) => `${p.title} (${p.stack?.join(", ") || ""}): ${p.impact || ""}`).join("; ")}` : "",
+        profile.aspiration ? `Goal/Target Placement: ${profile.aspiration}` : "",
+      ].filter(Boolean).join("\n") : "",
+      dnlaSummary: buildDnlaSummary(id),
+      ...(mode === "final" ? { priorInterviews: buildPriorInterviews(id) } : {}),
+      transcript: messages.map((mm) => ({
+        role: mm.role === "ai" ? "assistant" : "user",
+        content: mm.text,
+      })),
+    };
+
     try {
       const res = await authedFetch("/api/interview/voice", {
         method: "POST",
@@ -1486,6 +1508,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         body: JSON.stringify({
           sessionId,
           text: currentText,
+          recovery,
         }),
       });
       const data = await res.json();

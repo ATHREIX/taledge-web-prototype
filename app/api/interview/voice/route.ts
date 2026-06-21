@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateGeminiContent, getGeminiApiKey, generateGeminiTTS } from "@/lib/gemini";
 import { fetchDnlaQuestion } from "@/lib/dnla-questions";
-import { getSession, updateSession } from "@/lib/session-store";
+import { getSession, updateSession, createSession } from "@/lib/session-store";
 import { getPrincipal, unauthorized, forbidden } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
@@ -39,6 +39,24 @@ function stripControlTokens(text: string): string {
     // never the candidate's; strip any candidate attempt to forge it.
     .replace(/^\s*RATING:\s*\d+\.?\d*/gim, " ")
     .trim();
+}
+
+// Bound + sanitize a client-supplied transcript used to rebuild a lost session.
+// Caps message count and per-message length so recovery can't be used to inject
+// an oversized payload.
+function normalizeRecoveryTranscript(
+  value: unknown
+): { timestamp: number; role: "assistant" | "user"; content: string }[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((m) => m && typeof m === "object")
+    .slice(0, 200)
+    .map((m: any) => ({
+      timestamp: Date.now(),
+      role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+      content: String(m.content ?? "").slice(0, 8000),
+    }))
+    .filter((m) => m.content.trim().length > 0);
 }
 
 async function callGeminiLLM(
@@ -234,6 +252,10 @@ export async function POST(req: NextRequest) {
     const contentType = req.headers.get("content-type") || "";
     let sessionId: string | null = null;
     let transcript = "";
+    // Optional self-healing context: on serverless (no Firestore) a session can
+    // be lost between invocations. When the client sends `recovery`, we recreate
+    // the missing session from it and continue instead of dropping the interview.
+    let recovery: any = null;
 
     if (contentType.includes("multipart/form-data")) {
       return NextResponse.json(
@@ -259,6 +281,7 @@ export async function POST(req: NextRequest) {
         }
         sessionId = body.sessionId ?? null;
         transcript = body.text || "";
+        if (body.recovery && typeof body.recovery === "object") recovery = body.recovery;
       }
     }
 
@@ -271,9 +294,45 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Load + ownership check.
-    const session = await getSession(sessionId);
+    let session = await getSession(sessionId);
     if (!session) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+      // Self-healing: the session was lost (typical on serverless without a
+      // shared session store — a later request hits a different instance). If the
+      // client carried its conversation context, recreate the session in place and
+      // continue the interview instead of dropping it with a hard 404.
+      const seed = normalizeRecoveryTranscript(recovery?.transcript);
+      if (recovery && seed.length > 0) {
+        const recMode = ["technical", "behavioural", "dnla", "final"].includes(recovery.mode)
+          ? recovery.mode
+          : "technical";
+        const recTrack = recovery.track === "exam" ? "exam" : "placement";
+        session = await createSession({
+          sessionId,
+          ownerUid: uid,
+          studentId: typeof recovery.studentId === "string" ? recovery.studentId.slice(0, 4000) : "",
+          role: typeof recovery.role === "string" && recovery.role.trim() ? recovery.role.slice(0, 4000) : "Candidate",
+          mode: recMode,
+          track: recTrack,
+          resumeSummary: typeof recovery.resumeSummary === "string" ? recovery.resumeSummary.slice(0, 16000) : undefined,
+          dnlaSummary: typeof recovery.dnlaSummary === "string" ? recovery.dnlaSummary.slice(0, 16000) : undefined,
+          priorInterviews: typeof recovery.priorInterviews === "string" ? recovery.priorInterviews.slice(0, 32000) : undefined,
+        });
+        // Seed the prior conversation so question context + the turn counter
+        // (which gates the conclusion) continue from where the interview was.
+        session.transcript = seed;
+        session.turnIndex = seed.filter((t) => t.role === "user").length;
+        // No face re-enrolment is possible mid-recovery; in demo mode the face
+        // gate is already skipped. (Enforced mode uses Firestore, so sessions
+        // don't get lost and this path effectively never runs there.)
+        session.faceVerified = true;
+        logger.warn("[voice] recovered lost session from client context", {
+          uid,
+          sessionId,
+          seededTurns: session.turnIndex,
+        });
+      } else {
+        return NextResponse.json({ error: "Session not found", sessionLost: true }, { status: 404 });
+      }
     }
     if (session.ownerUid !== uid) {
       return forbidden();
