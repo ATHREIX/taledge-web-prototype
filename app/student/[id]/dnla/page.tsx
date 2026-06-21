@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { notFound, useParams, usePathname } from "next/navigation";
 import { getStudent, type DnlaScore } from "@/lib/data";
 import {
@@ -149,6 +150,107 @@ export default function DnlaReport() {
   // (/exam for competitive-exam aspirants, /student for placement candidates).
   const flowBase = pathname && pathname.startsWith("/exam") ? "/exam" : "/student";
 
+  // ── Assessment-journey progress ──────────────────────────────────────────
+  // Derived from the artifacts each stage persists to localStorage. Computed in
+  // an effect (client-only) so server render + hydration stay consistent.
+  const [journey, setJourney] = useState({
+    resume: false,
+    ai: false,
+    dnla: false,
+    final: false,
+    reports: false,
+  });
+  useEffect(() => {
+    const hasAnswers = (key: string) => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return false;
+        const msgs = JSON.parse(raw) as { role: string }[];
+        return Array.isArray(msgs) && msgs.some((m) => m.role === "user");
+      } catch {
+        return false;
+      }
+    };
+    let resumeDone = false;
+    try {
+      const stored =
+        localStorage.getItem("taledge:workspace-profile") ||
+        localStorage.getItem("taledge:demo-profile");
+      const p = JSON.parse(stored || "{}");
+      resumeDone = !!(
+        p.resumeSummary ||
+        (Array.isArray(p.resumeSkills) && p.resumeSkills.length) ||
+        (Array.isArray(p.resumeProjects) && p.resumeProjects.length)
+      );
+    } catch {
+      /* no profile yet */
+    }
+    const reportsDone =
+      !!localStorage.getItem(`taledge:report:${id}:ai`) &&
+      !!localStorage.getItem(`taledge:report:${id}:dnla`);
+    setJourney({
+      resume: resumeDone,
+      ai: hasAnswers(`taledge:interview:${id}:technical`),
+      dnla: hasAnswers(`taledge:interview:${id}:dnla`),
+      final: hasAnswers(`taledge:interview:${id}:final`),
+      reports: reportsDone,
+    });
+  }, [id]);
+
+  // The six-stage flow shown as a guided stepper at the top of this page.
+  const stages = [
+    {
+      key: "resume",
+      title: "Resume analysis",
+      desc: "Upload your résumé — it's parsed for skills, projects and target role and used to tailor every later stage.",
+      href: "/onboarding",
+      cta: journey.resume ? "Re-upload résumé" : "Upload résumé",
+      done: journey.resume,
+    },
+    {
+      key: "ai",
+      title: "AI interview",
+      desc: "Adaptive, proctored AI interview grounded in your résumé and target role.",
+      href: `${flowBase}/${id}/interview/technical`,
+      cta: journey.ai ? "Retake AI interview" : "Start AI interview",
+      done: journey.ai,
+    },
+    {
+      key: "dnla",
+      title: "DNLA interview",
+      desc: "Behavioural DNLA interview round (provider questions; same engine as the AI interview for now).",
+      href: `${flowBase}/${id}/interview/dnla`,
+      cta: journey.dnla ? "Retake DNLA interview" : "Start DNLA interview",
+      done: journey.dnla,
+    },
+    {
+      key: "final",
+      title: "Combined final interview",
+      desc: "A final round that combines and builds on both earlier interviews.",
+      href: `${flowBase}/${id}/interview/final`,
+      cta: journey.final ? "Retake final interview" : "Start final interview",
+      done: journey.final,
+    },
+    {
+      key: "reports",
+      title: "Separate interview reports",
+      desc: "A standalone, evidence-grounded report for each interview — AI (skills) and DNLA (behavioural).",
+      href: `${flowBase}/${id}/report/ai`,
+      cta: "View AI interview report",
+      secondary: { href: `${flowBase}/${id}/report/dnla`, label: "DNLA interview report" },
+      done: journey.reports,
+    },
+    {
+      key: "comparison",
+      title: "Comparison report",
+      desc: "Side-by-side diff of both interviews with cross-round consistency checks.",
+      href: `${flowBase}/${id}/comparison`,
+      cta: "View comparison report",
+      done: journey.reports,
+    },
+  ];
+  const activeIndex = stages.findIndex((st) => !st.done);
+
   const dnla = s.dnla ?? [];
   const hasData = dnla.length > 0;
 
@@ -176,9 +278,9 @@ export default function DnlaReport() {
         ]}
       />
       <PageHeader
-        eyebrow="Step 1 · DNLA"
-        title="DNLA behavioural competencies"
-        description={`These behavioural competency scores are administered by the DNLA partner (Germany). The values shown here are sample / dummy data for the pilot and will be replaced by the licensed provider import. ${s.name}'s profile is visualised below to preview the experience.`}
+        eyebrow="Assessment journey"
+        title="Your TalEdge assessment"
+        description={`Six guided stages — résumé analysis, the AI interview, the DNLA interview, a combined final round, a separate report for each interview, and a comparison report. ${s.name}'s DNLA behavioural competency profile is shown below the journey.`}
         actions={
           <div className="flex items-center gap-3">
             <Badge tone="warn">Sample DNLA data · provider import pending</Badge>
@@ -188,6 +290,79 @@ export default function DnlaReport() {
           </div>
         }
       />
+
+      {/* ── Guided assessment stepper ─────────────────────────────────────── */}
+      <section className="mb-8">
+        <div className="grid gap-3">
+          {stages.map((st, i) => {
+            const isActive = i === activeIndex;
+            const state = st.done ? "done" : isActive ? "active" : "upcoming";
+            return (
+              <Card
+                key={st.key}
+                variant="default"
+                className={cn(
+                  "rounded-xl2 p-5 transition-colors",
+                  state === "done" && "border-emerald-200 bg-emerald-50/40",
+                  state === "active" && "border-brand-300 bg-brand-50/40 ring-1 ring-brand-200",
+                  state === "upcoming" && "opacity-90"
+                )}
+              >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-4">
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-bold",
+                        state === "done" && "bg-emerald-500 text-white",
+                        state === "active" && "bg-brand-600 text-white",
+                        state === "upcoming" && "bg-ink-100 text-ink-500"
+                      )}
+                    >
+                      {st.done ? "✓" : i + 1}
+                    </span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Label>{st.title}</Label>
+                        <Badge tone={state === "done" ? "success" : state === "active" ? "brand" : "neutral"}>
+                          {state === "done" ? "Complete" : state === "active" ? "Next up" : "Upcoming"}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 max-w-2xl text-sm text-ink-500">{st.desc}</p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                    {st.secondary && (
+                      <ButtonLink href={st.secondary.href} variant="ghost" size="sm">
+                        {st.secondary.label}
+                      </ButtonLink>
+                    )}
+                    <ButtonLink
+                      href={st.href}
+                      variant={state === "active" ? "primary" : "ghost"}
+                      size="sm"
+                    >
+                      {st.cta}
+                    </ButtonLink>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </section>
+
+      <div className="mb-5 border-t border-ink-200/60 pt-6">
+        <Eyebrow className="text-brand-500">DNLA behavioural competency profile</Eyebrow>
+        <Heading as="h2" className="mt-1 text-lg sm:text-xl">
+          Sample psychometric scores
+        </Heading>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-500">
+          These behavioural competency scores are administered by the DNLA partner
+          (Germany). The values shown are sample / dummy data for the pilot and will
+          be replaced by the licensed provider import.
+        </p>
+      </div>
 
       {!hasData ? (
         <Card variant="flat" className="mb-5">
@@ -371,26 +546,26 @@ export default function DnlaReport() {
         </>
       )}
 
-      {/* CTA: AI interview (DNLA is the first step) */}
+      {/* CTA: jump to the next stage in the assessment journey above. */}
       <Card className="mb-5 border-brand-200/70 bg-brand-50/40">
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <Eyebrow>Next step</Eyebrow>
+            <Eyebrow>Continue your assessment</Eyebrow>
             <Heading as="h2" className="mt-1 text-lg sm:text-xl">
-              AI interview
+              {activeIndex === -1 ? "All stages complete" : stages[activeIndex].title}
             </Heading>
             <p className="mt-2 max-w-xl text-sm leading-6 text-ink-600">
-              With DNLA complete, continue to the AI interview - a proctored
-              technical round, followed by a behavioural round tailored to the DNLA
-              competencies surfaced above for {s.name}.
+              {activeIndex === -1
+                ? `Every stage is done for ${s.name}. Open the comparison report to see both interviews side by side.`
+                : `Pick up where you left off: ${stages[activeIndex].desc}`}
             </p>
           </div>
           <ButtonLink
-            href={`${flowBase}/${id}/interview/technical`}
+            href={activeIndex === -1 ? `${flowBase}/${id}/comparison` : stages[activeIndex].href}
             size="lg"
             className="w-full shrink-0 sm:w-auto"
           >
-            Continue to AI interview
+            {activeIndex === -1 ? "View comparison report" : stages[activeIndex].cta}
           </ButtonLink>
         </CardHeader>
       </Card>

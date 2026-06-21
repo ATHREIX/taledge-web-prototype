@@ -26,6 +26,38 @@ function buildDnlaSummary(studentId: string): string {
     .join("\n");
 }
 
+/**
+ * Condensed transcripts of the earlier rounds (AI interview + DNLA interview),
+ * read from the localStorage transcripts each round persists. Fed to the FINAL
+ * round so its questions build on what already happened. Empty string until the
+ * candidate has completed at least one prior round.
+ */
+function buildPriorInterviews(studentId: string): string {
+  if (typeof window === "undefined") return "";
+  const rounds = [
+    { label: "AI interview (technical)", key: `taledge:interview:${studentId}:technical` },
+    { label: "DNLA behavioural interview", key: `taledge:interview:${studentId}:dnla` },
+  ];
+  const parts: string[] = [];
+  for (const r of rounds) {
+    try {
+      const raw = localStorage.getItem(r.key);
+      if (!raw) continue;
+      const msgs = JSON.parse(raw) as { role: string; content: string }[];
+      if (!Array.isArray(msgs) || msgs.length === 0) continue;
+      const condensed = msgs
+        .map((mm) => `${mm.role === "assistant" ? "Interviewer" : "Candidate"}: ${mm.content}`)
+        .join("\n");
+      parts.push(`### ${r.label}\n${condensed}`);
+    } catch {
+      /* skip an unreadable/corrupt transcript */
+    }
+  }
+  const joined = parts.join("\n\n");
+  // Keep the payload bounded (the server also caps priorInterviews length).
+  return joined.length > 24000 ? joined.slice(-24000) : joined;
+}
+
 type CandidateProfile = {
   fullName: string;
   email?: string;
@@ -93,10 +125,11 @@ type ProctoringStatus = {
 
 export default function InterviewPage({ params }: { params: Promise<{ id: string; mode: string }> }) {
   const { id, mode } = use(params);
-  // Validate the [mode] route param: only "technical" and "behavioural" are
-  // real interview stages. Anything else (e.g. /interview/foo) must 404 rather
-  // than silently masquerade as a behavioural interview.
-  if (mode !== "technical" && mode !== "behavioural") {
+  // Validate the [mode] route param. The flow runs:
+  //   technical (AI interview) → dnla (DNLA behavioural interview) →
+  //   final (combined round) → fit-score. "behavioural" remains a valid
+  //   standalone AI round. Anything else must 404.
+  if (mode !== "technical" && mode !== "behavioural" && mode !== "dnla" && mode !== "final") {
     notFound();
   }
   const router = useRouter();
@@ -108,6 +141,26 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const isExam = !!pathname && pathname.startsWith("/exam");
   const track: "placement" | "exam" = isExam ? "exam" : "placement";
   const flowBase = isExam ? "/exam" : "/student";
+
+  // Human-readable label for the current round (used in headers / dialogs).
+  const MODE_LABEL: Record<string, string> = {
+    technical: "Technical",
+    behavioural: "Behavioural",
+    dnla: "DNLA Behavioural",
+    final: "Final Combined",
+  };
+  const modeLabel = MODE_LABEL[mode] ?? "Assessment";
+
+  // Flow chaining: where this round hands off after it concludes.
+  //   technical → dnla → final → fit-score. (behavioural stays a standalone
+  //   round that goes straight to the report.)
+  const NEXT_STEP: Record<string, { href: string; label: string }> = {
+    technical: { href: `${flowBase}/${id}/interview/dnla`, label: "Continue to DNLA interview" },
+    dnla: { href: `${flowBase}/${id}/interview/final`, label: "Continue to final interview" },
+    final: { href: `${flowBase}/${id}/comparison`, label: "View comparison report" },
+    behavioural: { href: `${flowBase}/${id}/fit-score`, label: "View Results & Report" },
+  };
+  const nextStep = NEXT_STEP[mode] ?? { href: `${flowBase}/${id}/fit-score`, label: "View Results & Report" };
 
   const [sessionId, setSessionId] = useState("");
   const [messages, setMessages] = useState<{ role: string; text: string }[]>([]);
@@ -235,10 +288,14 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
          candidateName: localProfile?.fullName || "Candidate",
          role: localProfile?.targetRole || (isExam ? "the exam" : "Candidate"),
          mode,
-         stage: mode === "technical" ? 1 : 2,
+         // stage is the legacy shorthand for the AI interview rounds only;
+         // dnla/final are selected via `mode`.
+         ...(mode === "technical" || mode === "behavioural" ? { stage: mode === "technical" ? 1 : 2 } : {}),
          track,
          resumeSummary: resumeContext,
-         dnlaSummary: buildDnlaSummary(id)
+         dnlaSummary: buildDnlaSummary(id),
+         // The final round builds on the earlier AI + DNLA transcripts.
+         ...(mode === "final" ? { priorInterviews: buildPriorInterviews(id) } : {})
       }),
     }).then(r => r.json()).then(data => {
       if (data.ok) {
@@ -1087,10 +1144,10 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   useEffect(() => {
     if (!done) return;
     const t = setTimeout(() => {
-      router.push(`${flowBase}/${id}/fit-score`);
+      router.push(nextStep.href);
     }, 3500);
     return () => clearTimeout(t);
-  }, [done, router, id]);
+  }, [done, router, id, nextStep.href]);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1225,10 +1282,14 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           candidateName: profile?.fullName || "Candidate",
           role: profile?.targetRole || (isExam ? "the exam" : "Candidate"),
           mode,
-          stage: mode === "technical" ? 1 : 2,
+          // stage is the legacy shorthand for the AI interview rounds only;
+          // dnla/final are selected via `mode`.
+          ...(mode === "technical" || mode === "behavioural" ? { stage: mode === "technical" ? 1 : 2 } : {}),
           track,
           resumeSummary: resumeContext,
-          dnlaSummary: buildDnlaSummary(id)
+          dnlaSummary: buildDnlaSummary(id),
+          // The final round builds on the earlier AI + DNLA transcripts.
+          ...(mode === "final" ? { priorInterviews: buildPriorInterviews(id) } : {})
         }),
       });
       const data = await res.json();
@@ -1365,12 +1426,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     } catch(e) {}
   };
 
-  // FLOW: DNLA (psychometrics, first) -> AI interview -> Fit Score report.
-  // The AI interview is the single conversational stage; after it concludes we
-  // go straight to the Fit Score report (the behavioural/psychometric signal
-  // comes from DNLA, which runs BEFORE the interview - not a second interview).
-  const nextStep = { href: `${flowBase}/${id}/fit-score`, label: "View Results & Report" };
-
+  // FLOW: AI interview (technical) -> DNLA interview -> Final combined round ->
+  // Fit Score report. `nextStep` (computed near the top from `mode`) is where the
+  // current round hands off once it concludes.
   const goToNextStep = () => router.push(nextStep.href);
 
   // Allow Escape to dismiss the active proctoring dialog (setup / warning).
@@ -1584,7 +1642,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
               </div>
               <Heading as="h2" id="resume-dialog-title" className="text-2xl">Upload your résumé first</Heading>
               <p className="mt-2 text-sm text-ink-500">
-                Your {isTech ? "technical" : "behavioural"} interview is tailored to your résumé — your skills, projects and target role. Upload it now for the most relevant questions.
+                Your {modeLabel} interview is tailored to your résumé — your skills, projects and target role. Upload it now for the most relevant questions.
               </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
                 <a href="/onboarding" className="btn-primary rounded-full">
@@ -1612,7 +1670,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             <div aria-hidden className="w-12 h-12 bg-gradient-to-br from-brand-600 to-accent-500 rounded-xl2 flex items-center justify-center shadow-panel mb-4">
               <ShieldAlert className="w-6 h-6 text-white" />
             </div>
-            <Eyebrow className="mb-1">{isTech ? "Technical" : "Behavioural"} Assessment</Eyebrow>
+            <Eyebrow className="mb-1">{modeLabel} Assessment</Eyebrow>
             <Heading as="h2" id="rules-dialog-title" className="text-xl text-ink-900 mb-1">Proctored Assessment</Heading>
             <p id="rules-dialog-desc" className="text-ink-500 mb-4 text-xs font-semibold">This is a strictly monitored AI interview. Read the rules carefully.</p>
 
@@ -1864,7 +1922,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
               </div>
               <div>
                 <h1 className="font-bold text-ink-900 text-sm leading-tight">TalEdge AI</h1>
-                <p className="text-[10px] font-medium text-ink-500">{isTech ? "Technical" : "Behavioural"} Assessment</p>
+                <p className="text-[10px] font-medium text-ink-500">{modeLabel} Assessment</p>
               </div>
             </div>
 
@@ -2062,9 +2120,15 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             <div className="p-4 md:p-5 bg-white/70 backdrop-blur-xl border-t border-ink-200/60 z-10">
               {done ? (
                 <div className="bg-emerald-50 rounded-xl2 p-6 border border-emerald-100 text-center">
-                  <h3 className="text-lg font-bold text-emerald-800 mb-2">Interview Completed</h3>
+                  <h3 className="text-lg font-bold text-emerald-800 mb-2">
+                    {mode === "final" || mode === "behavioural" ? "Assessment Completed" : `${modeLabel} Round Completed`}
+                  </h3>
                   <p className="text-ink-500 text-sm mb-4">
-                    Your responses have been analyzed. Generating your Fit Score report…
+                    {mode === "final"
+                      ? "Both interviews are complete. Building your comparison report…"
+                      : mode === "behavioural"
+                      ? "Your responses have been analyzed. Generating your Fit Score report…"
+                      : "This round is complete. Continue to the next round of your assessment."}
                   </p>
                   <button type="button" onClick={goToNextStep} className="px-8 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-500 shadow-panel transition-all inline-flex items-center justify-center gap-2">
                     {nextStep.label} <ArrowRight className="w-4 h-4" />

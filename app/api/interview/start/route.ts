@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSession, updateSession } from "@/lib/session-store";
 import { generateGeminiTTS, getGeminiApiKey, generateGeminiContent } from "@/lib/gemini";
+import { fetchDnlaQuestion } from "@/lib/dnla-questions";
 import { getPrincipal, unauthorized } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
@@ -9,20 +10,24 @@ import { isProd } from "@/lib/flags";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
+type InterviewMode = "technical" | "behavioural" | "dnla" | "final";
+
 type Body = {
   studentId: string;
   candidateName?: string;
   role: string;
-  mode?: "technical" | "behavioural";
+  mode?: InterviewMode;
   stage?: 1 | 2;
   track?: "placement" | "exam";
   resumeSummary?: string;
   dnlaSummary?: string;
+  /** Condensed AI + DNLA transcripts — only used by the "final" round. */
+  priorInterviews?: string;
 };
 
 const MAX_STR = 4000;
 
-async function generateFirstQuestion(apiKey: string, mode: Body["mode"], role: string, resumeSummary?: string, candidateName?: string, dnlaSummary?: string, track: "placement" | "exam" = "placement"): Promise<string> {
+async function generateFirstQuestion(apiKey: string, mode: Body["mode"], role: string, resumeSummary?: string, candidateName?: string, dnlaSummary?: string, track: "placement" | "exam" = "placement", opts?: { sessionId: string; studentId: string; priorInterviews?: string }): Promise<string> {
   const nameToUse = candidateName && candidateName !== "Candidate" ? candidateName : "the candidate";
   // The opening question stays a warm icebreaker, but for the behavioural round
   // we privately note the candidate's DNLA development areas so the interviewer
@@ -30,6 +35,53 @@ async function generateFirstQuestion(apiKey: string, mode: Body["mode"], role: s
   const dnlaNote = dnlaSummary
     ? `\nPrivate context (do NOT mention DNLA or scores aloud): this candidate's psychometric development areas to probe LATER in the interview are:\n${dnlaSummary}`
     : "";
+
+  // DNLA interview round. The opening question comes from the licensed DNLA
+  // provider API when configured (DNLA_QUESTION_API_URL); until then it falls
+  // back to the SAME Gemini generation as the AI interview, using the DNLA
+  // (psychometric/behavioural) framing. See lib/dnla-questions.ts.
+  if (mode === "dnla") {
+    if (opts) {
+      const provider = await fetchDnlaQuestion({
+        sessionId: opts.sessionId,
+        studentId: opts.studentId,
+        turnIndex: 1,
+        dnlaSummary,
+      });
+      if (provider?.question) return provider.question;
+    }
+    const dnlaPrompt = `You are a warm behavioural assessor running a DNLA-style competency interview (Achievement Dynamics, Interpersonal Skills, Execution, Stress & Resilience). The candidate's name is ${nameToUse}${track === "exam" ? `, an aspirant for the ${role} exam` : role && role !== "Candidate" ? `, applying for the ${role} role` : ""}.
+Generate a simple, welcoming opening question. Greet them by name (Hello ${nameToUse}), tell them this is a short behavioural round, and ask them to briefly describe a recent situation where they had to stay motivated or organised under pressure. Keep it to 2 sentences. Ask EXACTLY ONE short question.${dnlaNote}`;
+    if (apiKey) {
+      try {
+        const result = await generateGeminiContent(apiKey, dnlaPrompt, { maxOutputTokens: 150, temperature: 0.7 });
+        if (result.text) return result.text.trim();
+      } catch (e) {
+        logger.error("interview-start: dnla opener LLM failed, falling back", { err: String(e) });
+      }
+    }
+    return `Hello ${nameToUse}! Welcome to your DNLA behavioural round. To start, tell me about a recent situation where you had to stay motivated and organised under real pressure.`;
+  }
+
+  // Final round — combines the AI interview and the DNLA interview into one
+  // concluding conversation. The condensed prior transcripts are injected so the
+  // interviewer can probe gaps and contradictions across both earlier rounds.
+  if (mode === "final") {
+    const priorNote = opts?.priorInterviews
+      ? `\nPrivate context — summaries of this candidate's EARLIER rounds (AI interview + DNLA behavioural interview). Use them to choose what to probe in this final round; do NOT read them aloud:\n${opts.priorInterviews}`
+      : "";
+    const finalPrompt = `You are a senior panel interviewer running the FINAL round${track === "exam" ? ` of a ${role} readiness assessment` : role && role !== "Candidate" ? ` for the ${role} role` : ""}. The candidate's name is ${nameToUse}. This round combines and builds on their earlier AI interview and DNLA behavioural interview.
+Generate a warm opening question. Greet them by name (Hello ${nameToUse}), tell them this is the final combined round that brings together their technical and behavioural rounds, and ask one broad opening question inviting them to reflect on how they performed so far and what they would most like to demonstrate now. Keep it to 2 sentences. Ask EXACTLY ONE short question.${priorNote}${dnlaNote}`;
+    if (apiKey) {
+      try {
+        const result = await generateGeminiContent(apiKey, finalPrompt, { maxOutputTokens: 180, temperature: 0.7 });
+        if (result.text) return result.text.trim();
+      } catch (e) {
+        logger.error("interview-start: final opener LLM failed, falling back", { err: String(e) });
+      }
+    }
+    return `Hello ${nameToUse}! Welcome to your final combined round, bringing together your AI interview and DNLA behavioural interview. To begin, how do you feel your earlier rounds went, and what would you most like to show me now?`;
+  }
 
   // Exam track: the "role" is the competitive exam (UPSC, GATE, CAT, ...). The
   // opener welcomes the aspirant to a readiness assessment for that exam.
@@ -100,8 +152,11 @@ export async function POST(req: NextRequest) {
   if (body.dnlaSummary !== undefined && (typeof body.dnlaSummary !== "string" || body.dnlaSummary.length > MAX_STR * 4)) {
     return NextResponse.json({ error: "dnlaSummary must be a string" }, { status: 400 });
   }
-  if (body.mode !== undefined && !["technical", "behavioural"].includes(body.mode)) {
-    return NextResponse.json({ error: "mode must be 'technical' or 'behavioural'" }, { status: 400 });
+  if (body.priorInterviews !== undefined && (typeof body.priorInterviews !== "string" || body.priorInterviews.length > MAX_STR * 8)) {
+    return NextResponse.json({ error: "priorInterviews must be a string" }, { status: 400 });
+  }
+  if (body.mode !== undefined && !["technical", "behavioural", "dnla", "final"].includes(body.mode)) {
+    return NextResponse.json({ error: "mode must be 'technical', 'behavioural', 'dnla', or 'final'" }, { status: 400 });
   }
   if (body.track !== undefined && !["placement", "exam"].includes(body.track)) {
     return NextResponse.json({ error: "track must be 'placement' or 'exam'" }, { status: 400 });
@@ -111,11 +166,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "stage must be 1 or 2" }, { status: 400 });
   }
 
-  const resolvedMode = body.stage === 1 ? "technical" : body.stage === 2 ? "behavioural" : body.mode;
+  // stage 1/2 are legacy shorthands for the AI interview rounds; dnla/final are
+  // selected directly via `mode`.
+  const resolvedMode: InterviewMode | undefined =
+    body.stage === 1 ? "technical" : body.stage === 2 ? "behavioural" : body.mode;
 
-  if (!resolvedMode || !["technical", "behavioural"].includes(resolvedMode)) {
+  if (!resolvedMode || !["technical", "behavioural", "dnla", "final"].includes(resolvedMode)) {
     return NextResponse.json(
-      { error: "mode must be 'technical' or 'behavioural', or stage must be 1 or 2" },
+      { error: "mode must be 'technical', 'behavioural', 'dnla', or 'final', or stage must be 1 or 2" },
       { status: 400 }
     );
   }
@@ -134,6 +192,7 @@ export async function POST(req: NextRequest) {
       track,
       resumeSummary: body.resumeSummary,
       dnlaSummary: body.dnlaSummary,
+      priorInterviews: body.priorInterviews,
     });
   } catch (e) {
     logger.error("interview-start: createSession failed", { err: String(e), uid });
@@ -144,7 +203,16 @@ export async function POST(req: NextRequest) {
   }
 
   const apiKey = getGeminiApiKey();
-  const question = await generateFirstQuestion(apiKey || "", resolvedMode, body.role, body.resumeSummary, body.candidateName, body.dnlaSummary, track);
+  const question = await generateFirstQuestion(
+    apiKey || "",
+    resolvedMode,
+    body.role,
+    body.resumeSummary,
+    body.candidateName,
+    body.dnlaSummary,
+    track,
+    { sessionId: session.sessionId, studentId: body.studentId, priorInterviews: body.priorInterviews }
+  );
 
   let audioBase64 = "";
   try {

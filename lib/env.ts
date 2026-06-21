@@ -12,6 +12,12 @@ const schema = z.object({
   GEMINI_API_KEY: z.string().min(1).optional(),
   GEMINI_TEXT_MODEL: z.string().default("gemini-2.5-flash"),
   GEMINI_LIVE_MODEL: z.string().default("gemini-2.5-flash-native-audio-preview-12-2025"),
+  // DNLA interview question API (licensed German provider). PLACEHOLDER for now —
+  // until this is set, the DNLA interview reuses the same Gemini question
+  // generation as the AI interview. See lib/dnla-questions.ts. TODO: swap to the
+  // real DNLA endpoint when the provider ships it.
+  DNLA_QUESTION_API_URL: z.string().optional(),
+  DNLA_QUESTION_API_KEY: z.string().optional(),
   AUTH_ENFORCED: z.enum(["true", "false"]).optional(),
   FIREBASE_SERVICE_ACCOUNT: z.string().optional(),
 });

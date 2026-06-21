@@ -27,13 +27,20 @@ export interface SessionState {
   ownerUid: string;
   studentId: string;
   role: string;
-  mode: "technical" | "behavioural";
+  /** Interview stage:
+   *  - "technical"/"behavioural" = the AI interview rounds
+   *  - "dnla"  = DNLA behavioural interview (provider questions, Gemini fallback)
+   *  - "final" = final round that combines the AI + DNLA interviews */
+  mode: "technical" | "behavioural" | "dnla" | "final";
   /** Which product track this interview belongs to. Drives interviewer persona:
    * "placement" = job/role interview, "exam" = competitive-exam readiness. */
   track?: "placement" | "exam";
   resumeSummary?: string;
   /** Compact DNLA report (competency scores vs benchmark) used to tailor questions. */
   dnlaSummary?: string;
+  /** Condensed transcripts of the earlier rounds (AI + DNLA), passed to the
+   * "final" interview so its questions build on what already happened. */
+  priorInterviews?: string;
   transcript: TranscriptEntry[];
   turnIndex: number;
   isDone: boolean;
@@ -88,10 +95,11 @@ export async function createSession(params: {
   ownerUid: string;
   studentId: string;
   role: string;
-  mode: "technical" | "behavioural";
+  mode: "technical" | "behavioural" | "dnla" | "final";
   track?: "placement" | "exam";
   resumeSummary?: string;
   dnlaSummary?: string;
+  priorInterviews?: string;
 }): Promise<SessionState> {
   const now = Date.now();
   const session: SessionState = {
@@ -103,6 +111,7 @@ export async function createSession(params: {
     track: params.track || "placement",
     resumeSummary: params.resumeSummary,
     dnlaSummary: params.dnlaSummary,
+    priorInterviews: params.priorInterviews,
     transcript: [],
     turnIndex: 0,
     isDone: false,
