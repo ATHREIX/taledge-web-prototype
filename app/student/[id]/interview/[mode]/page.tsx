@@ -3,12 +3,13 @@
 import { use, useEffect, useRef, useState, useCallback } from "react";
 import { useRouter, notFound, usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, MicOff, Send, Camera, AlertTriangle, ShieldAlert, FileText, Loader2, Eye, Smartphone, Users, MonitorOff, Clipboard, Brain, Check, X, ArrowRight } from "lucide-react";
-import Editor from "@monaco-editor/react";
+import { Mic, MicOff, Send, Camera, AlertTriangle, ShieldAlert, FileText, Loader2, Eye, Smartphone, Users, MonitorOff, Clipboard, Brain, Check, X, ArrowRight, Clock, RefreshCw } from "lucide-react";
 import { Card, Button, Badge, Eyebrow, Heading } from "@/components/ui";
 import { authedFetch } from "@/lib/api-client";
 import { getStudent } from "@/lib/data";
 import { useGeminiLive } from "@/hooks/useGeminiLive";
+import { CodeRunner, type RunResult, type TestSummary } from "@/components/code/code-runner";
+import { DEFAULT_LANGUAGE_ID, getCodeLanguage } from "@/lib/code-languages";
 
 /**
  * Compact DNLA report for the interviewer prompt: each competency's score vs
@@ -193,6 +194,21 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const [webcamEnabled, setWebcamEnabled] = useState(false);
   const webcamEnabledRef = useRef(false);
   const [isCodingMode, setIsCodingMode] = useState(false);
+  // In-interview code compiler state: selected language + the latest run result,
+  // which is appended to the submitted answer so the AI evaluates the code.
+  const [codeLanguage, setCodeLanguage] = useState(DEFAULT_LANGUAGE_ID);
+  const [codeResult, setCodeResult] = useState<RunResult | null>(null);
+  const [codeTestSummary, setCodeTestSummary] = useState<TestSummary | null>(null);
+  // Timed coding challenge: a self-contained problem with a human-appropriate
+  // time budget, started when the candidate opens the Code tab.
+  const [codingChallenge, setCodingChallenge] = useState<{ title: string; prompt: string; minutes: number } | null>(null);
+  const [challengeLoading, setChallengeLoading] = useState(false);
+  const [challengeError, setChallengeError] = useState<string | null>(null);
+  const [challengeRemaining, setChallengeRemaining] = useState<number | null>(null); // seconds
+  // True for the duration of a dedicated, time-boxed coding interview block —
+  // during which the normal Q&A is paused until submit / cancel / timeout.
+  const [codeInterviewActive, setCodeInterviewActive] = useState(false);
+  const challengeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [setupStep, setSetupStep] = useState<"resume" | "rules" | "verify" | "interview">("rules");
@@ -1537,17 +1553,231 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     setDone(true);
   };
 
-  // Send a typed answer during a live interview (in addition to speaking).
+  // The interviewer's most recent question (drives the code compiler's hidden
+  // test-case generation when it's a coding task).
+  const lastAiQuestion = (() => {
+    const arr = messages ?? [];
+    for (let i = arr.length - 1; i >= 0; i--) if (arr[i].role === "ai") return arr[i].text;
+    return "";
+  })();
+
+  // Format a coding answer (language + source + execution output + hidden test
+  // results) so the AI interviewer/report can evaluate the code, not just read it.
+  const buildCodeAnswer = (): string => {
+    const meta = getCodeLanguage(codeLanguage);
+    const source = (draftRef.current || draft).trim();
+    let out = "";
+    if (codingChallenge) {
+      out += `[Coding challenge · ${codingChallenge.title} · ${codingChallenge.minutes} min budget]\n${codingChallenge.prompt}\n\n`;
+    }
+    out += `[Coding answer · ${meta.label}]\n\n\`\`\`${meta.monaco}\n${source}\n\`\`\``;
+    if (codeTestSummary) {
+      out += `\n\nHidden test cases: ${codeTestSummary.passed}/${codeTestSummary.total} passed.`;
+    }
+    if (codeResult) {
+      const parts = [
+        codeResult.compileError ? `Compile error:\n${codeResult.compileError}` : "",
+        codeResult.stdout ? `stdout:\n${codeResult.stdout}` : "",
+        codeResult.stderr ? `stderr:\n${codeResult.stderr}` : "",
+      ].filter(Boolean);
+      out += `\n\nExecution result (exit ${codeResult.exitCode ?? "—"}):\n${parts.join("\n") || "(no output)"}`;
+    } else if (!codeTestSummary) {
+      out += `\n\n(Candidate did not run the code.)`;
+    }
+    return out;
+  };
+
+  // Send a typed/coded answer during a live interview (in addition to speaking).
   const handleSendLiveText = () => {
-    const text = draft.trim();
-    if (!text) return;
+    const text = isCodingMode ? buildCodeAnswer() : draft.trim();
+    if (isCodingMode ? !(draftRef.current || draft).trim() : !draft.trim()) return;
     const ok = live.sendText(text);
     if (ok) {
       setDraft("");
       draftRef.current = "";
+      setCodeResult(null);
+      setCodeTestSummary(null);
       if (textAreaRef.current) textAreaRef.current.value = "";
+      // Coding answer submitted → end the coding block, resume normal interview.
+      if (isCodingMode && codeInterviewActive) exitCodeInterview(true);
+      else stopChallengeTimer();
     }
   };
+
+  // Submit the current coding answer through whichever path is active.
+  const submitCodeAnswer = () => {
+    if (liveActive) handleSendLiveText();
+    else handleSendText();
+  };
+
+  const stopChallengeTimer = () => {
+    if (challengeTimerRef.current) { clearInterval(challengeTimerRef.current); challengeTimerRef.current = null; }
+  };
+
+  // Start (or restart) the countdown for the active coding challenge. When it
+  // hits zero, auto-submit whatever the candidate has (the time budget reflects
+  // what a human would realistically need) and return to the normal interview.
+  const startChallengeTimer = (minutes: number) => {
+    if (challengeTimerRef.current) clearInterval(challengeTimerRef.current);
+    const deadline = Date.now() + minutes * 60 * 1000;
+    setChallengeRemaining(minutes * 60);
+    challengeTimerRef.current = setInterval(() => {
+      const remain = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+      setChallengeRemaining(remain);
+      if (remain <= 0) {
+        stopChallengeTimer();
+        // Time's up → submit code if any (which ends the block), else end the
+        // coding block and resume the normal interview.
+        if ((draftRef.current || draft).trim()) submitCodeAnswer();
+        else exitCodeInterview(false);
+      }
+    }, 1000);
+  };
+
+  // Fetch a fresh timed coding problem tailored to the role, and start its timer.
+  const fetchCodingChallenge = async () => {
+    if (challengeLoading) return;
+    setChallengeLoading(true);
+    setChallengeError(null);
+    try {
+      const res = await authedFetch("/api/code/question", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: profile?.targetRole || (isExam ? "the exam" : "Software Engineer"),
+          track,
+          avoid: codingChallenge?.title ? [codingChallenge.title] : [],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        setChallengeError(data?.error || "Couldn't load a coding problem. Try again.");
+        return;
+      }
+      setCodingChallenge({ title: data.title, prompt: data.prompt, minutes: data.minutes });
+      // Fresh problem → reset the editor and prior results.
+      setDraft("");
+      draftRef.current = "";
+      setCodeResult(null);
+      setCodeTestSummary(null);
+      startChallengeTimer(data.minutes);
+    } catch {
+      setChallengeError("Couldn't reach the problem service. Check your connection.");
+    } finally {
+      setChallengeLoading(false);
+    }
+  };
+
+  // Start the dedicated, time-boxed AI Code Interview: open the Code tab, pull a
+  // problem, start the timer, and ask the live interviewer to pause its questions.
+  const enterCodingMode = () => {
+    if (codeInterviewActive) { setIsCodingMode(true); return; }
+    setIsCodingMode(true);
+    setCodeInterviewActive(true);
+    if (!codingChallenge && !challengeLoading) fetchCodingChallenge();
+    if (liveActive) {
+      try {
+        live.sendText("I'm starting the coding challenge now. Please pause the interview questions and wait quietly until I submit my solution.");
+        live.setMicMuted(true); // fully pause the interviewer while the candidate codes
+      } catch {}
+    }
+  };
+
+  // End the coding block and return to the normal interview. `submitted` = the
+  // candidate sent their code (the answer is already on its way); otherwise they
+  // cancelled or ran out of time without submitting.
+  const exitCodeInterview = (submitted: boolean) => {
+    stopChallengeTimer();
+    setChallengeRemaining(null);
+    setCodeInterviewActive(false);
+    setIsCodingMode(false);
+    setCodingChallenge(null);
+    setCodeResult(null);
+    setCodeTestSummary(null);
+    if (liveActive) { try { live.setMicMuted(false); } catch {} } // re-open the mic
+    if (!submitted) {
+      setDraft("");
+      draftRef.current = "";
+      if (liveActive) {
+        try { live.sendText("Let's skip the coding challenge and continue with the interview."); } catch {}
+      }
+    }
+  };
+
+  const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
+  // Challenge header shown above the compiler: guideline + problem + countdown.
+  const renderCodingChallenge = () => (
+    <div className="rounded-xl border border-brand-200/70 bg-brand-50/60 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-brand-700">
+          <FileText aria-hidden className="w-3.5 h-3.5" /> AI Code Interview
+        </span>
+        <div className="flex items-center gap-2">
+          {challengeRemaining != null && (
+            <span
+              className={`inline-flex items-center gap-1 text-xs font-bold tabular-nums px-2 py-0.5 rounded-md border ${
+                challengeRemaining <= 60 ? "bg-rose-100 text-rose-700 border-rose-200 animate-pulse" : "bg-white text-ink-700 border-ink-200"
+              }`}
+              role="timer"
+              aria-live="off"
+            >
+              <Clock aria-hidden className="w-3 h-3" /> {fmtTime(challengeRemaining)}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={fetchCodingChallenge}
+            disabled={challengeLoading}
+            title="Get a new problem"
+            className="inline-flex items-center gap-1 text-[10px] font-bold text-brand-600 hover:text-brand-700 disabled:opacity-50"
+          >
+            {challengeLoading ? <Loader2 aria-hidden className="w-3 h-3 animate-spin" /> : <RefreshCw aria-hidden className="w-3 h-3" />} New
+          </button>
+          <button
+            type="button"
+            onClick={() => exitCodeInterview(false)}
+            title="Cancel the coding interview and continue normally"
+            className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-600 hover:text-rose-700"
+          >
+            <X aria-hidden className="w-3 h-3" /> Cancel
+          </button>
+        </div>
+      </div>
+
+      {/* Guideline — shown once the code interview is active. */}
+      <div className="flex items-start gap-1.5 rounded-lg bg-white/70 border border-brand-100 px-2.5 py-2 text-[11px] text-ink-600 leading-relaxed">
+        <Brain aria-hidden className="w-3.5 h-3.5 text-brand-500 mt-0.5 shrink-0" />
+        <span>
+          Your <strong>AI code interview has started</strong> — the regular questions are paused. Solve the problem below, run it,
+          and <strong>Submit code</strong> before the timer ends. Prefer not to code? Tap <strong>Cancel</strong> to continue the normal interview.
+        </span>
+      </div>
+
+      {challengeLoading && !codingChallenge ? (
+        <p className="text-xs text-ink-500">Generating a coding problem tailored to your role…</p>
+      ) : challengeError ? (
+        <p className="text-xs text-rose-600">{challengeError}</p>
+      ) : codingChallenge ? (
+        <>
+          <p className="text-sm font-bold text-ink-800">{codingChallenge.title}</p>
+          <div className="text-xs text-ink-600 whitespace-pre-wrap max-h-32 overflow-auto leading-relaxed pr-1">{codingChallenge.prompt}</div>
+          <p className="text-[10px] text-ink-400">
+            Suggested time {codingChallenge.minutes} min — the timer auto-submits your code, then the interview resumes.
+          </p>
+        </>
+      ) : null}
+    </div>
+  );
+
+  // Stop the challenge timer when the round ends / unmounts.
+  useEffect(() => {
+    if (done && challengeTimerRef.current) {
+      clearInterval(challengeTimerRef.current);
+      challengeTimerRef.current = null;
+    }
+  }, [done]);
+  useEffect(() => () => { if (challengeTimerRef.current) clearInterval(challengeTimerRef.current); }, []);
 
   // Tear down the Live session when the assessment is blocked.
   useEffect(() => {
@@ -1589,19 +1819,33 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
 
   async function handleSendText() {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    const currentText = textAreaRef.current ? textAreaRef.current.value.trim() : (draft + interimDraft).trim();
-    if (!currentText || !sessionId || isProcessing) return;
-    
+    // In coding mode the answer is the formatted code + execution output; the raw
+    // source (for restore-on-failure) lives in draft.
+    const rawCode = (draftRef.current || draft).trim();
+    const currentText = isCodingMode
+      ? buildCodeAnswer()
+      : (textAreaRef.current ? textAreaRef.current.value.trim() : (draft + interimDraft).trim());
+    const hasContent = isCodingMode ? !!rawCode : !!currentText;
+    if (!hasContent || !sessionId || isProcessing) return;
+    const wasCodeSubmit = isCodingMode && codeInterviewActive;
+
     if (recognitionRef.current) {
       recognitionRef.current.shouldListen = false;
       try { recognitionRef.current.stop(); } catch (e) {}
     }
+
+    // What to put back in the editor on failure: the raw source in coding mode,
+    // otherwise the plain answer text.
+    const draftToRestore = isCodingMode ? rawCode : currentText;
 
     setSendError(null);
     setMessages(prev => [...prev, { role: "user", text: currentText }]);
     setDraft("");
     draftRef.current = "";
     setInterimDraft("");
+    setCodeResult(null);
+    setCodeTestSummary(null);
+    stopChallengeTimer();
     if (textAreaRef.current) textAreaRef.current.value = "";
     setIsProcessing(true);
 
@@ -1615,9 +1859,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         }
         return prev;
       });
-      draftRef.current = currentText;
-      setDraft(currentText);
-      if (textAreaRef.current) textAreaRef.current.value = currentText;
+      draftRef.current = draftToRestore;
+      setDraft(draftToRestore);
+      if (textAreaRef.current) textAreaRef.current.value = draftToRestore;
     };
 
     // Self-healing context: carry enough to rebuild this session if the server
@@ -1654,6 +1898,8 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       });
       const data = await res.json();
       if (data.ok) {
+        // Coding answer accepted → end the coding block, resume normal interview.
+        if (wasCodeSubmit) exitCodeInterview(true);
         if (data.isDone) {
           try {
             localStorage.removeItem(`taledge:fit-score:${id}`);
@@ -2244,7 +2490,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 ))}
                 {/* Live caption: the interviewer's words as it speaks. */}
                 {liveActive && live.partialAi && (
-                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-start">
+                  <motion.div key="partial-ai" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-start">
                     <div className="max-w-[85%] rounded-xl2 px-5 py-3.5 text-[14px] leading-relaxed bg-brand-50/80 backdrop-blur-md text-ink-800 border border-brand-200/80 rounded-bl-sm shadow-sm">
                       <div className="text-[9px] font-bold uppercase tracking-wider text-brand-600 mb-1.5 flex items-center gap-1.5">
                         <Brain aria-hidden className="w-3 h-3" /> AI Interviewer
@@ -2261,14 +2507,14 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 )}
                 {/* Live caption: the candidate's own words as they answer. */}
                 {liveActive && live.partialUser && (
-                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-end">
+                  <motion.div key="partial-user" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-end">
                     <div className="max-w-[85%] rounded-xl2 px-5 py-3.5 text-[14px] leading-relaxed italic bg-gradient-to-br from-brand-600/70 to-brand-700/70 text-white rounded-br-sm border border-brand-400/30 shadow-md">
                       {live.partialUser}
                     </div>
                   </motion.div>
                 )}
                 {isProcessing && (
-                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
+                  <motion.div key="processing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
                     <div className="bg-white/80 backdrop-blur-md text-ink-500 border border-ink-200/80 rounded-xl2 px-5 py-3.5 rounded-bl-sm flex items-center gap-3 shadow-sm">
                       <div className="flex gap-1" aria-hidden>
                         <span className="w-2 h-2 rounded-full bg-brand-600 animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -2350,29 +2596,54 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                     <p className="text-[11px] font-semibold text-rose-600 text-center" role="alert">{live.error}</p>
                   )}
 
-                  <div className={`bg-white border rounded-xl p-2 flex transition-all ${aiHasFloor ? "border-ink-200/60 opacity-60" : "border-ink-200 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/10"}`}>
-                    <label htmlFor="live-answer-input" className="sr-only">Your response</label>
-                    <textarea
-                      id="live-answer-input"
-                      value={draft}
-                      disabled={aiHasFloor}
-                      onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendLiveText(); }
-                      }}
-                      placeholder={aiHasFloor ? "Wait for the interviewer to finish…" : "Speak naturally or type your response..."}
-                      className="flex-1 bg-transparent px-2 py-2 resize-none text-sm focus:outline-none text-ink-800 placeholder-ink-400 disabled:cursor-not-allowed"
-                      rows={2}
-                    />
-                  </div>
+                  {isTech && !isCodingMode && (
+                    <div className="flex items-center justify-center gap-1.5" role="group" aria-label="Response mode">
+                      <button type="button" aria-pressed={!isCodingMode} onClick={() => setIsCodingMode(false)} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${!isCodingMode ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200/60'}`}>Voice / Text</button>
+                      <button type="button" aria-pressed={isCodingMode} onClick={enterCodingMode} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${isCodingMode ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200/60'}`}><FileText aria-hidden className="w-3 h-3 inline mr-1" />Code</button>
+                    </div>
+                  )}
+
+                  {isCodingMode ? (
+                    <div className="space-y-2">
+                      {renderCodingChallenge()}
+                      <CodeRunner
+                        code={draft}
+                        onCodeChange={(v) => { setDraft(v); draftRef.current = v; }}
+                        language={codeLanguage}
+                        onLanguageChange={setCodeLanguage}
+                        onResultChange={setCodeResult}
+                        onTestSummaryChange={setCodeTestSummary}
+                        question={codingChallenge?.prompt || lastAiQuestion}
+                        editorHeight={220}
+                      />
+                    </div>
+                  ) : (
+                    <div className={`bg-white border rounded-xl p-2 flex transition-all ${aiHasFloor ? "border-ink-200/60 opacity-60" : "border-ink-200 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/10"}`}>
+                      <label htmlFor="live-answer-input" className="sr-only">Your response</label>
+                      <textarea
+                        id="live-answer-input"
+                        value={draft}
+                        disabled={aiHasFloor}
+                        onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendLiveText(); }
+                        }}
+                        placeholder={aiHasFloor ? "Wait for the interviewer to finish…" : "Speak naturally or type your response..."}
+                        className="flex-1 bg-transparent px-2 py-2 resize-none text-sm focus:outline-none text-ink-800 placeholder-ink-400 disabled:cursor-not-allowed"
+                        rows={2}
+                      />
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-[11px] text-ink-500">
-                      {aiHasFloor ? "Listen — you can respond once the interviewer finishes." : "Talk naturally or type. Keep background noise low."}
+                      {isCodingMode
+                        ? "Write and run your code, then Send it to the interviewer for evaluation."
+                        : aiHasFloor ? "Listen — you can respond once the interviewer finishes." : "Talk naturally or type. Keep background noise low."}
                     </p>
                     <div className="flex gap-2 shrink-0">
                       <Button type="button" size="sm" onClick={handleSendLiveText} disabled={aiHasFloor || !draft.trim()}>
-                        <Send aria-hidden className="w-3.5 h-3.5" /> Send
+                        <Send aria-hidden className="w-3.5 h-3.5" /> {isCodingMode ? "Submit code" : "Send"}
                       </Button>
                       <Button type="button" variant="danger" size="sm" onClick={endLiveInterview}>
                         End interview &amp; see results
@@ -2393,6 +2664,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                       </button>
                     </div>
                   )}
+                  {!isCodingMode && (
                   <div className="flex items-center justify-between px-1 mb-1">
                     <div className="text-[10px] font-bold text-ink-500 uppercase tracking-wider flex items-center gap-2" aria-live="polite">
                       {recording && <span className="flex h-2 w-2 relative" aria-hidden><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span></span>}
@@ -2403,9 +2675,10 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                     </div>
                     <div className="flex items-center gap-1.5" role="group" aria-label="Response input mode">
                       <button type="button" aria-pressed={!isCodingMode} onClick={() => setIsCodingMode(false)} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${!isCodingMode ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200/60'}`}>Voice / Text</button>
-                      {isTech && <button type="button" aria-pressed={isCodingMode} onClick={() => setIsCodingMode(true)} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${isCodingMode ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200/60'}`}><FileText aria-hidden className="w-3 h-3 inline mr-1" />Code</button>}
+                      {isTech && <button type="button" aria-pressed={isCodingMode} onClick={enterCodingMode} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${isCodingMode ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200/60'}`}><FileText aria-hidden className="w-3 h-3 inline mr-1" />Code</button>}
                     </div>
                   </div>
+                  )}
 
                   <div className="flex gap-3 items-end">
                     {!isCodingMode && (
@@ -2424,17 +2697,17 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
 
                     <div className="flex-1">
                       {isCodingMode ? (
-                        <div className="h-48 border border-ink-200 rounded-xl overflow-hidden focus-within:ring-2 ring-brand-500/20">
-                          <Editor
-                            height="100%"
-                            defaultLanguage="javascript"
-                            theme="vs"
-                            value={draft + interimDraft}
-                            onChange={(val) => {
-                               setDraft(val || "");
-                               setInterimDraft("");
-                            }}
-                            options={{ minimap: { enabled: false }, fontSize: 13, padding: { top: 12 } }}
+                        <div className="space-y-2">
+                          {renderCodingChallenge()}
+                          <CodeRunner
+                            code={draft}
+                            onCodeChange={(v) => { setDraft(v); draftRef.current = v; }}
+                            language={codeLanguage}
+                            onLanguageChange={setCodeLanguage}
+                            onResultChange={setCodeResult}
+                            onTestSummaryChange={setCodeTestSummary}
+                            question={codingChallenge?.prompt || lastAiQuestion}
+                            editorHeight={220}
                           />
                         </div>
                       ) : (
