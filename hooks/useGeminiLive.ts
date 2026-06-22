@@ -41,6 +41,9 @@ export function useGeminiLive() {
   // talk over the AI and the AI's own voice can't leak back in. The mic resumes
   // once the AI's turn fully ends.
   const aiTurnActiveRef = useRef(false);
+  // External hard-mute: holds the candidate's mic closed regardless of turn state
+  // (used to fully pause the live interviewer during a coding block).
+  const forceMuteRef = useRef(false);
   // Per the Live API spec the two audio streams run at DIFFERENT rates:
   //   input (mic → server) = 16kHz, output (server → speaker) = 24kHz.
   // Use a dedicated AudioContext for each so the 24kHz model voice is not
@@ -114,10 +117,9 @@ export function useGeminiLive() {
     processor.onaudioprocess = (e) => {
       const ws = wsRef.current;
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
-      // Half-duplex: drop mic frames while the interviewer is generating or its
-      // audio is still playing, so the candidate is effectively muted until the
-      // AI finishes its turn.
-      if (aiTurnActiveRef.current || isPlaying.current) return;
+      // Drop mic frames while hard-muted (coding block), or — half-duplex — while
+      // the interviewer is generating / its audio is still playing.
+      if (forceMuteRef.current || aiTurnActiveRef.current || isPlaying.current) return;
       const f32 = e.inputBuffer.getChannelData(0);
       const i16 = new Int16Array(f32.length);
       for (let i = 0; i < f32.length; i++) {
@@ -322,6 +324,7 @@ export function useGeminiLive() {
     playheadRef.current = 0;
     isPlaying.current = false;
     aiTurnActiveRef.current = false;
+    forceMuteRef.current = false;
     setIsConnected(false);
     setAiSpeaking(false);
     setPartialAi("");
@@ -351,6 +354,11 @@ export function useGeminiLive() {
     return true;
   }, []);
 
+  /** Hard-mute / unmute the candidate's mic (used to pause the interviewer during a coding block). */
+  const setMicMuted = useCallback((muted: boolean) => {
+    forceMuteRef.current = muted;
+  }, []);
+
   useEffect(() => () => disconnect(), [disconnect]);
 
   return {
@@ -364,5 +372,6 @@ export function useGeminiLive() {
     disconnect,
     startMicrophone,
     sendText,
+    setMicMuted,
   };
 }

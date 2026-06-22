@@ -94,6 +94,8 @@ ${JSON.stringify(session.rubricScores, null, 2)}
 Recruiter notes:
 ${session.recruiterNotes || "(none)"}
 
+CODING: If any answer is marked "[Coding answer · <language>]" with source and an "Execution result", evaluate the code concretely — correctness, efficiency, edge cases, quality, and whether it compiled and produced correct output (a non-zero exit code, stderr, or compile error is a negative signal). Reflect this in technical_score and the narrative, and (only when code was submitted) append a { "group": "Coding Implementation", "rows": [["Correctness", <0-100>], ["Efficiency & complexity", <0-100>], ["Edge cases & code quality", <0-100>]] } group to technical_breakdown.
+
 Compute the final scores:
 
 Return EXACTLY this JSON shape (no markdown fences, no commentary):

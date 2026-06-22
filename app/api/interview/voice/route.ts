@@ -107,6 +107,12 @@ ADAPT to the real candidate — the schedule is secondary. ${lastRating === null
 
   const noRepeatInstruction = `Review the full transcript and NEVER repeat a question (or a near-duplicate) you have already asked. Each question must open a new angle.`;
 
+  // For technical/software roles, drive at least one real coding task. The
+  // candidate has a multi-language compiler (a "Code" tab with a Run button) and
+  // submits code as an answer marked "[Coding answer · <language>]" with its
+  // execution output — which you must then critique.
+  const codingInstruction = `CODING: If the target role is technical (software / data / ML / engineering) or the candidate is clearly a programmer, include at least ONE hands-on coding task: ask them to implement a specific function or algorithm and tell them to write and RUN it in the "Code" tab (a multi-language compiler is available to them). When they submit code (an answer marked "[Coding answer · <language>]" with an execution result), critically evaluate its correctness, efficiency, and edge cases and follow up on it. For non-technical roles, do NOT ask for code.`;
+
   // Server-side adaptive difficulty: the model rates each prior answer 0-10, we
   // persist those ratings, and feed the running trend back so difficulty scaling
   // is data-driven and auditable (not just a verbal instruction).
@@ -139,6 +145,7 @@ ADAPT to the real candidate — the schedule is secondary. ${lastRating === null
     ${turnInstruction}
     ${difficultyLadder}
     Then formulate your next question so it explicitly BUILDS ON something specific from a prior round or their latest answer — not a generic new topic. Balance technical depth with behavioural insight. ${noRepeatInstruction}
+    ${codingInstruction}
     CRITICAL: Ask EXACTLY ONE short question. Do NOT ask multi-part questions or combine multiple questions into one.
     ${concludeRule} Keep responses under 50 words.`;
 
@@ -163,6 +170,7 @@ ADAPT to the real candidate — the schedule is secondary. ${lastRating === null
     ${difficultyLadder}
     Then, formulate your next question. Make sure it explicitly probes a project, skill, experience, or goal listed in their Resume Context, framed in the language of THEIR field (not generic tech jargon). Ask about real scenarios, trade-offs, and decisions relevant to the target role.
     ${noRepeatInstruction}
+    ${codingInstruction}
     Apply cognitive load by combining concepts. Do NOT be overly friendly. CRITICAL: Ask EXACTLY ONE short question. Do NOT ask multi-part questions or combine multiple questions into one.
     ${concludeRule} Keep responses under 50 words.`
     : `You are a behavioural interviewer and HR director with 15 years of experience assessing candidates. You are sharp and perceptive — you listen closely, follow up on what the candidate actually said, and adapt your depth to how they respond, exactly like a seasoned human interviewer. ${multilingualInstruction}

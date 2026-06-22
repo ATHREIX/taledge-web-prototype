@@ -47,6 +47,10 @@ function buildSystemInstruction(b: Body): string {
     `Begin by greeting ${name} by name and asking ONE short, warm opening question. Then ask ONE question at a time and WAIT for the spoken answer before continuing.`,
     `Listen closely to each answer and make your next question build directly on what they just said — drill into claims, expose gaps, follow their examples. Climb from basic to harder questions as they do well; simplify if they struggle.`,
     `Keep each turn short (1–2 sentences, exactly ONE question). Do not lecture. Be encouraging but do not accept vague answers.`,
+    // Drive a real coding task for technical placement interviews.
+    (mode === "technical" || mode === "final") && track === "placement"
+      ? `If the role is technical (software / data / ML / engineering), include at least ONE hands-on coding task: ask the candidate to implement a specific function or algorithm and tell them to write and RUN it in the on-screen "Code" tab (a multi-language compiler with a Run button). They will submit it as a typed answer marked "[Coding answer · <language>]" with its execution output — then critique its correctness, efficiency, and edge cases out loud.`
+      : "",
     resume ? `\nCandidate resume context (reference, not to read aloud):\n${resume}` : "",
     dnla ? `\nDNLA competency report (probe sub-benchmark areas; do not read aloud):\n${dnla}` : "",
     prior ? `\nEarlier rounds summary (build on these; do not read aloud):\n${prior}` : "",
