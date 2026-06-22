@@ -1537,6 +1537,18 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     setDone(true);
   };
 
+  // Send a typed answer during a live interview (in addition to speaking).
+  const handleSendLiveText = () => {
+    const text = draft.trim();
+    if (!text) return;
+    const ok = live.sendText(text);
+    if (ok) {
+      setDraft("");
+      draftRef.current = "";
+      if (textAreaRef.current) textAreaRef.current.value = "";
+    }
+  };
+
   // Tear down the Live session when the assessment is blocked.
   useEffect(() => {
     if (blocked && liveActive) {
@@ -2230,6 +2242,31 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                     </div>
                   </motion.div>
                 ))}
+                {/* Live caption: the interviewer's words as it speaks. */}
+                {liveActive && live.partialAi && (
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-start">
+                    <div className="max-w-[85%] rounded-xl2 px-5 py-3.5 text-[14px] leading-relaxed bg-brand-50/80 backdrop-blur-md text-ink-800 border border-brand-200/80 rounded-bl-sm shadow-sm">
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-brand-600 mb-1.5 flex items-center gap-1.5">
+                        <Brain aria-hidden className="w-3 h-3" /> AI Interviewer
+                        <span className="inline-flex gap-0.5" aria-hidden>
+                          <span className="w-1 h-1 rounded-full bg-brand-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1 h-1 rounded-full bg-brand-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1 h-1 rounded-full bg-brand-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </span>
+                        <span className="normal-case font-semibold text-brand-500">speaking…</span>
+                      </div>
+                      {live.partialAi}
+                    </div>
+                  </motion.div>
+                )}
+                {/* Live caption: the candidate's own words as they answer. */}
+                {liveActive && live.partialUser && (
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-end">
+                    <div className="max-w-[85%] rounded-xl2 px-5 py-3.5 text-[14px] leading-relaxed italic bg-gradient-to-br from-brand-600/70 to-brand-700/70 text-white rounded-br-sm border border-brand-400/30 shadow-md">
+                      {live.partialUser}
+                    </div>
+                  </motion.div>
+                )}
                 {isProcessing && (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
                     <div className="bg-white/80 backdrop-blur-md text-ink-500 border border-ink-200/80 rounded-xl2 px-5 py-3.5 rounded-bl-sm flex items-center gap-3 shadow-sm">
@@ -2285,22 +2322,66 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                   </button>
                 </div>
               ) : liveActive ? (
-                <div className="flex flex-col items-center gap-3 py-2">
-                  <div className="flex items-center gap-2.5 text-sm font-semibold text-ink-700" aria-live="polite">
-                    <span className={`flex h-2.5 w-2.5 relative`} aria-hidden>
-                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${aiSpeaking ? "bg-brand-400" : "bg-emerald-400"} opacity-75`} />
-                      <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${aiSpeaking ? "bg-brand-500" : "bg-emerald-500"}`} />
-                    </span>
-                    {aiSpeaking ? "Interviewer is speaking…" : "Listening — just speak your answer"}
+                (() => {
+                  // The interviewer "has the floor" while it is speaking or its
+                  // captions are still streaming. During that window the mic is
+                  // muted and the answer box is locked; both reopen on the
+                  // candidate's turn.
+                  const aiHasFloor = aiSpeaking || !!live.partialAi;
+                  return (
+                <div className="space-y-3">
+                  <div className={`flex items-center justify-center gap-2.5 text-sm font-semibold ${aiHasFloor ? "text-brand-700" : "text-emerald-700"}`} aria-live="polite">
+                    {aiHasFloor ? (
+                      <>
+                        <MicOff aria-hidden className="w-4 h-4" />
+                        Interviewer is speaking… your mic is muted
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex h-2.5 w-2.5 relative" aria-hidden>
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                        </span>
+                        Your turn — speak your answer, or type it below
+                      </>
+                    )}
                   </div>
-                  <p className="text-[11px] text-ink-500">Live voice interview · talk naturally, like a real call. Keep background noise low.</p>
                   {live.error && (
-                    <p className="text-[11px] font-semibold text-rose-600" role="alert">{live.error}</p>
+                    <p className="text-[11px] font-semibold text-rose-600 text-center" role="alert">{live.error}</p>
                   )}
-                  <Button type="button" variant="danger" size="sm" onClick={endLiveInterview} className="mt-1">
-                    End interview &amp; see results
-                  </Button>
+
+                  <div className={`bg-white border rounded-xl p-2 flex transition-all ${aiHasFloor ? "border-ink-200/60 opacity-60" : "border-ink-200 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/10"}`}>
+                    <label htmlFor="live-answer-input" className="sr-only">Your response</label>
+                    <textarea
+                      id="live-answer-input"
+                      value={draft}
+                      disabled={aiHasFloor}
+                      onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendLiveText(); }
+                      }}
+                      placeholder={aiHasFloor ? "Wait for the interviewer to finish…" : "Speak naturally or type your response..."}
+                      className="flex-1 bg-transparent px-2 py-2 resize-none text-sm focus:outline-none text-ink-800 placeholder-ink-400 disabled:cursor-not-allowed"
+                      rows={2}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] text-ink-500">
+                      {aiHasFloor ? "Listen — you can respond once the interviewer finishes." : "Talk naturally or type. Keep background noise low."}
+                    </p>
+                    <div className="flex gap-2 shrink-0">
+                      <Button type="button" size="sm" onClick={handleSendLiveText} disabled={aiHasFloor || !draft.trim()}>
+                        <Send aria-hidden className="w-3.5 h-3.5" /> Send
+                      </Button>
+                      <Button type="button" variant="danger" size="sm" onClick={endLiveInterview}>
+                        End interview &amp; see results
+                      </Button>
+                    </div>
+                  </div>
                 </div>
+                  );
+                })()
               ) : (
                 <div className="space-y-3">
                   {sendError && (

@@ -3,8 +3,6 @@ import type { NextRequest } from "next/server";
 import { GEMINI_LIVE_MODEL, getGeminiApiKey } from "@/lib/gemini";
 import { getPrincipal, unauthorized } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
-import { isProd } from "@/lib/flags";
-import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -78,55 +76,23 @@ export async function POST(req: NextRequest) {
     /* body is optional */
   }
 
-  const expireTime = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-  // The client must open the Live socket within this window (token is single-use).
-  const newSessionExpireTime = new Date(Date.now() + 2 * 60 * 1000).toISOString();
-
-  try {
-    // Mint a short-lived ephemeral token. Endpoint is `auth_tokens` (NOT the old
-    // `ephemeralTokens:create`, which 404s). The token is unconstrained; the
-    // client sends the full Live setup (model, HD voice, system prompt) on connect.
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1alpha/auth_tokens?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uses: 1, expireTime, newSessionExpireTime }),
-      }
-    );
-
-    if (!response.ok) {
-      const upstreamError = await response.text();
-      logger.error("Gemini Live token upstream failure", {
-        uid,
-        upstreamStatus: response.status,
-        upstreamError: upstreamError.slice(0, 300),
-      });
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Gemini Live token service is unavailable.",
-          ...(isProd ? {} : { upstreamStatus: response.status, upstreamError: upstreamError.slice(0, 300) }),
-        },
-        { status: 502 }
-      );
-    }
-
-    const token = await response.json();
-    return NextResponse.json({
-      ok: true,
-      token: token.name, // e.g. "auth_tokens/abc123" — used as the WS access_token
-      expireTime: token.expireTime || expireTime,
-      newSessionExpireTime: token.newSessionExpireTime || newSessionExpireTime,
-      model: GEMINI_LIVE_MODEL,
-      voice: process.env.GEMINI_TTS_VOICE || DEFAULT_LIVE_VOICE,
-      systemInstruction: buildSystemInstruction(body),
-    });
-  } catch (e: any) {
-    logger.error("Gemini Live token request error", { uid, detail: e?.message?.slice(0, 200) });
-    return NextResponse.json(
-      { ok: false, error: "Gemini Live token service is unavailable.", ...(isProd ? {} : { detail: e?.message?.slice(0, 200) }) },
-      { status: 500 }
-    );
-  }
+  // Ephemeral tokens are the secure way to authenticate the browser's Live
+  // socket, but the `auth_tokens` REST endpoint mints identity-less tokens that
+  // the Live API rejects (close code 1008, "unregistered caller") for this
+  // key/project — and it does not accept the `liveConnectConstraints` lock that
+  // would give a token an identity. The key itself IS Live-capable when used
+  // directly, so we hand the raw key to the client to connect with `?key=`.
+  //
+  // ⚠️ SECURITY TRADE-OFF: this returns GEMINI_API_KEY to the browser, where it
+  // is visible to the user. This is acceptable for a LOCAL PROTOTYPE/DEMO — the
+  // route is still behind auth + rate limiting — but is NOT safe for public
+  // production. Before shipping, switch to a server-side WebSocket proxy (key
+  // stays server-side) or a project that can mint valid ephemeral tokens.
+  return NextResponse.json({
+    ok: true,
+    apiKey, // used by the client as the Live WebSocket `?key=` credential
+    model: GEMINI_LIVE_MODEL,
+    voice: process.env.GEMINI_TTS_VOICE || DEFAULT_LIVE_VOICE,
+    systemInstruction: buildSystemInstruction(body),
+  });
 }
