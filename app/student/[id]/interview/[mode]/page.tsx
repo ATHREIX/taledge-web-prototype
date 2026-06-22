@@ -209,6 +209,13 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   // during which the normal Q&A is paused until submit / cancel / timeout.
   const [codeInterviewActive, setCodeInterviewActive] = useState(false);
   const challengeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Normal-interview phase budget: 10 min, after which we auto-switch to the
+  // single resume-based coding section (once). The countdown is frozen while the
+  // coding section is active.
+  const NORMAL_PHASE_SEC = 600;
+  const [normalRemaining, setNormalRemaining] = useState(NORMAL_PHASE_SEC);
+  const [codeSectionDone, setCodeSectionDone] = useState(false);
+  const autoCodeTriggeredRef = useRef(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [setupStep, setSetupStep] = useState<"resume" | "rules" | "verify" | "interview">("rules");
@@ -1251,6 +1258,30 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     }
   };
 
+  // Speak a one-off announcement (e.g. the coding-challenge briefing) WITHOUT
+  // starting mic listening afterwards. Calls onDone when speech finishes (or
+  // immediately if TTS is unavailable) so the caller can start the timer after.
+  const speakAnnouncement = (text: string, onDone?: () => void) => {
+    try {
+      const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
+      if (!synth || !text) { onDone?.(); return; }
+      synth.cancel();
+      const utter = new SpeechSynthesisUtterance(stripMarkdown(text));
+      if (ttsVoiceRef.current) { utter.voice = ttsVoiceRef.current; utter.lang = ttsVoiceRef.current.lang || "en-US"; }
+      else utter.lang = "en-US";
+      utter.rate = 1;
+      utter.pitch = 1.05;
+      setAiSpeaking(true);
+      let done = false;
+      const finish = () => { if (done) return; done = true; setAiSpeaking(false); setAiVolume(0); onDone?.(); };
+      utter.onend = finish;
+      utter.onerror = finish;
+      synth.speak(utter);
+    } catch {
+      onDone?.();
+    }
+  };
+
   const playAudioAndListen = async (base64Data: string, fallbackText?: string) => {
     if (!base64Data) {
       // No server audio → speak the question with the browser voice instead of
@@ -1640,12 +1671,20 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     setChallengeLoading(true);
     setChallengeError(null);
     try {
+      const resumeSummary = profile ? [
+        profile.resumeSummary,
+        profile.resumeSkills && profile.resumeSkills.length > 0 ? `Skills: ${profile.resumeSkills.join(", ")}` : "",
+        profile.resumeProjects && profile.resumeProjects.length > 0 ? `Projects: ${profile.resumeProjects.map((p: any) => `${p.title} (${p.stack?.join(", ") || ""})`).join("; ")}` : "",
+        profile.aspiration ? `Goal: ${profile.aspiration}` : "",
+      ].filter(Boolean).join("\n") : "";
+
       const res = await authedFetch("/api/code/question", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           role: profile?.targetRole || (isExam ? "the exam" : "Software Engineer"),
           track,
+          resumeSummary,
           avoid: codingChallenge?.title ? [codingChallenge.title] : [],
         }),
       });
@@ -1660,7 +1699,10 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       draftRef.current = "";
       setCodeResult(null);
       setCodeTestSummary(null);
-      startChallengeTimer(data.minutes);
+      // The AI voice briefs the candidate on what to do, THEN the timed section
+      // starts (the clock doesn't run while the briefing is spoken).
+      const briefing = `Here is your coding challenge: ${data.title}. Please read the full problem shown on screen. Write your solution in the editor, run it against the test cases, and submit before the timer ends. You have ${data.minutes} minutes. Your time starts now.`;
+      speakAnnouncement(briefing, () => startChallengeTimer(data.minutes));
     } catch {
       setChallengeError("Couldn't reach the problem service. Check your connection.");
     } finally {
@@ -1675,12 +1717,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     setIsCodingMode(true);
     setCodeInterviewActive(true);
     if (!codingChallenge && !challengeLoading) fetchCodingChallenge();
-    if (liveActive) {
-      try {
-        live.sendText("I'm starting the coding challenge now. Please pause the interview questions and wait quietly until I submit my solution.");
-        live.setMicMuted(true); // fully pause the interviewer while the candidate codes
-      } catch {}
-    }
+    // Fully pause the live interviewer while the candidate codes (no double voice
+    // — the briefing is spoken by speakAnnouncement, not the live model).
+    if (liveActive) { try { live.setMicMuted(true); } catch {} }
   };
 
   // End the coding block and return to the normal interview. `submitted` = the
@@ -1688,12 +1727,14 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   // cancelled or ran out of time without submitting.
   const exitCodeInterview = (submitted: boolean) => {
     stopChallengeTimer();
+    try { window.speechSynthesis?.cancel(); } catch {}
     setChallengeRemaining(null);
     setCodeInterviewActive(false);
     setIsCodingMode(false);
     setCodingChallenge(null);
     setCodeResult(null);
     setCodeTestSummary(null);
+    setCodeSectionDone(true); // one coding section per interview — don't auto-trigger again
     if (liveActive) { try { live.setMicMuted(false); } catch {} } // re-open the mic
     if (!submitted) {
       setDraft("");
@@ -1727,15 +1768,6 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           )}
           <button
             type="button"
-            onClick={fetchCodingChallenge}
-            disabled={challengeLoading}
-            title="Get a new problem"
-            className="inline-flex items-center gap-1 text-[10px] font-bold text-brand-600 hover:text-brand-700 disabled:opacity-50"
-          >
-            {challengeLoading ? <Loader2 aria-hidden className="w-3 h-3 animate-spin" /> : <RefreshCw aria-hidden className="w-3 h-3" />} New
-          </button>
-          <button
-            type="button"
             onClick={() => exitCodeInterview(false)}
             title="Cancel the coding interview and continue normally"
             className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-600 hover:text-rose-700"
@@ -1755,9 +1787,19 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       </div>
 
       {challengeLoading && !codingChallenge ? (
-        <p className="text-xs text-ink-500">Generating a coding problem tailored to your role…</p>
+        <p className="text-xs text-ink-500">Generating a coding problem based on your resume…</p>
       ) : challengeError ? (
-        <p className="text-xs text-rose-600">{challengeError}</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-rose-600">{challengeError}</p>
+          <button
+            type="button"
+            onClick={fetchCodingChallenge}
+            disabled={challengeLoading}
+            className="inline-flex items-center gap-1 text-[10px] font-bold text-brand-600 hover:text-brand-700 disabled:opacity-50 shrink-0"
+          >
+            {challengeLoading ? <Loader2 aria-hidden className="w-3 h-3 animate-spin" /> : <RefreshCw aria-hidden className="w-3 h-3" />} Retry
+          </button>
+        </div>
       ) : codingChallenge ? (
         <>
           <p className="text-sm font-bold text-ink-800">{codingChallenge.title}</p>
@@ -1778,6 +1820,27 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     }
   }, [done]);
   useEffect(() => () => { if (challengeTimerRef.current) clearInterval(challengeTimerRef.current); }, []);
+
+  // Normal-interview countdown (10 min). Ticks only while the interview is live
+  // and NOT in the coding section; when it reaches zero it auto-switches to the
+  // (one) coding section, once. (For technical/final rounds only.)
+  useEffect(() => {
+    if (done || !isTech) return;
+    if (!(liveActive || sessionId)) return;
+    if (isCodingMode || codeInterviewActive) return; // frozen during the coding block
+    const t = setInterval(() => {
+      setNormalRemaining((r) => {
+        if (r <= 0) return 0;
+        const next = r - 1;
+        if (next <= 0 && !autoCodeTriggeredRef.current && !codeSectionDone) {
+          autoCodeTriggeredRef.current = true;
+          setTimeout(() => enterCodingMode(), 0); // auto-start the coding section
+        }
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [done, isTech, liveActive, sessionId, isCodingMode, codeInterviewActive, codeSectionDone]);
 
   // Tear down the Live session when the assessment is blocked.
   useEffect(() => {
@@ -2346,6 +2409,15 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 <span className={`h-1.5 w-1.5 rounded-full ${!isProcessing && sessionId ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
                 {!isProcessing && sessionId ? "Live" : "Connecting..."}
               </Badge>
+              {isTech && !isCodingMode && !codeSectionDone && (liveActive || sessionId) && !done && (
+                <Badge
+                  tone={normalRemaining <= 60 ? "danger" : "neutral"}
+                  className="font-mono hidden sm:inline-flex"
+                  title="Time left in the interview before the coding section begins"
+                >
+                  <Clock aria-hidden className="w-3 h-3" /> {fmtTime(normalRemaining)}
+                </Badge>
+              )}
               <Badge tone="neutral" className="font-mono">
                 {m}:{s}
               </Badge>
