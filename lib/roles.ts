@@ -50,24 +50,43 @@ export function roleDef(role: string | null | undefined): RoleDef {
 }
 
 /**
+ * Client-safe mirror of AUTH_ENFORCED (the server-only flag can't reach the
+ * browser bundle). When auth is enforced, every signed-in user owns a
+ * uid-keyed workspace; in the demo/pilot all roles share one seeded persona id
+ * so the seeded data stays browsable without a real login.
+ */
+const AUTH_ENFORCED_PUBLIC = process.env.NEXT_PUBLIC_AUTH_ENFORCED === "true";
+
+/**
+ * The workspace id for a role — single source of truth for both nav and
+ * post-auth routing, so a real signed-in recruiter never lands on the seeded
+ * `recruiter-001` workspace.
+ *  - enforced auth + real uid -> the user's own uid (their private workspace)
+ *  - demo / no uid            -> the seeded persona id (candidate-001, …)
+ */
+export function workspaceId(role: Role, uid?: string | null): string {
+  if (AUTH_ENFORCED_PUBLIC && uid) return uid;
+  return roleDef(role).demoId;
+}
+
+/**
  * Where a user lands after auth.
  * - Candidates run the onboarding/assessment funnel first.
  * - Other roles go straight to their (org-level) workspace.
  */
-export function workspacePath(role: Role, uid?: string): string {
+export function workspacePath(role: Role, uid?: string | null): string {
+  const id = workspaceId(role, uid);
   switch (role) {
     case "candidate":
-      // Pilot: all candidate stages (onboarding, DNLA, interview, fit-score) run
-      // under ONE demo id so the funnel never splits across uid vs candidate-001.
-      return `/student/candidate-001`;
+      return `/student/${id}`;
     case "recruiter":
-      return `/recruiter/recruiter-001`;
+      return `/recruiter/${id}`;
     case "coach":
-      return `/coach/coach-001`;
+      return `/coach/${id}`;
     case "institute":
-      return `/institute/institute-placement`;
+      return `/institute/${id}`;
     default:
-      return `/student/candidate-001`;
+      return `/student/${id}`;
   }
 }
 

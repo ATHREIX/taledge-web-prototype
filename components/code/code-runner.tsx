@@ -38,7 +38,7 @@ type Props = {
   onResultChange?: (result: RunResult | null) => void;
   /** Latest hidden-test-case score, or null when the code changes. */
   onTestSummaryChange?: (summary: TestSummary | null) => void;
-  /** The coding question being answered — enables "Run Tests" grading. */
+  /** The coding question being answered - enables "Run Tests" grading. */
   question?: string;
   editorHeight?: number | string;
   className?: string;
@@ -46,7 +46,7 @@ type Props = {
 
 /**
  * Multi-language code compiler/runner (inspired by Programiz) for the AI
- * interview. Runs code server-side, and — when a coding question is present —
+ * interview. Runs code server-side, and - when a coding question is present -
  * grades the candidate's program against HIDDEN test cases generated from that
  * question (expected outputs are never sent to the client). The latest run /
  * test results are surfaced so the submitted answer can carry them for the AI
@@ -299,7 +299,7 @@ export function CodeRunner({
               <div className="flex items-center gap-1.5 mb-1.5 not-italic">
                 {runOk ? <CheckCircle2 aria-hidden className="w-3.5 h-3.5 text-emerald-400" /> : <XCircle aria-hidden className="w-3.5 h-3.5 text-rose-400" />}
                 <span className={`text-[10px] font-bold uppercase tracking-wider ${runOk ? "text-emerald-400" : "text-rose-400"}`}>
-                  exit {result.exitCode ?? "—"}
+                  exit {result.exitCode ?? "-"}
                 </span>
               </div>
               {result.compileError && <pre className="whitespace-pre-wrap text-rose-400">{result.compileError}</pre>}

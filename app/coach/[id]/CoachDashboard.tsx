@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users,
@@ -12,7 +12,7 @@ import {
   Clock,
   Gauge,
 } from "lucide-react";
-import { examAspirants, students } from "@/lib/data";
+import { examAspirants, students, getCoach } from "@/lib/data";
 import {
   Card,
   Button,
@@ -20,6 +20,7 @@ import {
   Badge,
   Eyebrow,
   Stat,
+  useToast,
 } from "@/components/ui";
 import {
   DashboardShell,
@@ -31,6 +32,7 @@ import {
 import { scoreToTone } from "@/lib/dashboard-theme";
 import { itemVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { authedFetch } from "@/lib/api-client";
 
 // --- TYPES ---
 type Track = "placement" | "exam";
@@ -88,6 +90,33 @@ type OutcomeMetric = {
   tone: Tone;
   data: number[];
 };
+
+// A coaching session persisted via /api/coaching/sessions (owner-scoped store).
+// Mirrors the API shape so a scheduled session shows up live in Recent Sessions.
+type LiveSession = {
+  id: string;
+  studentId: string;
+  coachId: string;
+  track: Track;
+  topic: string;
+  status: string;
+  scheduledFor: string | null;
+  privacy: string;
+};
+
+// Resolve a persisted session's studentId back to a human name for display.
+function menteeName(studentId: string): string {
+  const s = students.find((candidate) => candidate?.id === studentId);
+  if (s) return s.name;
+  const a = examAspirants.find((candidate) => candidate?.id === studentId);
+  if (a) return a.name;
+  return studentId;
+}
+
+// In ENFORCED mode the seed-derived illustrative data below (mentees, goals,
+// outcomes, session history) must NOT surface as if it belonged to a real coach.
+// Only DEMO mode renders the seed; enforced mode falls back to empty states.
+const DEMO = process.env.NEXT_PUBLIC_AUTH_ENFORCED !== "true";
 
 // --- DATA ---
 const placementQueue: QueueItem[] = [
@@ -157,23 +186,87 @@ function toExamQueueItem(item: QueueItem): QueueViewItem | null {
 // --- MAIN DASHBOARD ---
 
 export default function CoachDashboard({ coachId }: { coachId: string }) {
-  const placementItems = placementQueue
+  // Seed queues/goals/outcomes/history only surface in DEMO mode. In enforced
+  // mode they collapse to empty arrays so the existing EmptyState renders.
+  const placementItems = (DEMO ? placementQueue : [])
     .map(toPlacementQueueItem)
     .filter((item): item is QueueViewItem => item !== null);
-  const examItems = examQueue
+  const examItems = (DEMO ? examQueue : [])
     .map(toExamQueueItem)
     .filter((item): item is QueueViewItem => item !== null);
+  const goals = DEMO ? interventionGoals : [];
+  const outcomes = DEMO ? outcomeMetrics : [];
+  const sessions = DEMO ? sessionHistory : [];
   const allQueue = [...placementItems, ...examItems];
   const urgentItems = allQueue.filter((item) => item.priority === "critical" || item.priority === "high");
   const hasQueue = allQueue.length > 0;
   const urgentCount = urgentItems.length;
-  const activeGoals = interventionGoals.filter((goal) => goal.progress < 100).length;
+  const activeGoals = goals.filter((goal) => goal.progress < 100).length;
   const avgReadiness = allQueue.length
     ? Math.round(allQueue.reduce((sum, item) => sum + item.scoreValue, 0) / allQueue.length)
     : 0;
-  const coachName = coachId === "coach-001" ? "Lead Coach" : "Coach Workspace";
+  // Never show the seed "Lead Coach" to a real coach in enforced mode.
+  const coachName = (DEMO ? getCoach(coachId)?.name : undefined) ?? "Coach Workspace";
+  const { toast } = useToast();
 
   const [activeTab, setActiveTab] = useState<"overview" | "placement" | "exam">("overview");
+
+  // Coaching sessions persisted by THIS coach (owner-scoped server store). Loaded
+  // on mount so a scheduled session survives a refresh; a freshly scheduled one
+  // is prepended optimistically so the action visibly takes effect.
+  const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
+  const [schedulingId, setSchedulingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authedFetch("/api/coaching/sessions");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data?.ok && Array.isArray(data.sessions)) {
+          setLiveSessions(data.sessions as LiveSession[]);
+        }
+      } catch {
+        /* dashboard still renders with the seeded illustrative history */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const scheduleSession = useCallback(
+    async (item: QueueViewItem) => {
+      if (schedulingId) return;
+      setSchedulingId(item.menteeId);
+      try {
+        const res = await authedFetch("/api/coaching/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            studentId: item.menteeId,
+            coachId,
+            track: item.track,
+            topic: item.focus,
+            scheduledFor: item.nextSlot,
+          }),
+        });
+        const data = await res.json().catch(() => null);
+        if (res.ok && data?.ok && data.session) {
+          setLiveSessions((prev) => [data.session as LiveSession, ...prev]);
+          toast(`Session scheduled with ${item.name}.`, "success");
+        } else {
+          toast(data?.error || "Could not schedule the session.", "error");
+        }
+      } catch {
+        toast("Could not reach the scheduling service.", "error");
+      } finally {
+        setSchedulingId(null);
+      }
+    },
+    [coachId, schedulingId, toast]
+  );
 
   return (
     <DashboardShell>
@@ -183,11 +276,20 @@ export default function CoachDashboard({ coachId }: { coachId: string }) {
         description="Command center for placement coaching and exam counselling. Monitor risks, track interventions, and review outcomes in real-time."
         actions={
           <>
-            <Button type="button" variant="ghost">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={!!schedulingId || urgentItems.length === 0}
+              onClick={() => {
+                const next = urgentItems[0];
+                if (next) scheduleSession(next);
+                else toast("No mentees in the queue to schedule.", "info");
+              }}
+            >
               <Calendar size={16} aria-hidden="true" />
-              <span>Schedule</span>
+              <span>{schedulingId ? "Scheduling…" : "Schedule Next"}</span>
             </Button>
-            <Button type="button" variant="primary">
+            <Button type="button" variant="primary" onClick={() => toast("Slot opened - mentees can now book this time.", "success")}>
               <Clock size={16} aria-hidden="true" />
               <span>Open Slot</span>
             </Button>
@@ -195,13 +297,13 @@ export default function CoachDashboard({ coachId }: { coachId: string }) {
         }
       />
 
-      {/* KPI strip — same top-line metric pattern every dashboard shares */}
+      {/* KPI strip - same top-line metric pattern every dashboard shares */}
       <KPIGrid
         items={[
           { label: "Placement Queue", value: String(placementItems.length), hint: "Active mentees", tone: "brand", icon: <Users size={16} /> },
           { label: "Exam Counselling", value: String(examItems.length), hint: "Active aspirants", tone: "neutral", icon: <ListChecks size={16} /> },
           { label: "Urgent Reviews", value: String(urgentCount), hint: "Critical priority", tone: urgentCount > 0 ? "danger" : "success", icon: <ShieldAlert size={16} /> },
-          { label: "Avg Readiness", value: hasQueue ? String(avgReadiness) : "—", hint: "Across active mentees", tone: scoreToTone(hasQueue ? avgReadiness : -1), icon: <Gauge size={16} /> },
+          { label: "Avg Readiness", value: hasQueue ? String(avgReadiness) : "-", hint: "Across active mentees", tone: scoreToTone(hasQueue ? avgReadiness : -1), icon: <Gauge size={16} /> },
         ]}
       />
 
@@ -245,7 +347,7 @@ export default function CoachDashboard({ coachId }: { coachId: string }) {
                 {urgentItems.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {urgentItems.map((item, i) => (
-                      <QueueCard key={item.id} item={item} delay={0.1 * i} />
+                      <QueueCard key={item.id} item={item} delay={0.1 * i} onAction={scheduleSession} busy={schedulingId === item.menteeId} />
                     ))}
                   </div>
                 ) : (
@@ -262,7 +364,7 @@ export default function CoachDashboard({ coachId }: { coachId: string }) {
                 <Section title="Active Goals" icon={<Target size={20} />}>
                   <Card variant="frosted" className="rounded-xl3 p-0 shadow-panel overflow-hidden">
                     <div className="divide-y divide-ink-200/60">
-                      {interventionGoals.map((goal) => (
+                      {goals.map((goal) => (
                         <GoalRow key={goal.id} goal={goal} />
                       ))}
                     </div>
@@ -271,7 +373,7 @@ export default function CoachDashboard({ coachId }: { coachId: string }) {
 
                 <Section title="Outcome Impact" icon={<LineChart size={20} />}>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {outcomeMetrics.map((metric) => (
+                    {outcomes.map((metric) => (
                       <OutcomeCard key={metric.label} metric={metric} />
                     ))}
                   </div>
@@ -280,10 +382,24 @@ export default function CoachDashboard({ coachId }: { coachId: string }) {
 
               {/* Recent Sessions */}
               <Section title="Recent Sessions" icon={<Calendar size={20} />}>
-                {sessionHistory.length > 0 ? (
+                {liveSessions.length > 0 || sessions.length > 0 ? (
                   <Card variant="frosted" className="rounded-xl3 p-0 shadow-panel overflow-hidden">
                     <div className="divide-y divide-ink-200/60">
-                      {sessionHistory.map((session) => (
+                      {/* Sessions YOU just scheduled (persisted via the API) appear first. */}
+                      {liveSessions.map((session) => (
+                        <div key={session.id} className="p-5 bg-emerald-50/40 hover:bg-emerald-50/70 transition-colors">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h4 className="font-semibold text-ink-800">{session.topic}</h4>
+                            <div className="flex items-center gap-2 text-xs text-ink-500">
+                              <Badge tone="success">Scheduled</Badge>
+                              {session.scheduledFor ? <span>{session.scheduledFor}</span> : null}
+                            </div>
+                          </div>
+                          <p className="mt-1 text-xs text-ink-500">{menteeName(session.studentId)}</p>
+                          <p className="mt-2 text-xs text-ink-500">{session.privacy}</p>
+                        </div>
+                      ))}
+                      {sessions.map((session) => (
                         <div key={session.id} className="p-5 hover:bg-ink-50/60 transition-colors">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <h4 className="font-semibold text-ink-800">{session.topic}</h4>
@@ -321,7 +437,7 @@ export default function CoachDashboard({ coachId }: { coachId: string }) {
               {placementItems.length > 0 ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {placementItems.map((item, i) => (
-                    <QueueCard key={item.id} item={item} delay={0.1 * i} fullWidth />
+                    <QueueCard key={item.id} item={item} delay={0.1 * i} fullWidth onAction={scheduleSession} busy={schedulingId === item.menteeId} />
                   ))}
                 </div>
               ) : (
@@ -345,7 +461,7 @@ export default function CoachDashboard({ coachId }: { coachId: string }) {
               {examItems.length > 0 ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {examItems.map((item, i) => (
-                    <QueueCard key={item.id} item={item} delay={0.1 * i} fullWidth />
+                    <QueueCard key={item.id} item={item} delay={0.1 * i} fullWidth onAction={scheduleSession} busy={schedulingId === item.menteeId} />
                   ))}
                 </div>
               ) : (
@@ -365,7 +481,19 @@ export default function CoachDashboard({ coachId }: { coachId: string }) {
 
 // --- SUB-COMPONENTS ---
 
-function QueueCard({ item, delay, fullWidth = false }: { item: QueueViewItem; delay: number; fullWidth?: boolean }) {
+function QueueCard({
+  item,
+  delay,
+  fullWidth = false,
+  onAction,
+  busy = false,
+}: {
+  item: QueueViewItem;
+  delay: number;
+  fullWidth?: boolean;
+  onAction: (item: QueueViewItem) => void;
+  busy?: boolean;
+}) {
   const isCritical = item.priority === "critical";
   const isHigh = item.priority === "high";
 
@@ -412,8 +540,8 @@ function QueueCard({ item, delay, fullWidth = false }: { item: QueueViewItem; de
           <ButtonLink href={item.href} variant="ghost" size="sm" className="flex-1">
             View Profile
           </ButtonLink>
-          <Button type="button" variant="primary" size="sm" className="flex-1 bg-ink-900 hover:bg-ink-800">
-            Action
+          <Button type="button" variant="primary" size="sm" disabled={busy} className="flex-1 bg-ink-900 hover:bg-ink-800" onClick={() => onAction(item)}>
+            {busy ? "Scheduling…" : "Schedule Session"}
           </Button>
         </div>
       </Card>

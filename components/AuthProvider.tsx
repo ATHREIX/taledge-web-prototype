@@ -11,7 +11,7 @@ import type { Role } from '@/lib/roles';
 // Firebase client auth lives in IndexedDB (no cookie), so without this the
 // server-side route guard (AUTH_ENFORCED=true) bounces every navigation to
 // /login. The token is still verified per-request via getPrincipal in API
-// routes — this cookie is only the coarse page gate.
+// routes - this cookie is only the coarse page gate.
 const TOKEN_COOKIE = 'firebaseIdToken';
 function setTokenCookie(token: string | null) {
   if (typeof document === 'undefined') return;
@@ -27,7 +27,7 @@ type AuthContextType = {
   user: User | null;
   loading: boolean;
   /** The signed-in user's stakeholder role (from users/{uid}.role), or null
-   * in demo/unknown — drives role-aware navigation. */
+   * in demo/unknown - drives role-aware navigation. */
   role: Role | null;
 };
 
@@ -70,8 +70,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // it so the role-aware nav is instant next time.
       if (!user) {
         setRole(null);
-        try { localStorage.removeItem('taledge:role'); } catch { /* no-op */ }
+        try {
+          localStorage.removeItem('taledge:role');
+          localStorage.removeItem('taledge:roleUid');
+        } catch { /* no-op */ }
       } else {
+        // The cached role is only valid for the SAME uid. If a different user
+        // just signed in (Firebase fires onIdTokenChanged directly with the new
+        // user, with no intervening null event), drop the previous user's role
+        // up front so a stale value can't drive the wrong workspace nav while/if
+        // the new user's doc lacks a role or the read fails transiently.
+        try {
+          const cachedUid = localStorage.getItem('taledge:roleUid');
+          if (cachedUid && cachedUid !== user.uid) {
+            setRole(null);
+            localStorage.removeItem('taledge:role');
+          }
+          localStorage.setItem('taledge:roleUid', user.uid);
+        } catch { /* no-op */ }
         try {
           const snap = await getDoc(doc(db, 'users', user.uid));
           const r = snap.exists() ? (snap.data().role as Role | undefined) : undefined;
@@ -79,9 +95,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setRole(r);
             try { localStorage.setItem('taledge:role', r); } catch { /* no-op */ }
           }
-          // If the doc has no role, keep any cached value rather than blanking it.
+          // If the doc has no role, keep this uid's cached value rather than blanking it.
         } catch {
-          /* keep cached role on a transient read failure */
+          /* keep cached role on a transient read failure (same uid) */
         }
       }
     });

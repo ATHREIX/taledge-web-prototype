@@ -36,6 +36,16 @@ export function useGeminiLive() {
   const [partialUser, setPartialUser] = useState("");
 
   const wsRef = useRef<WebSocket | null>(null);
+  // Session resumption (Gemini Live caps a single WebSocket at ~10 min and audio
+  // sessions at ~15 min). We enable contextWindowCompression to lift the duration
+  // cap, and sessionResumption so that when the server resets the connection
+  // mid-interview we transparently reconnect with the latest handle and keep the
+  // SAME mic/audio — the candidate never notices. Without this a 30-min interview
+  // freezes at ~10 min.
+  const sessionHandleRef = useRef<string | null>(null);
+  const intentionalCloseRef = useRef(false); // true only when disconnect() is called
+  const reconnectingRef = useRef(false);
+  const connCtxRef = useRef<{ apiKey: string; model: string; voice?: string; systemInstruction?: string; captureMic: boolean } | null>(null);
   // Half-duplex turn-taking: while the interviewer "has the floor" (generating
   // or its audio is still playing) we MUTE the candidate's mic so they can't
   // talk over the AI and the AI's own voice can't leak back in. The mic resumes
@@ -76,7 +86,17 @@ export function useGeminiLive() {
     const channel = buffer.getChannelData(0);
     for (let i = 0; i < pcm.length; i++) channel[i] = pcm[i] / 32768.0;
 
-    const startAt = Math.max(ctx.currentTime + 0.03, playheadRef.current);
+    // Jitter buffer: the interview page runs heavy per-frame work on the main
+    // thread (TF proctoring, identity checks), which can deliver/queue audio
+    // chunks late and leave audible gaps ("breaking"). When the scheduled
+    // playhead has already drained (a stall or the first chunk of a turn), start
+    // the next chunk a cushion ahead of `currentTime` so brief stalls are
+    // absorbed; otherwise stack chunks gaplessly back-to-back.
+    const JITTER = 0.12;
+    const startAt =
+      playheadRef.current > ctx.currentTime + 0.005
+        ? playheadRef.current
+        : ctx.currentTime + JITTER;
     const src = ctx.createBufferSource();
     src.buffer = buffer;
     src.connect(ctx.destination);
@@ -134,8 +154,15 @@ export function useGeminiLive() {
     };
   }, []);
 
-  const connect = useCallback(async (context: LiveContext = {}) => {
+  const connect = useCallback(async (context: LiveContext = {}, opts: { captureMic?: boolean } = {}) => {
+    // captureMic=false lets the caller drive the candidate's audio/transcription
+    // itself (e.g. forced-English browser SpeechRecognition + text turns) so this
+    // hook only handles the AI's audio OUT. Defaults to true for backward compat.
+    const captureMic = opts.captureMic !== false;
     setError(null);
+    intentionalCloseRef.current = false;
+    sessionHandleRef.current = null;
+    reconnectingRef.current = false;
 
     // Guard against a stale/duplicate socket (e.g. React dev double-invoke or a
     // rapid reconnect) so two live sessions can't race the connection state.
@@ -164,11 +191,14 @@ export function useGeminiLive() {
       return false;
     }
 
+    connCtxRef.current = { apiKey, model, voice, systemInstruction, captureMic };
+
     // 2) Open the Live socket and resolve ONLY once the session is actually
     //    ready (`setupComplete`). If the socket errors/closes (e.g. the token is
     //    rejected) or never becomes ready in time, resolve `false` so the caller
-    //    can fall back to the REST text interview instead of stalling on a dead
-    //    "connected" session.
+    //    can fall back. Once running, the SAME logic is reused to RECONNECT when
+    //    the server resets the ~10-min connection — keyed off the resumption
+    //    handle — so the interview continues past the session limit.
     return await new Promise<boolean>((resolve) => {
       let settled = false;
       const settle = (ok: boolean) => {
@@ -178,71 +208,98 @@ export function useGeminiLive() {
         resolve(ok);
       };
 
-      let ws: WebSocket;
-      try {
-        // Documented endpoint for API-key auth (v1beta). Key is passed as a
-        // query param per the Live API WebSocket spec.
-        const url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(apiKey)}`;
-        ws = new WebSocket(url);
-      } catch {
-        setError("Could not connect to the live interviewer.");
-        resolve(false);
-        return;
-      }
-      wsRef.current = ws;
-
-      // Safety net: if Live never confirms setup, tear down and fall back.
+      // Safety net: if Live never confirms the FIRST setup, fall back.
       const readyTimer = setTimeout(() => {
         if (settled) return;
         setError("The live interviewer did not respond in time.");
-        try { ws.close(); } catch {}
+        try { wsRef.current?.close(); } catch {}
         settle(false);
       }, 10000);
 
-      ws.onopen = () => {
-        ws.send(
-          JSON.stringify({
-            setup: {
-              model: model.startsWith("models/") ? model : `models/${model}`,
-              generationConfig: {
-                responseModalities: ["AUDIO"],
-                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice || "Aoede" } } },
-              },
-              systemInstruction: { parts: [{ text: systemInstruction || "You are a professional interviewer." }] },
-              inputAudioTranscription: {},
-              outputAudioTranscription: {},
-            },
-          })
-        );
-        // Nudge the interviewer to greet and ask the first question.
-        ws.send(
-          JSON.stringify({
-            clientContent: {
-              turns: [{ role: "user", parts: [{ text: "I'm ready. Please begin the interview." }] }],
-              turnComplete: true,
-            },
-          })
-        );
-      };
-
-      ws.onmessage = async (event) => {
-        let payload: any;
+      const openSocket = (isReconnect: boolean) => {
+        const c = connCtxRef.current!;
+        let ws: WebSocket;
         try {
-          const raw = event.data instanceof Blob ? await event.data.text() : event.data;
-          payload = JSON.parse(raw);
+          const url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(c.apiKey)}`;
+          ws = new WebSocket(url);
         } catch {
+          if (!isReconnect) { setError("Could not connect to the live interviewer."); settle(false); }
+          else { reconnectingRef.current = false; }
           return;
         }
+        wsRef.current = ws;
 
-        if (payload.setupComplete) {
-          // The Live session is genuinely ready — only now report success.
-          setIsConnected(true);
-          settle(true);
-          startMicrophone().catch(() => setError("Microphone access is required for the live interview."));
-          return;
-        }
+        ws.onopen = () => {
+          ws.send(
+            JSON.stringify({
+              setup: {
+                model: c.model.startsWith("models/") ? c.model : `models/${c.model}`,
+                generationConfig: {
+                  responseModalities: ["AUDIO"],
+                  speechConfig: {
+                    languageCode: "en-US",
+                    voiceConfig: { prebuiltVoiceConfig: { voiceName: c.voice || "Aoede" } },
+                  },
+                },
+                systemInstruction: { parts: [{ text: c.systemInstruction || "You are a professional interviewer." }] },
+                inputAudioTranscription: {},
+                outputAudioTranscription: {},
+                // Lift the ~15-min audio session cap via a server-side sliding window.
+                contextWindowCompression: { slidingWindow: {} },
+                // Resume the SAME session across the ~10-min connection limit. On a
+                // reconnect we pass the latest handle so the model keeps full context.
+                sessionResumption: sessionHandleRef.current ? { handle: sessionHandleRef.current } : {},
+              },
+            })
+          );
+          // Kick off the greeting only on the FIRST connect — a reconnect resumes
+          // mid-conversation and must NOT restart the interview.
+          if (!isReconnect) {
+            ws.send(
+              JSON.stringify({
+                clientContent: {
+                  turns: [
+                    {
+                      role: "user",
+                      parts: [
+                        {
+                          text: "I'm ready to begin. Greet me warmly by name and open with ONE friendly, human icebreaker about how I'm doing or how my day is going. Do NOT mention my resume, skills, projects, the role, or anything technical yet, and ask nothing technical on this first turn. Then wait for my reply.",
+                        },
+                      ],
+                    },
+                  ],
+                  turnComplete: true,
+                },
+              })
+            );
+          }
+        };
 
-        const sc = payload.serverContent;
+        ws.onmessage = async (event) => {
+          let payload: any;
+          try {
+            const raw = event.data instanceof Blob ? await event.data.text() : event.data;
+            payload = JSON.parse(raw);
+          } catch {
+            return;
+          }
+
+          // Capture the latest resumption handle so a reconnect restores context.
+          if (payload.sessionResumptionUpdate?.newHandle) {
+            sessionHandleRef.current = payload.sessionResumptionUpdate.newHandle;
+          }
+
+          if (payload.setupComplete) {
+            setIsConnected(true);
+            reconnectingRef.current = false;
+            if (!isReconnect) settle(true);
+            if (c.captureMic) {
+              startMicrophone().catch(() => setError("Microphone access is required for the live interview."));
+            }
+            return;
+          }
+
+          const sc = payload.serverContent;
         if (!sc) return;
 
         // Streamed transcriptions (accumulate per side; commit on turn end).
@@ -292,21 +349,40 @@ export function useGeminiLive() {
         }
       };
 
-      ws.onerror = () => {
-        setError("The live connection had an error.");
-        // If we error before the session is ready, fall back to REST.
-        settle(false);
+        ws.onerror = () => {
+          // Only surface an error / fall back if the FIRST connect never set up.
+          if (!isReconnect && !settled) {
+            setError("The live connection had an error.");
+            settle(false);
+          }
+          // Mid-interview errors are handled by onclose (which reconnects).
+        };
+
+        ws.onclose = () => {
+          if (wsRef.current !== ws) return; // superseded by a newer socket — ignore
+          setIsConnected(false);
+          // Intentional teardown (disconnect()) → do not reconnect.
+          if (intentionalCloseRef.current) { if (!isReconnect) settle(false); return; }
+          // A close before the FIRST setupComplete = a failed connect (e.g. rejected
+          // token) → surface as failure so the caller can fall back.
+          if (!isReconnect && !settled) { settle(false); return; }
+          // Otherwise this is the ~10-min connection limit closing us MID-INTERVIEW.
+          // Reconnect with the resumption handle to continue the same session.
+          if (sessionHandleRef.current && !reconnectingRef.current) {
+            reconnectingRef.current = true;
+            setTimeout(() => { if (!intentionalCloseRef.current) openSocket(true); }, 400);
+          }
+        };
       };
-      ws.onclose = () => {
-        setIsConnected(false);
-        // A close before `setupComplete` (e.g. a rejected token) must surface as
-        // a failed connect so the caller falls back instead of hanging.
-        settle(false);
-      };
+
+      openSocket(false);
     });
   }, [playAudioChunk, startMicrophone]);
 
   const disconnect = useCallback(() => {
+    intentionalCloseRef.current = true; // stop any auto-reconnect on close
+    sessionHandleRef.current = null;
+    reconnectingRef.current = false;
     try { wsRef.current?.close(); } catch {}
     wsRef.current = null;
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -354,6 +430,28 @@ export function useGeminiLive() {
     return true;
   }, []);
 
+  /**
+   * Send a PRIVATE control/director message to the model as a completed user
+   * turn WITHOUT mirroring it into `messages` (so signals like `[WRAP_UP]` or
+   * `[DIRECTOR: …]` steer the interviewer but never appear in the transcript).
+   * The system prompt tells the model these are system instructions, not the
+   * candidate, and must never be read aloud. Returns false if the socket isn't open.
+   */
+  const sendControl = useCallback((text: string) => {
+    const ws = wsRef.current;
+    const trimmed = text.trim();
+    if (!ws || ws.readyState !== WebSocket.OPEN || !trimmed) return false;
+    ws.send(
+      JSON.stringify({
+        clientContent: {
+          turns: [{ role: "user", parts: [{ text: trimmed }] }],
+          turnComplete: true,
+        },
+      })
+    );
+    return true;
+  }, []);
+
   /** Hard-mute / unmute the candidate's mic (used to pause the interviewer during a coding block). */
   const setMicMuted = useCallback((muted: boolean) => {
     forceMuteRef.current = muted;
@@ -372,6 +470,7 @@ export function useGeminiLive() {
     disconnect,
     startMicrophone,
     sendText,
+    sendControl,
     setMicMuted,
   };
 }

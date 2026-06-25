@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 /**
  * Deterministic initials avatar. Same name → same on-brand tint everywhere
  * (nav, profile, candidate rows). Stays within the existing brand/accent/ink
- * palette — no new colors introduced.
+ * palette - no new colors introduced.
  */
 const TINTS = [
   "bg-brand-600",

@@ -21,6 +21,9 @@ node_modules/
 # Sessions (file-based store — not tracked)
 .sessions/
 
+# Local tooling state (Synapse snapshot DB — not project code)
+.synapse/
+
 # Logs
 *.log
 

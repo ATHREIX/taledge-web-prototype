@@ -11,7 +11,7 @@ const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   GEMINI_API_KEY: z.string().min(1).optional(),
   GEMINI_TEXT_MODEL: z.string().default("gemini-2.5-flash"),
-  GEMINI_LIVE_MODEL: z.string().default("gemini-2.5-flash-native-audio-preview-12-2025"),
+  GEMINI_LIVE_MODEL: z.string().default("gemini-3.1-flash-live-preview"),
   // Gemini HD prebuilt voice for the interviewer TTS (same voices as the Live
   // API native audio: Aoede, Kore, Leda, Zephyr, ...). Defaults to a female voice.
   GEMINI_TTS_VOICE: z.string().default("Aoede"),
@@ -21,11 +21,6 @@ const schema = z.object({
   // real DNLA endpoint when the provider ships it.
   DNLA_QUESTION_API_URL: z.string().optional(),
   DNLA_QUESTION_API_KEY: z.string().optional(),
-  // Google Cloud Text-to-Speech (Chirp 3 HD voices) for the interviewer voice.
-  // Falls back to NEXT_PUBLIC_FIREBASE_API_KEY (same project) when unset; only
-  // needs the Cloud Text-to-Speech API enabled on the project.
-  GOOGLE_TTS_API_KEY: z.string().optional(),
-  GOOGLE_TTS_VOICE: z.string().optional(),
   AUTH_ENFORCED: z.enum(["true", "false"]).optional(),
   FIREBASE_SERVICE_ACCOUNT: z.string().optional(),
 });

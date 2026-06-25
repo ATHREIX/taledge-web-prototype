@@ -1,6 +1,6 @@
 "use client";
 
-// TaledgeHero — 12s landing hero animation for Taledge.
+// TaledgeHero - 12s landing hero animation for Taledge.
 // Ported from the Claude Design project "Taledge Hero" (TaledgeHero.jsx).
 // Self-contained: minimal timeline engine + three scenes + playback bar.
 // Brand palette already matches the project tokens (brand/accent/orange/ink).
@@ -88,7 +88,7 @@ function Stage({
   const completedRef = React.useRef(false);
 
   // Fire completion as a post-render side-effect (never inside the setTime
-  // updater, which must stay pure — calling a parent setState there throws
+  // updater, which must stay pure - calling a parent setState there throws
   // "Cannot update a component while rendering a different component").
   React.useEffect(() => {
     if (!loop && !completedRef.current && time >= duration) {
@@ -368,7 +368,7 @@ const C = {
 // matches the rest of the app rather than falling back to a system font.
 const FONT = "var(--font-sans), system-ui, sans-serif";
 
-// Canonical brand gradient — mirrors the `.text-gradient-brand` utility used on
+// Canonical brand gradient - mirrors the `.text-gradient-brand` utility used on
 // the live landing hero (from-brand-600 to-accent-500).
 const BRAND_GRADIENT = `linear-gradient(100deg, ${C.brand600} 0%, ${C.accent500} 100%)`;
 

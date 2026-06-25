@@ -9,7 +9,9 @@
     "prebuild": "npm run clean",
     "build": "next build",
     "start": "next start",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "verify:admin": "node scripts/verify-firebase-admin.mjs",
+    "check:sync": "node scripts/check-sync.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",

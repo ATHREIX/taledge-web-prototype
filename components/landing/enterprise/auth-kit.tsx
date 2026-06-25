@@ -178,14 +178,8 @@ export function BrandPanel({
   const reduce = useReducedMotion();
   return (
     <div className="relative hidden overflow-hidden bg-[#081A3A] text-white lg:flex">
-      {/* Editorial framework: two hairline gutters. No glow, no cards, no noise. */}
-      <div aria-hidden className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-y-0 left-14 w-px bg-white/[0.07] xl:left-20" />
-        <div className="absolute inset-y-0 right-14 w-px bg-white/[0.07] xl:right-20" />
-      </div>
-
-      <div className="relative flex h-full w-full flex-col justify-between px-14 py-12 xl:px-20 xl:py-16">
-        {/* Top — identity */}
+      <div className="relative flex h-full w-full flex-col px-14 py-10 xl:px-20 xl:py-14">
+        {/* Top - identity */}
         <div className="flex items-center justify-between">
           <Link href="/" aria-label="Taledge home" className="inline-flex">
             <Logo inverted />
@@ -193,45 +187,47 @@ export function BrandPanel({
           <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Enterprise</span>
         </div>
 
-        {/* Center — executive statement + workflow */}
-        <div className="max-w-lg">
-          <p className="flex items-center gap-3 text-[12px] font-semibold uppercase tracking-[0.2em] text-[#7DA3FF]">
-            <span aria-hidden className="h-px w-8 bg-[#7DA3FF]/50" /> Talent Intelligence &amp; Success Platform
-          </p>
-          <h2 className="mt-6 text-[2.9rem] font-extrabold leading-[1.04] tracking-[-0.025em] xl:text-[3.35rem]">
-            {heading}
-          </h2>
-          <p className="mt-5 max-w-md text-[15px] leading-relaxed text-slate-300">{sub}</p>
+        {/* Center - executive statement, workflow, and proof points as ONE
+            cohesive block, vertically centered (no dead space between them). */}
+        <div className="flex flex-1 flex-col justify-center py-10">
+          <div className="max-w-lg">
+            <p className="flex items-center gap-3 text-[12px] font-semibold uppercase tracking-[0.2em] text-[#7DA3FF]">
+              <span aria-hidden className="h-px w-8 bg-[#7DA3FF]/50" /> Talent Intelligence &amp; Success Platform
+            </p>
+            <h2 className="mt-5 text-[2.45rem] font-extrabold leading-[1.06] tracking-[-0.03em] [text-wrap:balance] xl:text-[2.95rem]">
+              {heading}
+            </h2>
+            <p className="mt-4 max-w-md text-[15px] leading-relaxed text-slate-300">{sub}</p>
 
-          <div className="mt-12 border-t border-white/10">
-            {PANEL_PROCESS.map((p, i) => (
-              <motion.div
-                key={p.n}
-                initial={reduce ? false : { opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, ease: EASE, delay: 0.25 + i * 0.08 }}
-                className="flex items-baseline gap-6 border-b border-white/10 py-4"
-              >
-                <span className="text-[13px] font-semibold tabular-nums text-[#7DA3FF]">{p.n}</span>
-                <span className="flex-1 text-[15px] font-medium text-slate-100">{p.t}</span>
-                <span className="hidden text-[12.5px] text-slate-400 xl:block">{p.d}</span>
-              </motion.div>
-            ))}
+            <div className="mt-9 space-y-1">
+              {PANEL_PROCESS.map((p, i) => (
+                <motion.div
+                  key={p.n}
+                  initial={reduce ? false : { opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, ease: EASE, delay: 0.25 + i * 0.08 }}
+                  className="flex items-baseline gap-6 py-2.5"
+                >
+                  <span className="text-[13px] font-semibold tabular-nums text-[#7DA3FF]">{p.n}</span>
+                  <span className="flex-1 text-[15px] font-medium text-slate-100">{p.t}</span>
+                  <span className="hidden text-[12.5px] text-slate-400 xl:block">{p.d}</span>
+                </motion.div>
+              ))}
+            </div>
+
+            <div className="mt-9 grid grid-cols-3 gap-8">
+              {PANEL_STATS.map((s) => (
+                <div key={s.l}>
+                  <p className="text-[1.7rem] font-extrabold leading-none tracking-tight text-white">{s.v}</p>
+                  <p className="mt-2 text-[12px] leading-snug text-slate-400">{s.l}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Bottom — proof points */}
-        <div>
-          <div className="grid grid-cols-3 gap-8 border-t border-white/10 pt-8">
-            {PANEL_STATS.map((s) => (
-              <div key={s.l}>
-                <p className="text-[1.9rem] font-extrabold leading-none tracking-tight text-white">{s.v}</p>
-                <p className="mt-2 text-[12px] leading-snug text-slate-400">{s.l}</p>
-              </div>
-            ))}
-          </div>
-          <p className="mt-8 text-[12px] text-slate-500">© 2026 Taledge · Talent Intelligence &amp; Success Platform</p>
-        </div>
+        {/* Bottom - copyright pinned to the floor */}
+        <p className="text-[12px] text-slate-500">© 2026 Taledge · Talent Intelligence &amp; Success Platform</p>
       </div>
     </div>
   );

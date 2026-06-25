@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateGeminiJson, getGeminiApiKey } from "@/lib/gemini";
-import { getPrincipal, unauthorized } from "@/lib/server-auth";
+import { getPrincipal, unauthorized, forbidden } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { isProd } from "@/lib/flags";
+import { upsertCandidate, getCandidate, getInvite, updateInviteStatus } from "@/lib/talent-store";
 
 // Hard caps to keep payloads bounded and prevent prompt-bloat / cost abuse.
 const MAX_TRANSCRIPT_MESSAGES = 200;
@@ -33,10 +34,17 @@ type Body = {
   resumeProjects?: { title: string; stack: string[]; impact: string }[];
   technicalQA: Msg[];
   behaviouralQA: Msg[];
+  finalQA?: Msg[];
   dnla?: DnlaItem[];
   dnlaStrengths?: string[];
   dnlaDevelopmentAreas?: string[];
   dnlaRisks?: string[];
+  /** Set when the candidate came in via a recruiter's off-campus invite link —
+   *  links the finished candidate into that recruiter's own pool. */
+  /** Off-campus invite token — the binding (recruiterId/jobId) is resolved from
+   *  it SERVER-SIDE, never trusted from the client. */
+  inviteToken?: string;
+  college?: string;
 };
 
 // Neutralize any attempt by candidate content to forge the data-fence markers
@@ -247,6 +255,7 @@ export async function POST(req: NextRequest) {
   for (const [field, value] of [
     ["technicalQA", body.technicalQA],
     ["behaviouralQA", body.behaviouralQA],
+    ["finalQA", body.finalQA],
   ] as const) {
     if (value !== undefined && !Array.isArray(value)) {
       return NextResponse.json(
@@ -267,6 +276,7 @@ export async function POST(req: NextRequest) {
 
   const technicalQA = normalizeMessages(body.technicalQA);
   const behaviouralQA = normalizeMessages(body.behaviouralQA);
+  const finalQA = normalizeMessages(body.finalQA);
   const resumeSkills = normalizeStringArray(body.resumeSkills);
   const resumeProjects = normalizeProjects(body.resumeProjects);
   const dnlaItems = normalizeDnla(body.dnla);
@@ -358,6 +368,11 @@ Behavioural Interview transcript:
 [BEGIN UNTRUSTED BEHAVIOURAL TRANSCRIPT DATA]
 ${transcriptToText(behaviouralQA)}
 [END UNTRUSTED BEHAVIOURAL TRANSCRIPT DATA]
+
+Final combined-round transcript (holistic; weigh into the overall fit, do not double-count as a separate stage):
+[BEGIN UNTRUSTED FINAL TRANSCRIPT DATA]
+${transcriptToText(finalQA)}
+[END UNTRUSTED FINAL TRANSCRIPT DATA]
 
 Sub-score rubric (every numeric must be an integer 0-100):
 
@@ -472,10 +487,22 @@ Strictly valid JSON. No prose before or after.`;
     const resumeAvg = avgRows(generated.resume_breakdown);
     const behavAvg = generated.behavioural_score === -1 ? null : avgRows(generated.behavioural_breakdown);
 
+    // PRD §4.2 — the competitive-exam (Track 2) "Success Potential" uses a
+    // DIFFERENT formula than the placement Fit Score:
+    //   Exam Success Potential = DNLA_Baseline·0.35 + Coping·0.35 + Context·0.30 − RiskFlags
+    // The exam interview's three evidence streams map onto that formula:
+    //   technical breakdown   → DNLA_Baseline (subject/cognitive mastery)
+    //   behavioural breakdown → Coping        (resilience / exam-temperament under pressure)
+    //   resume/profile        → Context       (preparation discipline, revision & mock cadence)
+    // The "− RiskFlags" term is the danger/warn cross-flag penalty applied below.
+    const W = isExam
+      ? { technical: 0.35, behavioural: 0.35, resume: 0.3 }
+      : FIT_WEIGHTS;
+
     const components: [number, number][] = [];
-    if (techAvg != null) components.push([techAvg, FIT_WEIGHTS.technical]);
-    if (resumeAvg != null) components.push([resumeAvg, FIT_WEIGHTS.resume]);
-    if (behavAvg != null) components.push([behavAvg, FIT_WEIGHTS.behavioural]);
+    if (techAvg != null) components.push([techAvg, W.technical]);
+    if (resumeAvg != null) components.push([resumeAvg, W.resume]);
+    if (behavAvg != null) components.push([behavAvg, W.behavioural]);
     const wsum = components.reduce((a, [, w]) => a + w, 0);
 
     const llmFit = generated.fit_score;
@@ -496,6 +523,96 @@ Strictly valid JSON. No prose before or after.`;
       const drift = Math.abs((computedFit as number) - (llmFit as number));
       if (Number.isFinite(drift) && drift > 15) {
         logger.warn("fit-score: large LLM/computed divergence", { uid, studentId: body.studentId, llmFit, computedFit, llmSuccess, computedSuccess });
+      }
+    }
+
+    // ── Persist the result to the talent store ───────────────────────────────
+    // So recruiters and the candidate's institute see this candidate's REAL
+    // performance (not seed data). Placement track only — exam aspirants are a
+    // separate collection. Best-effort: never fail the response on a store error.
+    if (body.track !== "exam") {
+      // WRITE-TARGET GUARD: only persist to ids this flow legitimately owns — the
+      // pilot demo id, an off-campus invite id, or (enforced auth) the caller's
+      // own uid. Never let a public call overwrite a seeded persona (candidate-002…)
+      // or another user's record from a body-supplied studentId.
+      const sid = body.studentId;
+      const writable =
+        (principal.demo && sid === "candidate-001") ||
+        sid.startsWith("candidate-inv-") ||
+        (!principal.demo && sid === uid);
+      if (!writable) {
+        logger.warn("fit-score: refused upsert to a non-owned/seed id", { uid, studentId: sid });
+      } else {
+        try {
+          const fitNum = generated.fit_score as number;
+          const status =
+            fitNum >= 78 ? "Interview-ready" : fitNum >= 50 ? "In progress" : "Not started";
+          const techScore = generated.technical_score as number;
+          const behavScore = generated.behavioural_score as number;
+          const patch: Record<string, any> = {
+            name: body.candidateName,
+            targetRole: body.targetRole,
+            fit: {
+              // Do NOT coerce the -1 "pending" sentinel to a misleading 0 — omit
+              // the sub-score so recruiters/institutes see "pending", not a real 0.
+              ...(techScore >= 0 ? { technical: techScore } : {}),
+              ...(behavScore >= 0 ? { behavioural: behavScore } : {}),
+              fit: fitNum,
+              successProbability: generated.success_probability as number,
+            },
+            status,
+            verified: true,
+          };
+          if (body.resumeSummary) patch.resumeSummary = String(body.resumeSummary).slice(0, 2000);
+          if (resumeSkills.length) patch.skills = resumeSkills;
+          if (resumeProjects.length) patch.projects = resumeProjects;
+          if (dnlaItems.length) patch.dnla = dnlaItems;
+          if (dnlaStrengths.length) patch.strengths = dnlaStrengths;
+          if (dnlaDevelopmentAreas.length) patch.developmentAreas = dnlaDevelopmentAreas;
+          if (dnlaRisks.length) patch.risks = dnlaRisks;
+          // Invite binding resolved SERVER-SIDE from the invite token (the
+          // credential) — never from a spoofable body recruiterId/jobId. An
+          // institute-issued invite binds the result to that cohort; a recruiter
+          // invite binds it to the recruiter (and NOT to any institute cohort).
+          if (typeof body.inviteToken === "string" && body.inviteToken) {
+            const invite = await getInvite(body.inviteToken);
+            if (invite) {
+              patch.recruiterId = invite.recruiterId || "";
+              patch.jobId = invite.jobId || "";
+              if (invite.instituteId) {
+                // Institute cohort student — lands in listCandidatesByInstitute,
+                // but stays unpublished to recruiters until the institute shares.
+                patch.instituteId = invite.instituteId;
+                if (invite.cohort) patch.cohort = invite.cohort;
+              } else {
+                patch.instituteId = "";
+              }
+              // PRD §4.5 — advance the invite's tracked status so the issuing
+              // recruiter/institute sees real progress (invited → started →
+              // completed). "completed" once BOTH assessment rounds are scored;
+              // otherwise the candidate has at least begun. Monotonic in the
+              // store (never regresses), and best-effort (never fails the write).
+              try {
+                const bothRoundsDone = techScore >= 0 && behavScore >= 0;
+                await updateInviteStatus(body.inviteToken, bothRoundsDone ? "completed" : "started");
+              } catch {
+                /* status tracking is best-effort */
+              }
+            }
+          }
+          if (typeof body.college === "string" && body.college) {
+            patch.college = body.college.slice(0, 200);
+          }
+          // Durable copy of the FULL report so it survives a device switch /
+          // cleared browser storage and is readable server-side (cross-device +
+          // recruiter view). Stored as a JSON string to sidestep Firestore's
+          // nested-array limits; the headline `fit` numbers above stay queryable.
+          patch.fitReportJson = JSON.stringify(generated);
+          patch.fitReportTs = Date.now();
+          await upsertCandidate(sid, patch);
+        } catch (e) {
+          logger.error("fit-score: talent-store upsert failed (non-fatal)", { studentId: sid, err: String(e) });
+        }
       }
     }
 
@@ -535,5 +652,44 @@ Strictly valid JSON. No prose before or after.`;
       },
       { status: status === 422 ? 422 : 502 }
     );
+  }
+}
+
+// Return the durable Fit Score report stored at generation time. Lets the report
+// survive a device switch / cleared storage and load WITHOUT a paid LLM call.
+// Authorization mirrors the POST write-target rule: a user reads their OWN record
+// (or the pilot seed in demo, or an invite-derived id). Best-effort: any miss/
+// error returns { ok:true, report:null } so the client falls back gracefully.
+export async function GET(req: NextRequest) {
+  const principal = await getPrincipal(req);
+  if (!principal) return unauthorized();
+  const sid = new URL(req.url).searchParams.get("studentId") || "";
+  if (!sid) {
+    return NextResponse.json({ ok: false, error: "studentId required" }, { status: 400 });
+  }
+  const readable =
+    principal.demo || sid === principal.uid || sid.startsWith("candidate-inv-");
+  if (!readable) return forbidden();
+  try {
+    const rec = await getCandidate(sid);
+    const raw = (rec as any)?.fitReportJson;
+    if (!raw || typeof raw !== "string") {
+      return NextResponse.json({ ok: true, report: null });
+    }
+    let report: unknown = null;
+    try {
+      report = JSON.parse(raw);
+    } catch {
+      report = null;
+    }
+    return NextResponse.json({
+      ok: true,
+      report,
+      ts: (rec as any)?.fitReportTs ?? null,
+      source: "stored",
+    });
+  } catch (e) {
+    logger.warn("fit-score GET: stored report read failed (non-fatal)", { studentId: sid, err: String(e) });
+    return NextResponse.json({ ok: true, report: null });
   }
 }

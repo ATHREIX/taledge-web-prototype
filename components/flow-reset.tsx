@@ -11,20 +11,20 @@ export function FlowReset({ studentId }: { studentId: string }) {
 
   function clearState() {
     try {
-      const keys = [
-        `taledge:interview:${studentId}:technical`,
-        `taledge:interview:${studentId}:behavioural`,
-        `taledge:dnla:${studentId}`,
-        `taledge:fit-score:${studentId}`,
-      ];
-      let removed = 0;
-      for (const k of keys) {
-        if (localStorage.getItem(k) !== null) {
-          localStorage.removeItem(k);
-          removed += 1;
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        if (
+          key.startsWith(`taledge:interview:${studentId}:`) ||
+          key.startsWith(`taledge:report:${studentId}:`) ||
+          key === `taledge:fit-score:${studentId}`
+        ) {
+          keysToRemove.push(key);
         }
       }
-      if (removed > 0) setCleared(true);
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+      if (keysToRemove.length > 0) setCleared(true);
     } catch {
       /* localStorage unavailable · non-fatal */
     }

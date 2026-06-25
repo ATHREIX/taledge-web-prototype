@@ -89,7 +89,7 @@ export default function ExamClient({
           </div>
         </motion.header>
 
-        {/* AI Readiness Assessment flow — DNLA → AI interview → readiness report,
+        {/* AI Readiness Assessment flow - DNLA → AI interview → readiness report,
             mirroring the placement track's flow for exam aspirants. */}
         <motion.section variants={itemVariants}>
           <Card variant="frosted" className="rounded-xl3 overflow-hidden p-6 sm:p-8 border border-brand-200/50 bg-gradient-to-br from-brand-500/10 to-accent-500/5">

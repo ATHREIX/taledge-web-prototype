@@ -54,14 +54,14 @@ const KINDS = {
     eyebrow: "AI Interview Report",
     transcriptKey: (id: string) => `taledge:interview:${id}:technical`,
     primary: "technical" as const,
-    desc: "Structured evaluation of the AI (skills) interview — grounded in your transcript and resume signals.",
+    desc: "Structured evaluation of the AI (skills) interview - grounded in your transcript and resume signals.",
   },
   dnla: {
     label: "DNLA Interview",
     eyebrow: "DNLA Interview Report",
     transcriptKey: (id: string) => `taledge:interview:${id}:dnla`,
     primary: "behavioural" as const,
-    desc: "Structured evaluation of the DNLA behavioural interview — psychometric and conduct signals from your transcript.",
+    desc: "Structured evaluation of the DNLA behavioural interview - psychometric and conduct signals from your transcript.",
   },
 } as const;
 
@@ -311,7 +311,7 @@ export default function InterviewReportPage() {
                       size={180}
                       stroke={14}
                       label={primaryLabel}
-                      sub={`Fit · ${report.fit_score === -1 ? "—" : `${report.fit_score}%`}`}
+                      sub={`Fit · ${report.fit_score === -1 ? "-" : `${report.fit_score}%`}`}
                       tone={primaryScore === -1 ? "muted" : primaryScore >= 75 ? "success" : primaryScore >= 55 ? "warn" : "danger"}
                     />
                   </div>

@@ -3,13 +3,85 @@
 import { use, useEffect, useRef, useState, useCallback } from "react";
 import { useRouter, notFound, usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, MicOff, Send, Camera, AlertTriangle, ShieldAlert, FileText, Loader2, Eye, Smartphone, Users, MonitorOff, Clipboard, Brain, Check, X, ArrowRight, Clock, RefreshCw } from "lucide-react";
+import { Mic, MicOff, Send, Camera, AlertTriangle, ShieldAlert, FileText, Loader2, Eye, Smartphone, Users, MonitorOff, Clipboard, Brain, Check, X, ArrowRight, Clock, RefreshCw, ScanFace, Lock, BadgeCheck, ChevronRight } from "lucide-react";
 import { Card, Button, Badge, Eyebrow, Heading } from "@/components/ui";
 import { authedFetch } from "@/lib/api-client";
 import { getStudent } from "@/lib/data";
 import { useGeminiLive } from "@/hooks/useGeminiLive";
 import { CodeRunner, type RunResult, type TestSummary } from "@/components/code/code-runner";
 import { DEFAULT_LANGUAGE_ID, getCodeLanguage } from "@/lib/code-languages";
+
+// STT routing switch.
+//
+// We transcribe the candidate through Gemini Live's server-side
+// `inputAudioTranscription` (the hook streams mic audio over a secure WebSocket).
+// This is the RELIABLE path: it works in every browser and on any origin, and it
+// shares the mic cleanly with the rest of the page.
+//
+// The forced-English browser Web Speech API (`recognition.lang = "en-US"`) would
+// guarantee an English transcript, but in practice it conflicts with the page's
+// other microphone use and aborts silently on many machines - leaving the mic
+// dead. So it stays OFF by default; a working mic beats a guaranteed-English one.
+//
+// ⚠️ TRADE-OFF: Gemini auto-detects the spoken language for its transcript, and
+// for strongly-accented English it sometimes renders the CAPTION in Hindi/Tamil/
+// etc. script. The interviewer model still UNDERSTANDS the speech correctly
+// regardless of the caption script - this only affects the on-screen text. There
+// is no server-side knob to force the transcription language (confirmed against
+// the Live API: the language is inferred from the audio).
+const USE_BROWSER_STT = false;
+
+// The forced-English browser Web Speech API is ONLY usable on a secure origin
+// (https or localhost). On a plain-http origin - e.g. opening the dev server via
+// its LAN IP like http://192.168.1.120:3000 - Chrome refuses the speech service
+// (`service-not-allowed`) and the mic goes dead. In that case we MUST fall back
+// to Gemini's server-side transcription, which streams audio over a secure
+// WebSocket and therefore works on insecure origins too. This guard keeps STT
+// working everywhere while still locking language to English wherever it can.
+function browserSttUsable(): boolean {
+  if (!USE_BROWSER_STT || typeof window === "undefined") return false;
+  if (window.isSecureContext === false) return false;
+  return !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+}
+
+// The word-by-word LIVE CAPTION uses the same browser Web Speech API, but runs
+// REGARDLESS of USE_BROWSER_STT (it's display-only, alongside the Gemini audio
+// interview). It needs a secure origin + the API. When it can run we keep the mic
+// as free as possible for it (skip the separate noise-monitoring stream), so the
+// caption's recognition can start instead of losing the mic to another consumer.
+function liveCaptionUsable(): boolean {
+  if (typeof window === "undefined") return false;
+  if (window.isSecureContext === false) return false;
+  return !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+}
+
+// ── Client-directed Live interview pacing ────────────────────────────────────
+// The Gemini Live native-audio model is told NEVER to conclude on its own; the
+// CLIENT decides when the interview ends and signals it with a private [WRAP_UP]
+// control message. This makes premature/abrupt endings structurally impossible
+// regardless of how weakly the model follows instructions.
+//
+// The round is governed PRIMARILY by elapsed time so it always feels like a
+// full, real interview (~30 min) and can never end abruptly mid-answer:
+//
+// LIVE_MIN_MINUTES     - the interview NEVER wraps up before this many minutes,
+//                        no matter how many questions have been asked. This is
+//                        the floor that makes a substantial 30-minute interview.
+// LIVE_MIN_ANSWERS     - a substance floor: also require at least this many real
+//                        answers before wrapping (a candidate who barely speaks
+//                        for 30 min shouldn't trigger a premature, thin wrap-up).
+// LIVE_MAX_MINUTES     - hard time backstop: the round always ends by here.
+// LIVE_HARD_CAP_ASKED  - absolute backstop on questions asked, regardless of all
+//                        else, so the round can never run away.
+const LIVE_MIN_MINUTES = 30;
+const LIVE_MIN_ANSWERS = 8;
+const LIVE_MAX_MINUTES = 45;
+const LIVE_HARD_CAP_ASKED = 60;
+// Private director signals (never shown in the transcript; the system prompt
+// tells the model these are control messages, not the candidate).
+const LIVE_WRAP_UP_MSG = "[WRAP_UP]";
+const LIVE_CONTINUE_MSG =
+  "[DIRECTOR: Do not conclude yet. Continue the interview - ask your next question, building on the candidate's last answer and probing deeper. Do not say any closing or sign-off.]";
 
 /**
  * Compact DNLA report for the interviewer prompt: each competency's score vs
@@ -23,7 +95,7 @@ function buildDnlaSummary(studentId: string): string {
   return dnla
     .map(
       (d) =>
-        `${d.competency} (${d.group}): ${d.score}/7 vs benchmark ${d.benchmark}${d.score < d.benchmark ? " — development area" : ""}`
+        `${d.competency} (${d.group}): ${d.score}/7 vs benchmark ${d.benchmark}${d.score < d.benchmark ? " - development area" : ""}`
     )
     .join("\n");
 }
@@ -37,13 +109,16 @@ function buildDnlaSummary(studentId: string): string {
 function buildPriorInterviews(studentId: string): string {
   if (typeof window === "undefined") return "";
   const rounds = [
-    { label: "AI interview (technical)", key: `taledge:interview:${studentId}:technical` },
-    { label: "DNLA behavioural interview", key: `taledge:interview:${studentId}:dnla` },
+    { label: "AI interview (technical)", keys: [`taledge:interview:${studentId}:technical`] },
+    // Behavioural transcripts can land under either key depending on the route
+    // taken (dnla funnel vs a standalone behavioural round) - try both, matching
+    // how the Fit Score report reads them.
+    { label: "DNLA behavioural interview", keys: [`taledge:interview:${studentId}:behavioural`, `taledge:interview:${studentId}:dnla`] },
   ];
   const parts: string[] = [];
   for (const r of rounds) {
     try {
-      const raw = localStorage.getItem(r.key);
+      const raw = r.keys.map((k) => localStorage.getItem(k)).find(Boolean);
       if (!raw) continue;
       const msgs = JSON.parse(raw) as { role: string; content: string }[];
       if (!Array.isArray(msgs) || msgs.length === 0) continue;
@@ -136,7 +211,11 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   }
   const router = useRouter();
   const pathname = usePathname();
-  const isTech = mode === "technical";
+  // The on-screen code compiler must be available wherever the interviewer can
+  // set a coding task - i.e. the technical AND final placement rounds (this
+  // mirrors the coding instruction in the Live system prompt). Previously it was
+  // technical-only, so the Final Combined round asked for code with no Code tab.
+  const isTechRound = mode === "technical" || mode === "final";
   // This page is shared by both tracks. When mounted under /exam/[id]/... the
   // candidate is a competitive-exam aspirant; the interviewer persona and all
   // in-flow navigation (dashboard, fit-score) stay within that namespace.
@@ -157,23 +236,61 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   //   technical → dnla → final → fit-score. (behavioural stays a standalone
   //   round that goes straight to the report.)
   const NEXT_STEP: Record<string, { href: string; label: string }> = {
-    technical: { href: `${flowBase}/${id}/interview/dnla`, label: "Continue to DNLA interview" },
+    // DNLA interview round is skipped until the real DNLA provider API is wired;
+    // the technical round flows straight into the final combined interview. (The
+    // `dnla` route still works if visited directly, but the funnel bypasses it.)
+    technical: { href: `${flowBase}/${id}/interview/final`, label: "Continue to final interview" },
     dnla: { href: `${flowBase}/${id}/interview/final`, label: "Continue to final interview" },
-    final: { href: `${flowBase}/${id}/comparison`, label: "View comparison report" },
+    // Terminal of the guided funnel = the canonical Fit Score page. It runs the
+    // scoring + recruiter-binding (invite token) generate, and is reachable for
+    // every candidate - unlike /comparison, which requires a DNLA transcript the
+    // funnel never produces. (Comparison stays linkable from the Fit Score page.)
+    final: { href: `${flowBase}/${id}/fit-score`, label: "View your Fit Score" },
     behavioural: { href: `${flowBase}/${id}/fit-score`, label: "View Results & Report" },
   };
   const nextStep = NEXT_STEP[mode] ?? { href: `${flowBase}/${id}/fit-score`, label: "View Results & Report" };
+
+  // Where a TERMINATED session (3 proctoring strikes / identity block) is sent.
+  // Per product decision this is the candidate's RESULTS/REPORT page - NOT the
+  // dashboard, and NOT the next interview round (a terminated candidate must not
+  // be pushed forward into another round). For the final combined round that's
+  // the comparison report; for every other round it's the Fit Score report.
+  const terminationHref = `${flowBase}/${id}/fit-score`;
 
   // Gemini Live (realtime HD-voice interviewer). When it connects, it drives the
   // conversation (native-audio out + mic in + transcription); the text/TTS path
   // below is the fallback if Live can't connect.
   const live = useGeminiLive();
   const [liveActive, setLiveActive] = useState(false);
+  // Guards the Live auto-conclude effect so it fires exactly once per session.
+  const liveEndedRef = useRef(false);
+  // Client-director state: whether we've already sent the [WRAP_UP] signal, the
+  // fallback timer that force-ends if the model never delivers its closing, and
+  // a bounded counter for "keep going" nudges when the model disobeys early.
+  const wrapUpSentRef = useRef(false);
+  const wrapUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const continueNudgeRef = useRef(0);
+  // Wall-clock start of the live interview (set when the session goes live).
+  // Drives the time-based pacing so the round always runs a full ~30 min and is
+  // hard-capped at ~45 min, independent of how many questions have been asked.
+  const liveStartedAtRef = useRef(0);
   // Mirror the Live transcript into the page (drives the chat UI + the existing
-  // localStorage persistence that the Fit Score report reads).
+  // localStorage persistence that the Fit Score report reads). Strip any
+  // [CONCLUDE] control token so it is never shown to / spoken at the candidate.
   useEffect(() => {
     if (liveActive && live.messages.length) {
-      setMessages(live.messages.map((m) => ({ role: m.role, text: m.text })));
+      setMessages(
+        live.messages.map((m) => ({
+          role: m.role,
+          // Strip any control tokens the model might echo so they never show in
+          // the transcript shown to / spoken at the candidate.
+          text: m.text
+            .replace(/\[\s*conclude\s*\]/gi, "")
+            .replace(/\[\s*wrap[\s_-]*up\s*\]/gi, "")
+            .replace(/\[\s*director:[^\]]*\]/gi, "")
+            .trim(),
+        }))
+      );
     }
   }, [live.messages, liveActive]);
   // Reflect the Live AI's speaking state on the visualizer.
@@ -185,6 +302,12 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const [messages, setMessages] = useState<{ role: string; text: string }[]>([]);
   const [draft, setDraft] = useState("");
   const [interimDraft, setInterimDraft] = useState("");
+  // Word-by-word live caption from a PARALLEL browser SpeechRecognition that runs
+  // only to DISPLAY the candidate's words in real time. It never sends anything
+  // and never touches the Gemini interview; if it can't run (no Web Speech API /
+  // insecure origin / mic blocked) the UI falls back to Gemini's transcription.
+  const [liveCaption, setLiveCaption] = useState("");
+  const captionRecogRef = useRef<any>(null);
   const [recording, setRecording] = useState(false);
   const [done, setDone] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -205,13 +328,22 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const [challengeLoading, setChallengeLoading] = useState(false);
   const [challengeError, setChallengeError] = useState<string | null>(null);
   const [challengeRemaining, setChallengeRemaining] = useState<number | null>(null); // seconds
-  // True for the duration of a dedicated, time-boxed coding interview block —
+  // True for the duration of a dedicated, time-boxed coding interview block -
   // during which the normal Q&A is paused until submit / cancel / timeout.
   const [codeInterviewActive, setCodeInterviewActive] = useState(false);
   const challengeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [setupStep, setSetupStep] = useState<"resume" | "rules" | "verify" | "interview">("rules");
+  const [setupStep, setSetupStep] = useState<"resume" | "rules" | "systemcheck" | "verify" | "interview">("rules");
+  // Pre-flight system check (camera / mic / lighting / network / browser). All
+  // checks are LOCAL browser APIs - they make no paid API calls. Camera + mic
+  // must pass to continue; lighting / network are advisory warnings.
+  type CheckStatus = "checking" | "pass" | "warn" | "fail";
+  const [sysChecks, setSysChecks] = useState<{ camera: CheckStatus; mic: CheckStatus; lighting: CheckStatus; network: CheckStatus; browser: CheckStatus }>(
+    { camera: "checking", mic: "checking", lighting: "checking", network: "checking", browser: "checking" }
+  );
+  const [micLevel, setMicLevel] = useState(0); // live 0..1 input meter for the mic test
+  const sysMicCleanupRef = useRef<null | (() => void)>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [verificationResult, setVerificationResult] = useState<{status: "idle" | "verifying" | "success" | "error", message?: string}>({status: "idle"});
   const [hasStarted, setHasStarted] = useState(false);
@@ -228,12 +360,27 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     faceVisible: false, personCount: 0, phoneDetected: false, cameraCovered: false, tabFocused: true, noiseDetected: false, externalDisplay: false,
   });
   const [violationLog, setViolationLog] = useState<string[]>([]);
+  // Diagnostic: the objects the on-device vision model currently sees (class +
+  // confidence). Surfaced in the security panel so a "device not detected" report
+  // can be traced to whether COCO-SSD is even proposing a box for the phone.
+  const [detectedObjects, setDetectedObjects] = useState("");
   const [cameraError, setCameraError] = useState<string | null>(null);
   // Live lighting estimate for the Face-ID verify step (canvas brightness).
   const [lightingState, setLightingState] = useState<"good" | "dark" | "bright" | "unknown">("unknown");
   // Surfaces a finite-timeout / failure on the interview-start ("Connecting...")
   // path so the UI does not spin forever. Retry re-runs startInterview().
   const [connectError, setConnectError] = useState<string | null>(null);
+  // Surfaced speech-to-text problems (permission denied, no mic, insecure
+  // origin) so a silent STT failure is visible and the candidate can fall back to
+  // typing instead of staring at a dead mic.
+  const [micError, setMicError] = useState<string | null>(null);
+  // Cross-browser STT routing. Chrome/Edge expose the Web Speech API, so we use
+  // forced-English browser recognition there. Firefox/Safari do NOT implement it,
+  // so we instead stream the candidate's mic to Gemini Live (captureMic:true) and
+  // use its server-side transcription - which works in every browser. The ref is
+  // read synchronously when connecting; the state only drives UI copy.
+  const geminiCaptureRef = useRef(false);
+  const [usingGeminiStt, setUsingGeminiStt] = useState(false);
   // Non-blocking send/transcribe failure banner (the drafted answer is restored
   // separately so the candidate never loses their typed/spoken response).
   const [sendError, setSendError] = useState<string | null>(null);
@@ -246,15 +393,19 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   // Enrolled reference frame (set on successful Face-ID verify) + a live mirror
-  // of the detected person count — both read inside long-lived proctoring
+  // of the detected person count - both read inside long-lived proctoring
   // closures to run continuous anti-impersonation identity checks.
   const referenceImageRef = useRef<string | null>(null);
   const personCountRef = useRef(0);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  // Whether the chat should auto-scroll to the latest content. Starts true and is
+  // flipped off only when the user scrolls UP to re-read, then back on when they
+  // return near the bottom (see the scroll listener effect).
+  const pinToBottomRef = useRef(true);
   const recognitionRef = useRef<any>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  // Selected browser fallback voice — a female English voice to match the
+  // Selected browser fallback voice - a female English voice to match the
   // previous (female) Gemini interviewer voice. Populated once voices load.
   const ttsVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const proctoringRef = useRef({ blocked: false, isWarningVisible: false });
@@ -264,7 +415,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const draftRef = useRef("");
   const modelRef = useRef<any>(null);
-  // BlazeFace model — face + eye/nose/ear landmarks used to estimate whether the
+  // BlazeFace model - face + eye/nose/ear landmarks used to estimate whether the
   // candidate is looking AT the screen (gaze/eye-contact proctoring). Optional:
   // proctoring still runs if it fails to load.
   const faceModelRef = useRef<any>(null);
@@ -274,6 +425,69 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const [proctoringReady, setProctoringReady] = useState(false);
   const doneRef = useRef(false);
+  // Mirror aiSpeaking into a ref so the speech-recognition onresult handler
+  // (whose closure captures state at setup time) can read the LIVE value and
+  // ignore the mic while the AI's TTS has the floor - a half-duplex guard that
+  // stops the interviewer's own voice being transcribed as the candidate's answer.
+  const aiSpeakingRef = useRef(false);
+  useEffect(() => { aiSpeakingRef.current = aiSpeaking; }, [aiSpeaking]);
+
+  // WORD-BY-WORD LIVE CAPTION. A parallel browser SpeechRecognition (en-US,
+  // interimResults) that ONLY drives the on-screen caption so the candidate sees
+  // their words appear as they speak. It does not send turns or affect the Gemini
+  // interview at all. While the AI has the floor its results are ignored (so the
+  // interviewer's TTS can't leak in). Best-effort: any failure is swallowed and
+  // the UI falls back to Gemini's transcription.
+  //
+  // CRITICAL: this must be STARTED before Gemini grabs the mic (see
+  // handleStartInterview) so the browser recognition claims the mic FIRST -
+  // otherwise Gemini's capture shuts it out and the caption never appears.
+  const stopLiveCaption = useCallback(() => {
+    const r = captionRecogRef.current;
+    if (r) { r.shouldRun = false; try { r.stop(); } catch {} captionRecogRef.current = null; }
+    setLiveCaption("");
+  }, []);
+
+  const startLiveCaption = useCallback(() => {
+    if (!liveCaptionUsable() || captionRecogRef.current || doneRef.current) return;
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = "en-US";
+    rec.shouldRun = true;
+    rec.onresult = (e: any) => {
+      if (aiSpeakingRef.current || doneRef.current) return; // ignore the AI's voice
+      let interim = "", finalStr = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) finalStr += e.results[i][0].transcript + " ";
+        else interim += e.results[i][0].transcript;
+      }
+      setLiveCaption((finalStr + interim).trim());
+    };
+    rec.onend = () => { if (captionRecogRef.current?.shouldRun) { try { rec.start(); } catch {} } };
+    rec.onerror = (ev: any) => {
+      const err = ev?.error || "";
+      if (err === "not-allowed" || err === "audio-capture" || err === "service-not-allowed") {
+        if (captionRecogRef.current) captionRecogRef.current.shouldRun = false;
+      }
+      // no-speech / aborted / network are transient - onend will restart.
+    };
+    captionRecogRef.current = rec;
+    try { rec.start(); } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!liveActive || isCodingMode || done) { stopLiveCaption(); return; }
+    startLiveCaption(); // idempotent - usually already started in handleStartInterview
+    return () => stopLiveCaption();
+  }, [liveActive, isCodingMode, done, startLiveCaption, stopLiveCaption]);
+
+  // Clear the word-by-word caption when the interviewer takes the floor, so the
+  // candidate's previous answer doesn't linger while the AI responds.
+  useEffect(() => {
+    if (aiSpeaking || live.partialAi) setLiveCaption("");
+  }, [aiSpeaking, live.partialAi]);
   useEffect(() => {
     doneRef.current = done;
     if (done) {
@@ -373,24 +587,59 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         setCameraError(reason);
       });
 
-    // Request audio stream for noise monitoring
-    navigator.mediaDevices.getUserMedia({ audio: true })
-      .then((stream) => {
-        audioStream = stream;
-        try {
-          const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-          noiseContext = new AudioContextClass();
-          audioAnalyzer = noiseContext.createAnalyser();
-          audioAnalyzer.fftSize = 256;
-          audioSource = noiseContext.createMediaStreamSource(stream);
-          audioSource.connect(audioAnalyzer);
-        } catch (e) {
-          console.error("Audio analyzer setup error:", e);
-        }
-      })
-      .catch((err) => console.warn("Mic access denied or unavailable for noise check:", err));
+    // Request audio stream for noise monitoring.
+    //
+    // ⚠️ SKIP this whenever the browser Web Speech API can run (forced-English STT
+    // OR the word-by-word live caption). Holding a SECOND microphone stream here
+    // collides with Chrome's SpeechRecognition (which opens its own mic capture) -
+    // recognition then aborts in a silent loop and the live caption falls back to
+    // Gemini's slower transcription. A real-time caption matters more than passive
+    // noise proctoring, so we leave the mic free for SpeechRecognition.
+    if (!browserSttUsable() && !liveCaptionUsable()) {
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then((stream) => {
+          audioStream = stream;
+          try {
+            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+            noiseContext = new AudioContextClass();
+            audioAnalyzer = noiseContext.createAnalyser();
+            audioAnalyzer.fftSize = 256;
+            audioSource = noiseContext.createMediaStreamSource(stream);
+            audioSource.connect(audioAnalyzer);
+          } catch (e) {
+            console.error("Audio analyzer setup error:", e);
+          }
+        })
+        .catch((err) => console.warn("Mic access denied or unavailable for noise check:", err));
+    } else {
+      // Browser STT path: prime the microphone permission up front WITHOUT holding
+      // the stream - grab it, then immediately stop every track so the mic is left
+      // free for webkitSpeechRecognition. This surfaces the permission prompt
+      // during setup (not mid-interview) and avoids the two-streams-one-mic clash.
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then((stream) => { stream.getTracks().forEach((t) => t.stop()); })
+        .catch((err) => console.warn("Mic permission not granted for speech recognition:", err));
+    }
 
-    // Load Proctoring Vision AI
+    // Load Proctoring Vision AI.
+    //
+    // IMPORTANT: TensorFlow's UMD CDN bundles detect Monaco Editor's AMD
+    // `define()` (pulled in by @monaco-editor/react for the in-interview code
+    // compiler) and try to register as ANONYMOUS AMD modules. That both throws
+    // "Can only have one anonymous define call per script file" and prevents them
+    // from attaching to `window` (so cocoSsd/blazeface would be undefined). We
+    // hide `define` while each script evaluates so the UMD bundles take their
+    // plain browser-global branch, then restore `define` for Monaco's loader.
+    const loadScript = (src: string) =>
+      new Promise<void>((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = src;
+        s.async = true;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error(`Failed to load ${src}`));
+        document.body.appendChild(s);
+      });
+
     const loadTF = async () => {
       const fallbackTimeout = setTimeout(() => {
         if (!modelRef.current) {
@@ -399,74 +648,89 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         }
       }, 6000);
 
+      const w = window as any;
+      const prevDefine = w.define;
+      const restoreDefine = () => { try { w.define = prevDefine; } catch { /* noop */ } };
+      // Neutralize AMD for the whole UMD-load window.
+      try { w.define = undefined; } catch { /* noop */ }
+
       try {
-        const script1 = document.createElement("script");
-        script1.src = "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js";
-        script1.async = true;
-        document.body.appendChild(script1);
-        
-        script1.onload = () => {
-          // BlazeFace (face landmarks for eye-contact/gaze proctoring) — loads in
-          // parallel with COCO-SSD, both depend on tf (script1). Best-effort.
-          const faceScript = document.createElement("script");
-          faceScript.src = "https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js";
-          faceScript.async = true;
-          document.body.appendChild(faceScript);
-          faceScript.onload = () => {
-            try {
-              (window as any).blazeface?.load().then((m: any) => { faceModelRef.current = m; }).catch(() => {});
-            } catch { /* gaze detection is optional */ }
-          };
-
-          const script2 = document.createElement("script");
-          script2.src = "https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js";
-          script2.async = true;
-          document.body.appendChild(script2);
-
-          script2.onload = () => {
-            try {
-              (window as any).cocoSsd.load().then((model: any) => {
-                modelRef.current = model;
-                clearTimeout(fallbackTimeout);
-                setProctoringReady(true);
-              }).catch((e: any) => {
-                console.error("CocoSSD load failed, using fallback:", e);
-                setProctoringReady(true);
-              });
-            } catch (err) {
-              console.error("CocoSSD init failed, using fallback:", err);
-              setProctoringReady(true);
-            }
-          };
-
-          script2.onerror = () => {
-            console.error("CocoSSD script load failed");
-            setProctoringReady(true);
-          };
-        };
-
-        script1.onerror = () => {
-          console.error("TFJS script load failed");
-          setProctoringReady(true);
-        };
+        await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js");
+        // BlazeFace (gaze) + COCO-SSD (object detection) both depend on tf; load
+        // them in parallel. Best-effort - a failure of either is non-fatal.
+        await Promise.all([
+          loadScript("https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js").catch(() => {}),
+          loadScript("https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js").catch(() => {}),
+        ]);
       } catch (err) {
-        console.error("TFJS initialization threw an error:", err);
+        console.error("TFJS script load failed:", err);
+        restoreDefine();
+        clearTimeout(fallbackTimeout);
+        setProctoringReady(true);
+        return;
+      }
+
+      // Scripts have evaluated and attached to window - restore AMD for Monaco.
+      restoreDefine();
+
+      // Gaze model (optional - eye-contact/gaze proctoring).
+      try {
+        w.blazeface?.load().then((m: any) => { faceModelRef.current = m; }).catch(() => {});
+      } catch { /* gaze detection is optional */ }
+
+      // Object-detection model (multi-person / phone proctoring).
+      try {
+        if (w.cocoSsd) {
+          w.cocoSsd.load().then((model: any) => {
+            modelRef.current = model;
+            clearTimeout(fallbackTimeout);
+            setProctoringReady(true);
+          }).catch((e: any) => {
+            console.error("CocoSSD load failed, using fallback:", e);
+            clearTimeout(fallbackTimeout);
+            setProctoringReady(true);
+          });
+        } else {
+          clearTimeout(fallbackTimeout);
+          setProctoringReady(true);
+        }
+      } catch (err) {
+        console.error("CocoSSD init failed, using fallback:", err);
+        clearTimeout(fallbackTimeout);
         setProctoringReady(true);
       }
     };
     loadTF();
 
-    // Setup speech recognition
+    // Speech-to-text. By default (USE_BROWSER_STT=false) we transcribe the
+    // candidate through Gemini Live's server-side `inputAudioTranscription` in
+    // EVERY browser - set up in startInterview via captureMic - so STT is
+    // consistent and works where the Web Speech API is absent (Firefox/Safari).
+    // Browser SpeechRecognition is only initialised when explicitly re-enabled.
+    // Either way mic access needs a secure context; warn if we lack one.
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
+    // Use forced-English browser STT ONLY where it actually works (secure origin
+    // + Web Speech API). Otherwise we transcribe through Gemini's server-side
+    // capture, which works on any origin - so STT is never dead.
+    const useBrowserStt = browserSttUsable();
+    if (!useBrowserStt) {
+      geminiCaptureRef.current = true;
+      setUsingGeminiStt(true);
+    }
+    // Only the browser STT path needs a secure origin; the Gemini fallback does
+    // not, so don't show the "needs https" warning when we're on that fallback.
+    if (useBrowserStt) {
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = "en-US";
       recognition.maxAlternatives = 3;
 
-      recognition.onstart = () => setRecording(true);
+      recognition.onstart = () => { setRecording(true); setMicError(null); };
       recognition.onresult = (event: any) => {
+        // Half-duplex: ignore anything captured while the AI is speaking (or the
+        // round is done) so the interviewer's TTS can't leak into the answer.
+        if (aiSpeakingRef.current || doneRef.current) return;
         let finalStr = "";
         let interimStr = "";
         for (let i = event.resultIndex; i < event.results.length; ++i) {
@@ -488,13 +752,15 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           setDraft(draftRef.current);
         }
         
-        // Zero-latency DOM update
+        // Zero-latency DOM update of the editable box…
         if (textAreaRef.current) {
           textAreaRef.current.value = draftRef.current + interimStr;
-        } else {
-          setInterimDraft(interimStr);
         }
-        
+        // …and ALWAYS mirror the interim text into state so the on-screen "You -
+        // speaking…" caption updates live (the candidate's words must be visible
+        // as a caption, not only inside the input box).
+        setInterimDraft(interimStr);
+
         // Auto-send silence detection (4 seconds)
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = setTimeout(() => {
@@ -503,6 +769,32 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             btn.click();
           }
         }, 4000);
+      };
+      // Surface failures instead of dying silently. Permission / device / not-
+      // supported errors are fatal (stop the restart loop + show a message);
+      // no-speech / aborted / network are transient and handled by onend's restart.
+      recognition.onerror = (e: any) => {
+        const err = e?.error || "unknown";
+        console.warn("[stt] recognition error:", err);
+        // ONLY a genuine, user-initiated permission denial is fatal - that's the
+        // one case auto-restarting can't recover. Everything else (incl.
+        // `service-not-allowed`, which Chrome also throws transiently on a flaky
+        // network, a rapid restart, a busy speech backend, or a non-secure
+        // context) must fall through to onend's auto-restart, or one stray event
+        // would silently kill STT for the whole round.
+        if (err === "not-allowed") {
+          if (recognitionRef.current) recognitionRef.current.shouldListen = false;
+          setMicError("Microphone access is blocked. Click the mic icon in your browser's address bar to allow it and reload - or type your answer below.");
+        } else if (err === "audio-capture") {
+          setMicError("No microphone was detected. Check your mic, or type your answer below.");
+        } else if (err === "service-not-allowed" && typeof window !== "undefined" && window.isSecureContext === false) {
+          // Non-secure origin (e.g. opened via a http://LAN-IP address): Chrome
+          // will never grant the speech service here. Tell the candidate how to
+          // fix it instead of looping silently; keep typing available.
+          setMicError("Speech-to-text needs a secure (https) or localhost connection. Open the app on http://localhost, or type your answer below.");
+        }
+        // no-speech / aborted / network / transient service-not-allowed → let
+        // onend restart automatically (shouldListen stays true).
       };
       recognition.onend = () => {
         setRecording(false);
@@ -520,7 +812,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       if (!hasStartedRef.current) return;
       if (proctoringRef.current.blocked || proctoringRef.current.isWarningVisible) return;
       proctoringRef.current.isWarningVisible = true;
-      
+
       setViolationLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${reason}`]);
 
       // Report to the server-authoritative proctor sink (fire-and-forget). The
@@ -548,9 +840,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
 
     // 1. Focus / attention tracking. The candidate must stay ON the interview
     // screen. We warn only after they have been off-screen (tab hidden OR the
-    // window lost focus — e.g. alt-tabbed to another app) for longer than a
+    // window lost focus - e.g. alt-tabbed to another app) for longer than a
     // threshold, so a momentary blur never triggers a false positive.
-    const FOCUS_LOSS_THRESHOLD_MS = 4000;
+    const FOCUS_LOSS_THRESHOLD_MS = 1200;
     let unfocusTimer: ReturnType<typeof setTimeout> | null = null;
     const clearUnfocusTimer = () => {
       if (unfocusTimer) {
@@ -608,7 +900,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       lastWidth = window.outerWidth;
     };
 
-    // 4c. Copy / cut blocking — each attempt is a proctoring warning (shared
+    // 4c. Copy / cut blocking - each attempt is a proctoring warning (shared
     // 3-strike pipeline, so repeated copying ends the assessment).
     const handleCopyAttempt = (e: Event) => {
       e.preventDefault();
@@ -639,7 +931,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         setBlocked(true);
       } else {
         proctoringRef.current.isWarningVisible = true;
-        setWarningMessage("FULL-SCREEN REQUIRED: You left full-screen. Return to full-screen to continue — exiting again will end your assessment.");
+        setWarningMessage("FULL-SCREEN REQUIRED: You left full-screen. Return to full-screen to continue - exiting again will end your assessment.");
       }
     };
 
@@ -680,7 +972,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             body: JSON.stringify({ sessionId: sessionIdRef.current, event: "violation", reason }),
           }).catch(() => {});
         }
-        // An external display is not a 3-strike nudge — terminate immediately.
+        // An external display is not a 3-strike nudge - terminate immediately.
         proctoringRef.current.blocked = true;
         setBlocked(true);
       } else if (!extended) {
@@ -713,7 +1005,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     // After enrolment (Face-ID verify), keep confirming the SAME person is at
     // the camera. A sustained mismatch warns at +2s and terminates at +5s
     // (wall-clock). A ONE-TIME grace: if the enrolled candidate returns while
-    // warned, the test resumes — but only once; any later mismatch ends it.
+    // warned, the test resumes - but only once; any later mismatch ends it.
     let identityBusy = false;
     let pardonUsed = false;        // the single resume-grace has been spent
     let episodeActive = false;     // a mismatch escalation is in progress
@@ -765,17 +1057,19 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     };
 
     const terminateImpersonation = () => {
-      if (proctoringRef.current.blocked) return;
+      // Never terminate once the interview is finishing/finished - the identity
+      // monitor runs on a timer and could otherwise fire during the closing.
+      if (proctoringRef.current.blocked || doneRef.current || !hasStartedRef.current) return;
       proctoringRef.current.blocked = true;
       setIdentityWarning("");
       const reason = "A different person was detected at the camera. For exam integrity, this assessment has been terminated.";
       setBlockReason(reason);
-      setViolationLog((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Face identity mismatch — a different person was detected`]);
+      setViolationLog((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Face identity mismatch - a different person was detected`]);
       if (sessionIdRef.current) {
         authedFetch("/api/interview/proctor", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: sessionIdRef.current, event: "violation", reason: "Face identity mismatch — different person detected" }),
+          body: JSON.stringify({ sessionId: sessionIdRef.current, event: "violation", reason: "Face identity mismatch - different person detected" }),
         }).catch(() => {});
       }
       setBlocked(true);
@@ -792,7 +1086,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     // Wall-clock escalation tick (runs every 250ms during a mismatch episode):
     //   • t ≥ 2s → show ONE warning
     //   • a re-check says "same" after warning → RESUME (consumes the one-time
-    //     grace) — the enrolled candidate came back
+    //     grace) - the enrolled candidate came back
     //   • t ≥ 5s with a different person still present → terminate
     const episodeTick = async () => {
       if (!episodeActive) return;
@@ -911,8 +1205,19 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       // COCO-SSD object detection
       if (modelRef.current) {
         try {
-          const predictions = await modelRef.current.detect(videoRef.current);
-          
+          // Ask the detector for MORE candidate boxes than the default (20) and at
+          // a lower internal score, so a phone - which COCO-SSD scores weakly,
+          // especially held close - actually shows up in the list to be filtered.
+          const predictions = await modelRef.current.detect(videoRef.current, 40, 0.2);
+
+          // Diagnostic readout: what the vision model actually sees right now.
+          const topDetections = predictions
+            .filter((p: any) => p.score >= 0.25)
+            .slice(0, 6)
+            .map((p: any) => `${p.class} ${Math.round(p.score * 100)}%`)
+            .join(" · ");
+          setDetectedObjects(topDetections);
+
           // Lower person detection threshold to 0.35 to successfully capture long-distance humans in frame,
           // but filter out overlapping bounding boxes to prevent hands-on-head/shoulders from registering as multiple people.
           const personPredictions = predictions.filter((p: any) => p.class === "person" && p.score > 0.35);
@@ -933,9 +1238,15 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           const personCount = uniquePersons.length;
           personCountRef.current = personCount;
 
-          // Lower device detection threshold to 0.35 to capture cell phones/laptops/books reliably
-          const phoneDetected = predictions.some((p: any) => 
-            (p.class === "cell phone" || p.class === "laptop" || p.class === "book") && p.score > 0.35
+          // A device held up to read from is an intentional breach we want caught.
+          // COCO-SSD frequently labels a hand-held phone as "remote" (small dark
+          // rectangle) rather than "cell phone", and scores it weakly - so we match
+          // BOTH classes at a sensitive 0.3 threshold. This is a LOCAL (COCO-SSD)
+          // check and costs nothing. "laptop" (the interview runs on one) and the
+          // false-positive-prone "book" class are deliberately NOT included.
+          const DEVICE_CLASSES = new Set(["cell phone", "remote"]);
+          const phoneDetected = predictions.some((p: any) =>
+            DEVICE_CLASSES.has(p.class) && p.score >= 0.3
           );
 
           // Audio level check for background noise
@@ -964,11 +1275,13 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             noiseDetected,
           }));
           
-          // Debounce phone detection: trigger warning only if detected in 2 consecutive frames (1.6s)
+          // A device in frame is a strike once it persists ~1.6s (2 frames) - long
+          // enough to filter a single noisy mis-detection, fast enough to catch a
+          // phone actually held up to read from.
           if (phoneDetected) {
             phoneFrames++;
             if (phoneFrames >= 2) {
-              issueWarning("Unauthorized device detected! The AI detected a phone, laptop, or reference material in your frame.");
+              issueWarning("Unauthorized device detected! Please remove any phone from your frame.");
               phoneFrames = 0;
             }
           } else {
@@ -995,7 +1308,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
               missingFrames = 0;
             }
           } else {
-            // A face returned after an absence — the classic seat-swap moment.
+            // A face returned after an absence - the classic seat-swap moment.
             // Urgently re-confirm it is still the SAME enrolled candidate.
             if (wasAbsent) {
               wasAbsent = false;
@@ -1028,7 +1341,8 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
               }
               if (lookingAway) {
                 gazeAwayFrames++;
-                if (gazeAwayFrames >= 5) {
+                if (gazeAwayFrames >= 4) {
+                  // ~1.4s of looking away/down (e.g. reading from a phone) → strike.
                   issueWarning("Keep your eyes on the screen. The AI detected you looking away from the interview.");
                   gazeAwayFrames = 0;
                 }
@@ -1042,7 +1356,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         } catch (e) {}
       }
     };
-    const visionInterval = setInterval(checkVisionAI, 800);
+    // Scan ~3×/second so cheating (a phone, looking away, leaving frame) is caught
+    // in ~1s, not several. Faster than this risks audio contention with Gemini Live.
+    const visionInterval = setInterval(checkVisionAI, 350);
     // Periodic anti-impersonation identity confirmation (in addition to the
     // urgent re-check fired whenever a face reappears after an absence).
     const identityInterval = setInterval(() => { void verifyIdentityNow(false); }, 5000);
@@ -1085,7 +1401,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   }, []);
 
   // Robustly (re)bind the live MediaStream to BOTH video elements whenever they
-  // mount or the step changes — and explicitly call play(). Without this, the
+  // mount or the step changes - and explicitly call play(). Without this, the
   // background feed (and the verify preview) can stay black: getUserMedia
   // resolves once, but the <video> for a given step may not be in the DOM yet,
   // or autoplay may not start without an explicit play() call.
@@ -1157,13 +1473,19 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     setRecording(false);
     setIsProcessing(false);
 
-    // Auto-return to the candidate dashboard after showing the termination
-    // notice briefly. The manual button stays as an immediate fallback.
+    // If the interview already completed normally, the `done` redirect owns the
+    // navigation - don't double-drive it here.
+    if (doneRef.current || done) return;
+
+    // A genuine proctoring termination: show the termination notice briefly, then
+    // send the candidate to their RESULTS/REPORT page (NOT the dashboard), so they
+    // still see an outcome. The manual button on the blocked screen is the
+    // immediate fallback.
     const redirectTimer = setTimeout(() => {
-      router.push(`${flowBase}/${id}`);
+      router.push(terminationHref);
     }, 5000);
     return () => clearTimeout(redirectTimer);
-  }, [blocked, router, id]);
+  }, [blocked, router, id, done, terminationHref]);
 
   // Sync messages to localStorage for the Fit Score generator
   useEffect(() => {
@@ -1189,9 +1511,33 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     return () => clearTimeout(t);
   }, [done, router, id, nextStep.href]);
 
+  // Keep the conversation pinned to the latest content. This must follow the LIVE
+  // streaming captions (live.partialAi / live.partialUser) and the "thinking"
+  // state too - not just committed messages - otherwise new words land below the
+  // fold and the view appears frozen while the screen fills up.
+  //
+  // IMPORTANT: captions stream MANY updates per second, so a "smooth" animated
+  // scroll restarts on every token and makes the whole Q&A column visibly bounce.
+  // We pin INSTANTLY (no animation). We keep pinning UNLESS the user has actively
+  // scrolled up to re-read - tracked by a scroll listener (`pinToBottomRef`), so a
+  // fresh chat (which starts at the top) still auto-scrolls, but we never yank a
+  // user who deliberately scrolled away.
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const scroller = chatBottomRef.current?.parentElement;
+    if (!scroller) return;
+    const onScroll = () => {
+      const dist = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+      pinToBottomRef.current = dist < 120;
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => scroller.removeEventListener("scroll", onScroll);
+  }, [liveActive, hasStarted, done]);
+
+  useEffect(() => {
+    if (pinToBottomRef.current) {
+      chatBottomRef.current?.scrollIntoView({ block: "end" });
+    }
+  }, [messages, live.partialAi, live.partialUser, liveCaption, isProcessing, liveActive]);
 
   const stripMarkdown = (text: string) => text.replace(/\*/g, "");
 
@@ -1215,7 +1561,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     };
   }, []);
 
-  // Browser fallback voice. Used when the server returns no TTS audio — e.g. in
+  // Browser fallback voice. Used when the server returns no TTS audio - e.g. in
   // production where the GEMINI key/project may not have the preview TTS model
   // enabled (text questions still work, but audioBase64 comes back empty). This
   // keeps the AI interviewer audible everywhere with no API/key dependency.
@@ -1237,6 +1583,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       }
       utter.rate = 1;
       utter.pitch = 1.05;
+      if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
       setAiSpeaking(true);
       const finish = () => {
         setAiSpeaking(false);
@@ -1290,6 +1637,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       source.connect(analyser);
       analyser.connect(audioCtxRef.current.destination);
       
+      if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
       setAiSpeaking(true);
       
       const updateVolume = () => {
@@ -1333,6 +1681,69 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       } catch (e) {}
     }
   };
+
+  // "Re-do": wipe the answer the candidate has drafted so far and capture it
+  // again from scratch. Clears the draft (state + ref + the uncontrolled
+  // textarea + the live caption) and any pending auto-send timer, then force-
+  // restarts speech recognition so a fresh, clean capture begins. With forced-
+  // English browser STT this fully resets the answer; in the Gemini fallback
+  // (no SpeechRecognition) it clears the typed draft. Safe to call repeatedly.
+  const redoAnswer = () => {
+    setDraft("");
+    setInterimDraft("");
+    draftRef.current = "";
+    if (textAreaRef.current) textAreaRef.current.value = "";
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+    const rec = recognitionRef.current;
+    if (rec && !isCodingMode && !doneRef.current) {
+      // Restart cleanly: stop() lets onend auto-restart with an empty buffer; if
+      // it wasn't actually running, start it directly. Both paths leave it live.
+      rec.shouldListen = true;
+      try { rec.stop(); } catch {}
+      try { rec.start(); } catch {}
+    }
+  };
+
+  // Manual mic control for live mode - a real user gesture reliably (re)starts
+  // Chrome's SpeechRecognition even when an effect-driven auto-start was blocked
+  // or errored. Tapping it clears any prior mic error and starts/stops listening.
+  const toggleLiveMic = () => {
+    setMicError(null);
+    if (!recognitionRef.current) {
+      // No browser SpeechRecognition (Firefox/Safari). The mic is still live via
+      // Gemini's server-side capture, so there's nothing to toggle here.
+      if (!usingGeminiStt) setMicError("Speech-to-text isn't available in this browser. Please type your answer below.");
+      return;
+    }
+    if (recording) {
+      recognitionRef.current.shouldListen = false;
+      try { recognitionRef.current.stop(); } catch {}
+    } else {
+      startListening();
+    }
+  };
+
+  // LIVE mode: drive the candidate's answer with the browser's forced-English STT
+  // (recognition.lang = "en-US"), NOT Gemini's auto-detecting input transcription
+  // (which surfaced Hindi/Tamil and lagged). Keep recognition running CONTINUOUSLY
+  // for the whole live round (it auto-restarts via onend); the onresult handler
+  // already ignores audio captured while the interviewer is speaking, so we don't
+  // churn start()/stop() on every AI caption - that race left it stuck "not
+  // listening". Recognition only fully stops in the code editor or when done.
+  useEffect(() => {
+    if (!liveActive) return;
+    if (isCodingMode || done) {
+      if (recognitionRef.current) {
+        recognitionRef.current.shouldListen = false;
+        try { recognitionRef.current.stop(); } catch {}
+      }
+      if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+      return;
+    }
+    startListening();
+    // startListening only reads refs; safe to omit from deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveActive, isCodingMode, done]);
 
   async function startInterview() {
     setIsProcessing(true);
@@ -1417,6 +1828,113 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     setSetupStep("verify");
   };
 
+  // ── PRE-FLIGHT SYSTEM CHECK ────────────────────────────────────────────────
+  // Runs camera / mic / lighting / network / browser checks when the candidate
+  // reaches the systemcheck step, so device issues surface BEFORE the proctored
+  // interview rather than mid-answer. Everything here is local browser API work -
+  // no paid/Gemini calls. The mic test opens a short-lived audio stream to drive
+  // a live input meter, then releases it (a cleanup is stored in a ref).
+  const runSystemChecks = useCallback(() => {
+    setSysChecks({ camera: "checking", mic: "checking", lighting: "checking", network: "checking", browser: "checking" });
+
+    // Browser / secure-context support.
+    const hasGUM = typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
+    const secure = typeof window === "undefined" || window.isSecureContext !== false;
+    setSysChecks((c) => ({ ...c, browser: hasGUM && secure ? "pass" : "fail" }));
+
+    // Camera - a live video track + a decoded frame size means it's truly working.
+    const camTrack = mediaStreamRef.current?.getVideoTracks?.()[0];
+    const camLive = !!camTrack && camTrack.readyState === "live" && (videoRef.current?.videoWidth ?? 0) > 0;
+    setSysChecks((c) => ({ ...c, camera: camLive ? "pass" : webcamEnabledRef.current ? "warn" : "fail" }));
+
+    // Lighting - sample average brightness of the current camera frame.
+    try {
+      const v = videoRef.current;
+      if (v && v.videoWidth) {
+        const cv = document.createElement("canvas");
+        cv.width = 64; cv.height = 48;
+        const cx = cv.getContext("2d", { willReadFrequently: true });
+        if (cx) {
+          cx.drawImage(v, 0, 0, 64, 48);
+          const px = cx.getImageData(0, 0, 64, 48).data;
+          let tot = 0;
+          for (let i = 0; i < px.length; i += 4) tot += (px[i] + px[i + 1] + px[i + 2]) / 3;
+          const avg = tot / (px.length / 4);
+          // Too dark (back-light / dim room) is the #1 cause of "face not visible"
+          // strikes - flag it up front as a warning so they can fix it now.
+          setSysChecks((c) => ({ ...c, lighting: avg < 45 ? "warn" : "pass" }));
+        }
+      } else {
+        setSysChecks((c) => ({ ...c, lighting: "warn" }));
+      }
+    } catch {
+      setSysChecks((c) => ({ ...c, lighting: "warn" }));
+    }
+
+    // Network - round-trip to our own tiny health endpoint (no paid service).
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setSysChecks((c) => ({ ...c, network: "fail" }));
+    } else {
+      const t0 = performance.now();
+      fetch(`/api/health?t=${Math.round(t0)}`, { cache: "no-store" })
+        .then((r) => {
+          const rtt = performance.now() - t0;
+          setSysChecks((c) => ({ ...c, network: r.ok ? (rtt < 1200 ? "pass" : "warn") : "warn" }));
+        })
+        .catch(() => setSysChecks((c) => ({ ...c, network: "warn" })));
+    }
+
+    // Microphone - open a short-lived stream, confirm a live audio track, and run
+    // a live level meter so the candidate can SEE their mic working.
+    if (sysMicCleanupRef.current) { sysMicCleanupRef.current(); sysMicCleanupRef.current = null; }
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then((stream) => {
+        const track = stream.getAudioTracks()[0];
+        setSysChecks((c) => ({ ...c, mic: track && track.readyState === "live" ? "pass" : "warn" }));
+        let raf = 0;
+        let ctx: AudioContext | null = null;
+        try {
+          ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const src = ctx.createMediaStreamSource(stream);
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 256;
+          src.connect(analyser);
+          const data = new Uint8Array(analyser.frequencyBinCount);
+          const tick = () => {
+            analyser.getByteFrequencyData(data);
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) sum += data[i];
+            setMicLevel(Math.min(1, sum / data.length / 70));
+            raf = requestAnimationFrame(tick);
+          };
+          tick();
+        } catch { /* meter is best-effort */ }
+        sysMicCleanupRef.current = () => {
+          if (raf) cancelAnimationFrame(raf);
+          try { ctx?.close(); } catch {}
+          stream.getTracks().forEach((t) => t.stop());
+          setMicLevel(0);
+        };
+      })
+      .catch(() => setSysChecks((c) => ({ ...c, mic: "fail" })));
+  }, []);
+
+  // Trigger the checks on entering the step; release the mic meter on leaving.
+  useEffect(() => {
+    if (setupStep === "systemcheck") {
+      runSystemChecks();
+    } else if (sysMicCleanupRef.current) {
+      sysMicCleanupRef.current();
+      sysMicCleanupRef.current = null;
+    }
+    return () => {
+      if (setupStep === "systemcheck" && sysMicCleanupRef.current) {
+        sysMicCleanupRef.current();
+        sysMicCleanupRef.current = null;
+      }
+    };
+  }, [setupStep, runSystemChecks]);
+
   const handleCaptureAndVerify = async () => {
     setVerificationResult({ status: "verifying" });
     
@@ -1435,7 +1953,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         if (ctx) {
           ctx.drawImage(videoRef.current, 0, 0, tempCanvas.width, tempCanvas.height);
           // Encode asynchronously via toBlob (off the click's synchronous path)
-          // instead of the blocking toDataURL — toDataURL on a full frame blocked
+          // instead of the blocking toDataURL - toDataURL on a full frame blocked
           // the main thread ~200ms and showed up as a poor INP on this button.
           const base64Image: string = await new Promise<string>((resolve, reject) => {
             tempCanvas.toBlob(
@@ -1492,7 +2010,12 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     setSetupStep("interview");
     setHasStarted(true);
     hasStartedRef.current = true;
-    
+
+    // Claim the mic for the word-by-word caption recognition FIRST - synchronously
+    // inside this click gesture and BEFORE Gemini's capture - so the browser
+    // recognition isn't shut out by Gemini grabbing the mic a moment later.
+    startLiveCaption();
+
     try {
       if (document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
@@ -1522,36 +2045,185 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       profile.resumeProjects && profile.resumeProjects.length > 0 ? `Projects: ${profile.resumeProjects.map((p: any) => `${p.title} (${p.stack?.join(", ") || ""}): ${p.impact || ""}`).join("; ")}` : "",
       profile.aspiration ? `Goal/Target Placement: ${profile.aspiration}` : "",
     ].filter(Boolean).join("\n") : "";
+    // Decide the STT path authoritatively at connect time (don't rely on effect
+    // ordering). Use forced-English browser STT (captureMic:false → text turns)
+    // ONLY where it actually works - a secure origin with the Web Speech API.
+    // Everywhere else (insecure LAN-IP origin, Firefox/Safari) stream the mic to
+    // Gemini for server-side transcription (captureMic:true) so STT never dies.
+    const useBrowserStt = browserSttUsable();
+    geminiCaptureRef.current = !useBrowserStt;
+    setUsingGeminiStt(!useBrowserStt);
     let liveOk = false;
     try {
-      liveOk = await live.connect({
-        candidateName: profile?.fullName || "Candidate",
-        role: profile?.targetRole || (isExam ? "the exam" : "Candidate"),
-        mode,
-        track,
-        resumeSummary: resumeContext,
-        dnlaSummary: buildDnlaSummary(id),
-        ...(mode === "final" ? { priorInterviews: buildPriorInterviews(id) } : {}),
-      });
+      liveOk = await live.connect(
+        {
+          candidateName: profile?.fullName || "Candidate",
+          role: profile?.targetRole || (isExam ? "the exam" : "Candidate"),
+          mode,
+          track,
+          resumeSummary: resumeContext,
+          dnlaSummary: buildDnlaSummary(id),
+          ...(mode === "final" ? { priorInterviews: buildPriorInterviews(id) } : {}),
+        },
+        { captureMic: !useBrowserStt }
+      );
     } catch {
       liveOk = false;
     }
     if (liveOk) {
+      liveEndedRef.current = false; // arm auto-conclude for this fresh session
+      // Reset the client-director state for the fresh session.
+      wrapUpSentRef.current = false;
+      continueNudgeRef.current = 0;
+      liveStartedAtRef.current = performance.now(); // start the ~30-min pacing clock
+      if (wrapUpTimerRef.current) { clearTimeout(wrapUpTimerRef.current); wrapUpTimerRef.current = null; }
       setLiveActive(true);
       setSessionId("live"); // marks the session "live" so the header shows connected
     } else {
-      startInterview();
+      // Gemini Live is the ONLY interviewer path. When it can't connect we do not
+      // degrade to a Gemini-TTS text interview - we surface a soft, retryable
+      // notice that Google's realtime service is temporarily unavailable.
+      setIsProcessing(false);
+      setConnectError(
+        "Google's servers are temporarily unavailable, so the live interviewer can't start right now. Please try again in a moment."
+      );
     }
   };
 
   // End a live interview: stop the socket/mic and mark done (the transcript is
   // already mirrored + persisted, and the done effect advances to the report).
   const endLiveInterview = () => {
+    // DISARM PROCTORING FIRST. The interview is over, so nothing the candidate
+    // does now (exit full-screen, look away, lean out of frame, press Esc) may be
+    // treated as a violation - otherwise a late proctoring "termination" sets
+    // `blocked` and its redirect dumps the candidate on the dashboard instead of
+    // their results page. Flip both refs synchronously (don't wait for the `done`
+    // effect) so every proctoring guard sees "finished" immediately.
+    hasStartedRef.current = false;
+    doneRef.current = true;
     try { live.disconnect(); } catch (e) {}
     setLiveActive(false);
     setAiSpeaking(false);
     setDone(true);
   };
+
+  // Tear down the Live interview gracefully: let the interviewer's closing line
+  // finish playing (so the ending sounds professional rather than cut off), then
+  // end. Idempotent and hard-capped so it can never hang.
+  const gracefulEndLive = () => {
+    if (liveEndedRef.current) return;
+    liveEndedRef.current = true;
+    // We've committed to ending - disarm proctoring NOW (before the ~7s closing
+    // drain) so the candidate relaxing / exiting full-screen during the goodbye
+    // can't trigger a false termination that hijacks the post-interview redirect.
+    hasStartedRef.current = false;
+    if (wrapUpTimerRef.current) { clearTimeout(wrapUpTimerRef.current); wrapUpTimerRef.current = null; }
+    const startedAt = performance.now();
+    const waitForDrain = () => {
+      // aiSpeakingRef mirrors the interviewer's live speaking state - end once the
+      // closing audio has drained, or after a hard 7s cap regardless.
+      if (!aiSpeakingRef.current || performance.now() - startedAt > 7000) {
+        endLiveInterview();
+      } else {
+        setTimeout(waitForDrain, 250);
+      }
+    };
+    setTimeout(waitForDrain, 600); // let the closing line begin before we watch for it to finish
+  };
+
+  // CLIENT-DIRECTED ending. The Live model is instructed NEVER to conclude on its
+  // own; the client governs the whole lifecycle here so the round always runs a
+  // full ~30 minutes and can never end early, abruptly, or mid-answer:
+  //   1) hard backstops on time AND questions asked, so it can never run away;
+  //   2) ONLY once at least LIVE_MIN_MINUTES have elapsed AND enough real answers
+  //      exist, privately signal [WRAP_UP] so the interviewer gives its single
+  //      clean closing line. We do NOT slam the mic shut - the candidate may be
+  //      mid-sentence - we just ask for a graceful close and arm a fallback timer;
+  //   3) end gracefully when that closing arrives;
+  //   4) if the model disobeys and tries to close before time's up, nudge it to
+  //      keep going instead of ending early.
+  useEffect(() => {
+    if (!liveActive || liveEndedRef.current || !live.messages.length) return;
+    const aiTurns = live.messages.filter((m) => m.role === "ai");
+    const answered = live.messages.filter((m) => m.role === "user").length;
+    const lastAi = aiTurns[aiTurns.length - 1];
+    if (!lastAi) return;
+
+    // Minutes elapsed since the live session went live (the pacing clock).
+    const liveMinutes = liveStartedAtRef.current
+      ? (performance.now() - liveStartedAtRef.current) / 60000
+      : 0;
+    // We have both enough time AND enough substance to close cleanly.
+    const readyToWrap = liveMinutes >= LIVE_MIN_MINUTES && answered >= LIVE_MIN_ANSWERS;
+
+    // Did the interviewer just deliver a clean, question-free closing?
+    const t = lastAi.text.toLowerCase().trim().replace(/\s+/g, " ").replace(/[.!?]+$/, "");
+    const isClosing =
+      /this interview is now complete/.test(t) ||
+      /\[\s*conclude\s*\]/i.test(lastAi.text) ||
+      /(that|this) concludes (our|the|this) (interview|session|assessment)/.test(t);
+    // A turn that still asks the candidate something is NOT a real closing - keep
+    // going (this is exactly the ask-and-conclude-in-one-breath bug).
+    const beforeClose = lastAi.text.replace(/this interview is now complete[.!?]*/i, " ");
+    const asksQuestion =
+      beforeClose.includes("?") ||
+      /\b(what|how|why|when|where|which|who|can you|could you|would you|tell me|walk me|describe|explain|give me)\b/i.test(beforeClose);
+    const cleanClose = isClosing && !asksQuestion;
+
+    // 1) Absolute backstops - never let the round run away (time OR question count).
+    if (liveMinutes >= LIVE_MAX_MINUTES || aiTurns.length >= LIVE_HARD_CAP_ASKED) { gracefulEndLive(); return; }
+
+    // 2) Full interview delivered → privately ask the interviewer to wrap up (once).
+    if (!wrapUpSentRef.current && readyToWrap) {
+      wrapUpSentRef.current = true;
+      try { live.sendControl(LIVE_WRAP_UP_MSG); } catch {}
+      // Fallback only: if the model never delivers its closing, end gracefully a
+      // bit later. We do NOT mute the mic here, so the candidate is never cut off
+      // mid-sentence - the interviewer naturally closes after they finish.
+      if (wrapUpTimerRef.current) clearTimeout(wrapUpTimerRef.current);
+      wrapUpTimerRef.current = setTimeout(() => { gracefulEndLive(); }, 30000);
+      return;
+    }
+
+    // 3) End once the interviewer delivers its closing. After our [WRAP_UP]
+    //    signal, the next clean (question-free) turn IS the closing, so end on it.
+    //    Also honor a clean self-close once we're genuinely ready to wrap.
+    if ((wrapUpSentRef.current && cleanClose) || (cleanClose && readyToWrap)) {
+      gracefulEndLive();
+      return;
+    }
+
+    // 4) Recover from a premature self-conclude (model ignored its instructions
+    //    before time/substance is up): nudge it to keep going instead of ending.
+    if (cleanClose && !readyToWrap && continueNudgeRef.current < 6) {
+      continueNudgeRef.current += 1;
+      try { live.sendControl(LIVE_CONTINUE_MSG); } catch {}
+    }
+    // endLiveInterview/gracefulEndLive are stable for this render; intentionally omitted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live.messages, liveActive]);
+
+  // Time-driven backstop. The effect above is message-driven, so if the
+  // conversation stalls (candidate goes quiet near the end) it might not re-run.
+  // This independent ticker guarantees the round still wraps at ~30 min and is
+  // always force-ended by ~45 min, even with no new messages arriving.
+  useEffect(() => {
+    if (!liveActive) return;
+    const tick = setInterval(() => {
+      if (liveEndedRef.current || !liveStartedAtRef.current) return;
+      const liveMinutes = (performance.now() - liveStartedAtRef.current) / 60000;
+      if (liveMinutes >= LIVE_MAX_MINUTES) { gracefulEndLive(); return; }
+      const answered = live.messages.filter((m) => m.role === "user").length;
+      if (!wrapUpSentRef.current && liveMinutes >= LIVE_MIN_MINUTES && answered >= LIVE_MIN_ANSWERS) {
+        wrapUpSentRef.current = true;
+        try { live.sendControl(LIVE_WRAP_UP_MSG); } catch {}
+        if (wrapUpTimerRef.current) clearTimeout(wrapUpTimerRef.current);
+        wrapUpTimerRef.current = setTimeout(() => { gracefulEndLive(); }, 30000);
+      }
+    }, 15000);
+    return () => clearInterval(tick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveActive, live.messages]);
 
   // The interviewer's most recent question (drives the code compiler's hidden
   // test-case generation when it's a coding task).
@@ -1580,21 +2252,26 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         codeResult.stdout ? `stdout:\n${codeResult.stdout}` : "",
         codeResult.stderr ? `stderr:\n${codeResult.stderr}` : "",
       ].filter(Boolean);
-      out += `\n\nExecution result (exit ${codeResult.exitCode ?? "—"}):\n${parts.join("\n") || "(no output)"}`;
+      out += `\n\nExecution result (exit ${codeResult.exitCode ?? "-"}):\n${parts.join("\n") || "(no output)"}`;
     } else if (!codeTestSummary) {
       out += `\n\n(Candidate did not run the code.)`;
     }
     return out;
   };
 
-  // Send a typed/coded answer during a live interview (in addition to speaking).
+  // Send a typed/spoken/coded answer during a live interview. For spoken answers
+  // the forced-English STT writes into the textarea (including not-yet-finalised
+  // interim words), so read its live value rather than the lagging `draft` state.
   const handleSendLiveText = () => {
-    const text = isCodingMode ? buildCodeAnswer() : draft.trim();
-    if (isCodingMode ? !(draftRef.current || draft).trim() : !draft.trim()) return;
+    const spoken = (textAreaRef.current ? textAreaRef.current.value : draft).trim();
+    const text = isCodingMode ? buildCodeAnswer() : spoken;
+    if (isCodingMode ? !(draftRef.current || draft).trim() : !spoken) return;
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
     const ok = live.sendText(text);
     if (ok) {
       setDraft("");
       draftRef.current = "";
+      setInterimDraft("");
       setCodeResult(null);
       setCodeTestSummary(null);
       if (textAreaRef.current) textAreaRef.current.value = "";
@@ -1745,11 +2422,11 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         </div>
       </div>
 
-      {/* Guideline — shown once the code interview is active. */}
+      {/* Guideline - shown once the code interview is active. */}
       <div className="flex items-start gap-1.5 rounded-lg bg-white/70 border border-brand-100 px-2.5 py-2 text-[11px] text-ink-600 leading-relaxed">
         <Brain aria-hidden className="w-3.5 h-3.5 text-brand-500 mt-0.5 shrink-0" />
         <span>
-          Your <strong>AI code interview has started</strong> — the regular questions are paused. Solve the problem below, run it,
+          Your <strong>AI code interview has started</strong> - the regular questions are paused. Solve the problem below, run it,
           and <strong>Submit code</strong> before the timer ends. Prefer not to code? Tap <strong>Cancel</strong> to continue the normal interview.
         </span>
       </div>
@@ -1763,7 +2440,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           <p className="text-sm font-bold text-ink-800">{codingChallenge.title}</p>
           <div className="text-xs text-ink-600 whitespace-pre-wrap max-h-32 overflow-auto leading-relaxed pr-1">{codingChallenge.prompt}</div>
           <p className="text-[10px] text-ink-400">
-            Suggested time {codingChallenge.minutes} min — the timer auto-submits your code, then the interview resumes.
+            Suggested time {codingChallenge.minutes} min - the timer auto-submits your code, then the interview resumes.
           </p>
         </>
       ) : null}
@@ -1810,6 +2487,8 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       if (warningMessage && !blocked) {
         closeWarning();
       } else if (!hasStarted && setupStep === "verify" && !blocked) {
+        setSetupStep("systemcheck");
+      } else if (!hasStarted && setupStep === "systemcheck" && !blocked) {
         setSetupStep("rules");
       }
     };
@@ -1904,6 +2583,10 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           try {
             localStorage.removeItem(`taledge:fit-score:${id}`);
           } catch (e) {}
+          // Disarm proctoring on completion so nothing the candidate does on the
+          // results hand-off can fire a late termination → dashboard bounce.
+          hasStartedRef.current = false;
+          doneRef.current = true;
           setDone(true);
           const finalMsg = data.nextQuestion 
             ? stripMarkdown(data.nextQuestion) 
@@ -1949,10 +2632,10 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     </div>
   );
 
-  // Face-ID guidance row (verify dialog checklist).
+  // Face-ID guidance row (verify dialog checklist) - Salesforce layout, on-brand tones.
   const VerifyGuide = ({ ok, warn, label }: { ok: boolean; warn?: boolean; label: string }) => (
-    <div className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-[11px] font-semibold ${ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : warn ? "border-rose-200 bg-rose-50 text-rose-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
-      <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-white ${ok ? "bg-emerald-500" : warn ? "bg-rose-500" : "bg-amber-500"}`}>
+    <div className={`flex items-center gap-2 rounded-md border px-2.5 py-2 text-[11.5px] font-medium ${ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : warn ? "border-rose-200 bg-rose-50 text-rose-700" : "border-ink-200 bg-ink-50 text-ink-500"}`}>
+      <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-white ${ok ? "bg-emerald-500" : warn ? "bg-rose-500" : "bg-ink-400"}`}>
         {ok ? <Check className="w-2.5 h-2.5" /> : warn ? <X className="w-2.5 h-2.5" /> : <span className="block w-1 h-1 rounded-full bg-white" />}
       </span>
       <span className="truncate">{label}</span>
@@ -1983,7 +2666,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const vCaptureHint = !webcamEnabled
     ? "Waiting for camera…"
     : lightingState === "dark"
-    ? "Too dark — add light on your face"
+    ? "Too dark - add light on your face"
     : vTooMany
     ? `Only one person allowed (${vPersonCount} detected)`
     : lightingState === "bright"
@@ -2050,7 +2733,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
               </div>
               <Heading as="h2" id="resume-dialog-title" className="text-2xl">Upload your résumé first</Heading>
               <p className="mt-2 text-sm text-ink-500">
-                Your {modeLabel} interview is tailored to your résumé — your skills, projects and target role. Upload it now for the most relevant questions.
+                Your {modeLabel} interview is tailored to your résumé - your skills, projects and target role. Upload it now for the most relevant questions.
               </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
                 <a href="/onboarding" className="btn-primary rounded-full">
@@ -2106,9 +2789,101 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
               <p className="text-rose-600 text-[10px] font-bold text-center">⚠ 3 violations = automatic termination. No exceptions.</p>
             </div>
 
-            <Button type="button" onClick={handleGoToVerify} disabled={!proctoringReady} size="lg" className="w-full">
-              {proctoringReady ? "Continue to Face ID Setup" : <><Loader2 className="w-4 h-4 animate-spin" /> Initializing AI Proctoring Engine...</>}
+            <Button type="button" onClick={() => setSetupStep("systemcheck")} disabled={!proctoringReady} size="lg" className="w-full">
+              {proctoringReady ? "Continue to System Check" : <><Loader2 className="w-4 h-4 animate-spin" /> Initializing AI Proctoring Engine...</>}
             </Button>
+            </Card>
+          </motion.div>
+        </div>
+      )}
+
+      {/* ===== PRE-FLIGHT SYSTEM CHECK ===== */}
+      {!hasStarted && setupStep === "systemcheck" && !blocked && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="syscheck-title"
+          className="fixed inset-0 z-[100] bg-ink-900/60 backdrop-blur-xl overflow-y-auto flex justify-center p-4 md:p-8"
+        >
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="my-auto w-full max-w-2xl">
+            <Card variant="default" className="rounded-xl2 p-6 md:p-8">
+              <div aria-hidden className="w-12 h-12 bg-gradient-to-br from-brand-600 to-accent-500 rounded-xl2 flex items-center justify-center shadow-panel mb-4">
+                <ScanFace className="w-6 h-6 text-white" />
+              </div>
+              <Eyebrow className="mb-1">Before you begin</Eyebrow>
+              <Heading as="h2" id="syscheck-title" className="text-xl text-ink-900 mb-1">System Check</Heading>
+              <p className="text-ink-500 mb-4 text-xs font-semibold">We&apos;re confirming your camera, microphone, lighting and connection so nothing interrupts your interview.</p>
+
+              <div className="grid md:grid-cols-2 gap-4 mb-4">
+                <div className="space-y-3">
+                  <div className="relative rounded-xl2 overflow-hidden border border-ink-200 bg-ink-900 aspect-video">
+                    <video
+                      ref={(el) => { if (el && mediaStreamRef.current && el.srcObject !== mediaStreamRef.current) el.srcObject = mediaStreamRef.current; }}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-ink-500">Mic input</span>
+                      <span className="text-[10px] text-ink-400">Say a few words</span>
+                    </div>
+                    <div className="h-2.5 w-full rounded-full bg-ink-100 overflow-hidden" role="meter" aria-label="Microphone input level">
+                      <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-[width] duration-75" style={{ width: `${Math.round(micLevel * 100)}%` }} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {[
+                    { key: "camera", label: "Camera", icon: <Camera className="w-3.5 h-3.5" /> },
+                    { key: "mic", label: "Microphone", icon: <Mic className="w-3.5 h-3.5" /> },
+                    { key: "lighting", label: "Lighting", icon: <Eye className="w-3.5 h-3.5" /> },
+                    { key: "network", label: "Connection", icon: <ChevronRight className="w-3.5 h-3.5" /> },
+                    { key: "browser", label: "Browser", icon: <BadgeCheck className="w-3.5 h-3.5" /> },
+                  ].map((row) => {
+                    const st = sysChecks[row.key as keyof typeof sysChecks];
+                    return (
+                      <div key={row.key} className="flex items-center gap-2.5 rounded-xl border border-ink-200/70 bg-white px-3 py-2.5">
+                        <span className="text-ink-500 shrink-0">{row.icon}</span>
+                        <span className="text-xs font-bold text-ink-800 flex-1">{row.label}</span>
+                        {st === "checking" && <span className="flex items-center gap-1 text-[10px] font-semibold text-ink-400"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Checking…</span>}
+                        {st === "pass" && <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600"><Check className="w-3.5 h-3.5" /> Good</span>}
+                        {st === "warn" && <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600"><AlertTriangle className="w-3.5 h-3.5" /> Check</span>}
+                        {st === "fail" && <span className="flex items-center gap-1 text-[10px] font-bold text-rose-600"><X className="w-3.5 h-3.5" /> Failed</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {sysChecks.lighting === "warn" && (
+                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">Your lighting looks dim - face a window or a light so the camera sees you clearly. This avoids &quot;face not visible&quot; warnings during the interview.</p>
+              )}
+              {sysChecks.network === "warn" && (
+                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">Your connection looks slow - for the best experience, use a stable network.</p>
+              )}
+              {(sysChecks.camera === "fail" || sysChecks.mic === "fail" || sysChecks.browser === "fail") && (
+                <p className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 mb-2">We couldn&apos;t access your {sysChecks.camera === "fail" ? "camera" : sysChecks.mic === "fail" ? "microphone" : "browser features"}. Allow camera + microphone permissions and re-run the check. Use Chrome or Edge for the best experience.</p>
+              )}
+
+              <div className="flex gap-2">
+                <Button type="button" variant="ghost" size="lg" onClick={runSystemChecks} className="flex-1">
+                  <RefreshCw className="w-4 h-4" /> Re-run
+                </Button>
+                <Button
+                  type="button"
+                  size="lg"
+                  onClick={handleGoToVerify}
+                  disabled={!(sysChecks.camera === "pass" && sysChecks.mic === "pass" && sysChecks.browser !== "fail")}
+                  className="flex-[2]"
+                >
+                  Continue to Face ID <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+              <p className="text-[10px] text-ink-400 text-center mt-2">Camera and microphone must pass to continue. Lighting and connection are advisory.</p>
             </Card>
           </motion.div>
         </div>
@@ -2121,105 +2896,170 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           aria-modal="true"
           aria-labelledby="verify-dialog-title"
           aria-describedby="verify-dialog-desc"
-          className="fixed inset-0 z-[100] bg-ink-900/80 backdrop-blur-xl overflow-y-auto flex items-center justify-center p-4 md:p-8"
+          className="fixed inset-0 z-[100] bg-ink-900/70 backdrop-blur-md overflow-y-auto flex items-center justify-center p-3 sm:p-4 font-sans"
         >
-          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-lg">
-            <Card variant="default" className="rounded-xl2 p-6 md:p-8 flex flex-col items-center">
-            <div aria-hidden className="w-16 h-16 bg-gradient-to-br from-brand-600 to-accent-500 rounded-full flex items-center justify-center shadow-panel mb-4">
-              <Camera className="w-8 h-8 text-white" />
-            </div>
-            <Heading as="h2" id="verify-dialog-title" className="text-xl text-ink-900 mb-2">Face ID Verification</Heading>
-            <p id="verify-dialog-desc" className="text-ink-500 mb-6 text-sm text-center font-medium">Please look directly into your camera to verify your identity. Only one person is allowed.</p>
-
-            {capturedImage ? (
-              <div className="relative w-full aspect-video rounded-xl2 overflow-hidden bg-ink-900 mb-6 shadow-inner ring-4 ring-ink-100">
-                <img src={capturedImage} alt="Captured Face ID" className="w-full h-full object-cover" />
-                {verificationResult.status === "verifying" && (
-                  <div className="absolute inset-0 bg-ink-900/60 backdrop-blur-sm flex flex-col items-center justify-center text-white">
-                    <Loader2 className="w-8 h-8 animate-spin mb-3" />
-                    <span className="font-bold text-sm tracking-wide">Analyzing Image...</span>
-                  </div>
-                )}
-                {verificationResult.status === "success" && (
-                  <div className="absolute inset-0 bg-emerald-500/20 border-4 border-emerald-500 flex items-center justify-center backdrop-blur-[2px]">
-                    <div className="bg-emerald-500 text-white p-3 rounded-full shadow-panel scale-[1.2] animate-bounce">
-                      <Check className="w-8 h-8" />
-                    </div>
-                  </div>
-                )}
-                {verificationResult.status === "error" && (
-                  <div className="absolute inset-0 bg-rose-500/20 border-4 border-rose-500 flex items-center justify-center backdrop-blur-[2px]">
-                    <div className="bg-rose-500 text-white p-3 rounded-full shadow-panel scale-[1.2]">
-                      <X className="w-8 h-8" />
-                    </div>
-                  </div>
-                )}
+          <motion.div
+            initial={{ opacity: 0, y: 14, scale: 0.985 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            className="flex max-h-[94dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-[0_12px_48px_rgba(24,24,27,0.4)] ring-1 ring-black/5"
+          >
+            {/* ── Brand header (Salesforce layout, TalEdge colors) ────────── */}
+            <div className="relative shrink-0 bg-gradient-to-br from-brand-700 via-brand-600 to-accent-500 px-6 pt-5 pb-4 text-white">
+              <div className="flex items-start gap-3.5">
+                <div aria-hidden className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/15 ring-1 ring-white/30 backdrop-blur">
+                  <ScanFace className="h-6 w-6 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <Heading as="h2" id="verify-dialog-title" className="text-[18px] font-bold leading-tight text-white">
+                    Identity Verification
+                  </Heading>
+                  <p id="verify-dialog-desc" className="mt-0.5 text-[13px] font-medium text-white/85">
+                    A quick biometric check confirms it&apos;s you before the assessment begins.
+                  </p>
+                </div>
+                <span className="ml-auto hidden sm:inline-flex shrink-0 items-center gap-1.5 self-start rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ring-1 ring-white/25">
+                  <Lock className="h-3 w-3" aria-hidden /> Secure
+                </span>
               </div>
-            ) : (
-              <div className="w-full mb-5">
-                <div className="relative w-full aspect-video rounded-xl2 overflow-hidden bg-ink-900 shadow-inner ring-4 ring-ink-100">
-                  {/* real live preview — shares the proctoring MediaStream */}
-                  <video
-                    ref={verifyVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    aria-label="Live camera preview"
-                    className="w-full h-full object-cover [transform:scaleX(-1)]"
-                  />
-                  {/* face alignment guide */}
-                  <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                    <div className={`h-[82%] aspect-[3/4] rounded-[46%] border-[3px] border-dashed transition-colors duration-500 ${vAllGood ? "border-emerald-400" : "border-white/60"}`} />
-                  </div>
-                  {/* live status chips */}
-                  <div className="absolute top-2.5 left-2.5 px-2 py-1 rounded-lg bg-black/60 backdrop-blur text-[10px] font-bold text-white flex items-center gap-1.5 uppercase tracking-wide">
-                    <span className={`w-1.5 h-1.5 rounded-full ${webcamEnabled ? "bg-emerald-400 animate-pulse" : "bg-rose-500"}`} />
-                    {webcamEnabled ? "Live" : "Off"}
-                  </div>
-                  <div className={`absolute top-2.5 right-2.5 px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1.5 uppercase tracking-wide backdrop-blur ${vPersonTone === "ok" ? "bg-emerald-500/30 text-emerald-50" : vPersonTone === "bad" ? "bg-rose-500/40 text-rose-50" : "bg-white/15 text-white"}`}>
-                    <Users aria-hidden className="w-3 h-3" /> {vPersonLabel}
-                  </div>
-                  {!webcamEnabled && (
-                    <div className="absolute inset-0 grid place-items-center text-ink-200 text-xs font-semibold">
-                      {cameraError ? "Camera unavailable" : "Starting camera…"}
+
+              {/* Step path */}
+              <div className="mt-4 flex items-center gap-2 text-[11px] font-semibold">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 ring-1 ring-white/20">
+                  <BadgeCheck className="h-3.5 w-3.5" aria-hidden /> Guidelines
+                </span>
+                <ChevronRight className="h-3.5 w-3.5 text-white/45" aria-hidden />
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-brand-700 shadow-sm">
+                  <ScanFace className="h-3.5 w-3.5" aria-hidden /> Identity
+                </span>
+                <ChevronRight className="h-3.5 w-3.5 text-white/45" aria-hidden />
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-white/70 ring-1 ring-white/15">
+                  <Brain className="h-3.5 w-3.5" aria-hidden /> Interview
+                </span>
+              </div>
+            </div>
+
+            {/* ── Body (scrolls if the viewport is short) ─────────────────── */}
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+              {capturedImage ? (
+                <div className="relative mx-auto w-full max-h-[46dvh] aspect-[4/3] overflow-hidden rounded-xl bg-ink-900 ring-1 ring-ink-200">
+                  <img src={capturedImage} alt="Captured Face ID frame" className="h-full w-full object-cover" />
+                  {verificationResult.status === "verifying" && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-ink-900/70 text-white backdrop-blur-sm">
+                      <Loader2 className="mb-3 h-8 w-8 animate-spin" />
+                      <span className="text-sm font-semibold tracking-wide">Verifying your identity…</span>
+                    </div>
+                  )}
+                  {verificationResult.status === "success" && (
+                    <div className="absolute inset-0 flex items-center justify-center border-2 border-emerald-500 bg-emerald-500/25 backdrop-blur-[2px]">
+                      <div className="scale-110 rounded-full bg-emerald-500 p-3 text-white shadow-lg">
+                        <Check className="h-8 w-8" />
+                      </div>
+                    </div>
+                  )}
+                  {verificationResult.status === "error" && (
+                    <div className="absolute inset-0 flex items-center justify-center border-2 border-rose-500 bg-rose-500/20 backdrop-blur-[2px]">
+                      <div className="scale-110 rounded-full bg-rose-500 p-3 text-white shadow-lg">
+                        <X className="h-8 w-8" />
+                      </div>
                     </div>
                   )}
                 </div>
+              ) : (
+                <>
+                  <div className="relative mx-auto w-full max-h-[46dvh] aspect-[4/3] overflow-hidden rounded-xl bg-ink-900 ring-1 ring-ink-200">
+                    {/* real live preview - shares the proctoring MediaStream */}
+                    <video
+                      ref={verifyVideoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      aria-label="Live camera preview"
+                      className="h-full w-full object-cover [transform:scaleX(-1)]"
+                    />
+                    {/* face alignment guide */}
+                    <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                      <div className={`h-[80%] aspect-[3/4] rounded-[46%] border-2 border-dashed transition-colors duration-500 ${vAllGood ? "border-emerald-400" : "border-white/70"}`} />
+                    </div>
+                    {/* live status chips */}
+                    <div className="absolute left-2.5 top-2.5 inline-flex items-center gap-1.5 rounded-md bg-black/55 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur">
+                      <span className={`h-1.5 w-1.5 rounded-full ${webcamEnabled ? "bg-emerald-400 animate-pulse" : "bg-rose-500"}`} />
+                      {webcamEnabled ? "Live" : "Off"}
+                    </div>
+                    <div className={`absolute right-2.5 top-2.5 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur ${vPersonTone === "ok" ? "bg-emerald-500/85" : vPersonTone === "bad" ? "bg-rose-500/85" : "bg-white/20"}`}>
+                      <Users aria-hidden className="h-3 w-3" /> {vPersonLabel}
+                    </div>
+                    {!webcamEnabled && (
+                      <div className="absolute inset-0 grid place-items-center text-xs font-semibold text-white/80">
+                        {cameraError ? "Camera unavailable" : "Starting camera…"}
+                      </div>
+                    )}
+                  </div>
 
-                {/* live guidance checklist */}
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <VerifyGuide ok={webcamEnabled} label={webcamEnabled ? "Camera active" : "Camera off"} />
-                  <VerifyGuide ok={vModelsLoaded ? vPersonCount === 1 : webcamEnabled} warn={vTooMany} label={vPersonLabel} />
-                  <VerifyGuide ok={vLightingOk} warn={lightingState === "bright"} label={vLightingLabel} />
-                  <VerifyGuide
-                    ok={vModelsLoaded ? proctoringStatus.faceVisible : webcamEnabled}
-                    label={vModelsLoaded ? (proctoringStatus.faceVisible ? "Face detected" : "Face not detected") : "Face check ready"}
-                  />
+                  <p className="mt-3 text-center text-[12.5px] leading-relaxed text-ink-500">
+                    Center your face in the oval and look directly at the camera. Only one person may be present.
+                  </p>
+
+                  {/* live guidance checklist */}
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <VerifyGuide ok={webcamEnabled} label={webcamEnabled ? "Camera active" : "Camera off"} />
+                    <VerifyGuide ok={vModelsLoaded ? vPersonCount === 1 : webcamEnabled} warn={vTooMany} label={vPersonLabel} />
+                    <VerifyGuide ok={vLightingOk} warn={lightingState === "bright"} label={vLightingLabel} />
+                    <VerifyGuide
+                      ok={vModelsLoaded ? proctoringStatus.faceVisible : webcamEnabled}
+                      label={vModelsLoaded ? (proctoringStatus.faceVisible ? "Face detected" : "Face not detected") : "Face check ready"}
+                    />
+                  </div>
+                </>
+              )}
+
+              {verificationResult.status === "error" && (
+                <div className="mt-4 flex items-start gap-2.5 rounded-md border border-rose-200 bg-rose-50 p-3" role="alert" aria-live="assertive">
+                  <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-rose-700">{verificationResult.message}</p>
+                    <button
+                      type="button"
+                      onClick={() => { setCapturedImage(null); setVerificationResult({ status: "idle" }); }}
+                      className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-rose-700 underline underline-offset-2 hover:text-rose-800"
+                    >
+                      <RefreshCw className="h-3 w-3" aria-hidden /> Retake photo
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
-            {verificationResult.status === "error" && (
-              <div className="w-full bg-rose-50 border border-rose-200 rounded-xl2 p-3 mb-6 text-center" role="alert" aria-live="assertive">
-                <p className="text-rose-600 text-sm font-bold">{verificationResult.message}</p>
-                <button type="button" onClick={() => { setCapturedImage(null); setVerificationResult({status: "idle"}); }} className="mt-2 text-rose-700 underline text-xs font-semibold">Take Another Picture</button>
-              </div>
-            )}
-
-            {verificationResult.status === "success" ? (
-              <button type="button" onClick={handleStartInterview} className="w-full py-3.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-500 shadow-panel transition-all flex items-center justify-center gap-2 text-sm">
-                Identity Verified - Start Interview <ArrowRight className="w-4 h-4" />
-              </button>
-            ) : (
-              <Button type="button" onClick={handleCaptureAndVerify} disabled={verificationResult.status === "verifying" || vBlockCapture} size="lg" className="w-full py-3.5">
-                {verificationResult.status === "verifying"
-                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying...</>
-                  : vBlockCapture
-                  ? vCaptureHint
-                  : <>📸 Capture &amp; Verify</>}
-              </Button>
-            )}
-            </Card>
+            {/* ── Footer action bar ───────────────────────────────────────── */}
+            <div className="shrink-0 border-t border-ink-200 bg-ink-50 px-6 py-4">
+              {verificationResult.status === "success" ? (
+                <button
+                  type="button"
+                  onClick={handleStartInterview}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
+                >
+                  <BadgeCheck className="h-4 w-4" aria-hidden /> Identity verified - Start interview <ArrowRight className="h-4 w-4" aria-hidden />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleCaptureAndVerify}
+                  disabled={verificationResult.status === "verifying" || vBlockCapture}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 disabled:cursor-not-allowed disabled:bg-ink-300 disabled:shadow-none"
+                >
+                  {verificationResult.status === "verifying" ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Verifying…</>
+                  ) : vBlockCapture ? (
+                    <>{vCaptureHint}</>
+                  ) : (
+                    <><ScanFace className="h-4 w-4" aria-hidden /> Capture &amp; verify</>
+                  )}
+                </button>
+              )}
+              <p className="mt-3 flex items-center justify-center gap-1.5 text-[11px] font-medium text-ink-400">
+                <Lock className="h-3 w-3" aria-hidden /> Your camera image is used only to confirm your identity for this assessment.
+              </p>
+            </div>
           </motion.div>
         </div>
       )}
@@ -2250,9 +3090,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 <p className="text-xs text-ink-500">No detailed violation log is available for this session.</p>
               </div>
             )}
-            <p className="text-xs text-ink-400 mb-4">Redirecting to your dashboard…</p>
-            <Button type="button" variant="danger" onClick={() => router.push(`${flowBase}/${id}`)} size="lg" className="px-8 py-3">
-              Return to Dashboard
+            <p className="text-xs text-ink-400 mb-4">Taking you to your results…</p>
+            <Button type="button" variant="danger" onClick={() => router.push(terminationHref)} size="lg" className="px-8 py-3">
+              View results
             </Button>
             </Card>
           </motion.div>
@@ -2311,7 +3151,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 </Heading>
                 <p className="text-ink-700 mb-3 text-lg font-medium">{identityWarning}</p>
                 <p className="text-rose-600 font-bold text-sm">
-                  Re-verifying now — the assessment will end if the enrolled candidate is not at the camera.
+                  Re-verifying now - the assessment will end if the enrolled candidate is not at the camera.
                 </p>
               </Card>
             </motion.div>
@@ -2404,6 +3244,16 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                   <StatusDot ok={!proctoringStatus.externalDisplay} label="Single screen" />
                   <StatusDot ok={warnings === 0} label={`${warnings}/3 warns`} />
                 </div>
+                {/* Diagnostic: live object detections from the on-device vision
+                    model. Helps confirm whether a phone is actually being seen. */}
+                <div className="mt-3 pt-3 border-t border-ink-200/50">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-ink-400 mb-1 flex items-center gap-1.5">
+                    <Eye aria-hidden className="w-2.5 h-2.5" /> AI sees
+                  </div>
+                  <p className="text-[10px] font-mono text-ink-500 leading-snug break-words min-h-[1.2em]">
+                    {modelRef.current ? (detectedObjects || "-") : "vision model loading…"}
+                  </p>
+                </div>
                 </Card>
               </motion.div>
             )}
@@ -2444,17 +3294,20 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
 
           {/* Right Column: Chat Interface */}
           <div className="lg:col-span-8 flex flex-col h-[550px] md:h-[600px] lg:h-[calc(100vh-10rem)] bg-white/40 backdrop-blur-3xl rounded-xl2 shadow-panel border border-ink-200/60 overflow-hidden relative">
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-transparent" role="log" aria-label="Interview conversation" aria-live="polite">
+            {/* Messages - min-h-0 is REQUIRED: without it this flex-1 child keeps
+                its default min-height:auto, refuses to shrink below its content,
+                and the list overflows the panel (pushing the input area off-screen)
+                instead of scrolling internally. */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4 bg-transparent" role="log" aria-label="Interview conversation" aria-live="polite">
               {(messages?.length ?? 0) === 0 && !isProcessing && connectError && (
                 <div className="h-full flex items-center justify-center">
                   <Card variant="flat" className="rounded-xl2 px-6 py-5 text-center max-w-sm border-rose-200" role="alert" aria-live="assertive">
                     <div aria-hidden className="w-12 h-12 bg-rose-100 rounded-full mx-auto flex items-center justify-center mb-3">
                       <AlertTriangle className="w-6 h-6 text-rose-600" />
                     </div>
-                    <p className="text-sm font-semibold text-ink-800 mb-1">Connection failed</p>
+                    <p className="text-sm font-semibold text-ink-800 mb-1">Live interviewer unavailable</p>
                     <p className="text-xs text-ink-500 mb-4">{connectError}</p>
-                    <Button type="button" size="sm" onClick={startInterview} disabled={isProcessing}>
+                    <Button type="button" size="sm" onClick={handleStartInterview} disabled={isProcessing}>
                       {isProcessing ? <Loader2 aria-hidden className="w-3.5 h-3.5 animate-spin" /> : null} Retry
                     </Button>
                   </Card>
@@ -2506,13 +3359,25 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                   </motion.div>
                 )}
                 {/* Live caption: the candidate's own words as they answer. */}
-                {liveActive && live.partialUser && (
-                  <motion.div key="partial-user" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-end">
-                    <div className="max-w-[85%] rounded-xl2 px-5 py-3.5 text-[14px] leading-relaxed italic bg-gradient-to-br from-brand-600/70 to-brand-700/70 text-white rounded-br-sm border border-brand-400/30 shadow-md">
-                      {live.partialUser}
-                    </div>
-                  </motion.div>
-                )}
+                {/* Candidate live caption - the forced-English browser STT writes
+                    into `draft`/`interimDraft`; show it as a chat caption (not just
+                    in the input box) so spoken words are clearly visible. Falls back
+                    to Gemini's own transcription if that path is ever used. */}
+                {liveActive && !isCodingMode && (() => {
+                  const liveUserCaption = liveCaption || (`${draft} ${interimDraft}`).trim() || live.partialUser;
+                  if (!liveUserCaption) return null;
+                  return (
+                    <motion.div key="partial-user" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-end">
+                      <div className="max-w-[85%] rounded-xl2 px-5 py-3.5 text-[14px] leading-relaxed italic bg-gradient-to-br from-brand-600/70 to-brand-700/70 text-white rounded-br-sm border border-brand-400/30 shadow-md">
+                        <div className="not-italic text-[9px] font-bold uppercase tracking-wider text-white/80 mb-1.5 flex items-center gap-1.5">
+                          <Mic aria-hidden className="w-3 h-3 animate-pulse" /> You
+                          <span className="normal-case font-semibold text-white/70">speaking…</span>
+                        </div>
+                        {liveUserCaption}
+                      </div>
+                    </motion.div>
+                  );
+                })()}
                 {isProcessing && (
                   <motion.div key="processing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
                     <div className="bg-white/80 backdrop-blur-md text-ink-500 border border-ink-200/80 rounded-xl2 px-5 py-3.5 rounded-bl-sm flex items-center gap-3 shadow-sm">
@@ -2584,19 +3449,56 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                       </>
                     ) : (
                       <>
-                        <span className="flex h-2.5 w-2.5 relative" aria-hidden>
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                        <span className="relative flex h-5 w-5 items-center justify-center" aria-hidden>
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400/60" />
+                          <Mic className="relative w-4 h-4 text-emerald-600 animate-pulse" />
                         </span>
-                        Your turn — speak your answer, or type it below
+                        Mic is on - speak your answer, or type it below
                       </>
                     )}
                   </div>
+
+                  {/* LIVE TRANSCRIPT - your words appear here in real time as you
+                      speak (Gemini's streaming input transcription), so you can see
+                      exactly what's being captured before it's sent. */}
+                  {!aiHasFloor && !isCodingMode && (() => {
+                    const fromBrowser = !!liveCaption; // word-by-word (instant) source
+                    const liveWords = liveCaption || (`${draft} ${interimDraft}`).trim() || live.partialUser;
+                    return (
+                      <div
+                        className={`rounded-xl border px-4 py-2.5 transition-colors ${liveWords ? "border-emerald-200 bg-emerald-50/70" : "border-ink-200/60 bg-ink-50/50"}`}
+                        aria-live="polite"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-emerald-700">
+                            <span className="inline-flex gap-0.5" aria-hidden>
+                              <span className="w-1 h-1 rounded-full bg-emerald-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+                              <span className="w-1 h-1 rounded-full bg-emerald-500 animate-bounce" style={{ animationDelay: "150ms" }} />
+                              <span className="w-1 h-1 rounded-full bg-emerald-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+                            </span>
+                            Live transcript
+                          </div>
+                          {/* Source indicator: instant word-by-word vs the slower
+                              Gemini fallback - confirms which path is running. */}
+                          <span className={`text-[8px] font-bold uppercase tracking-wider ${fromBrowser ? "text-emerald-600" : "text-amber-600"}`}>
+                            {fromBrowser ? "● live · word-by-word" : "● syncing"}
+                          </span>
+                        </div>
+                        <p className={`text-[13px] leading-snug ${liveWords ? "text-ink-800 italic" : "text-ink-400"}`}>
+                          {liveWords || "Start speaking - your words will appear here…"}
+                        </p>
+                      </div>
+                    );
+                  })()}
+
                   {live.error && (
                     <p className="text-[11px] font-semibold text-rose-600 text-center" role="alert">{live.error}</p>
                   )}
+                  {micError && (
+                    <p className="text-[11px] font-semibold text-amber-600 text-center" role="alert">{micError} You can type your answer in the box below.</p>
+                  )}
 
-                  {isTech && !isCodingMode && (
+                  {isTechRound && track === "placement" && !isCodingMode && (
                     <div className="flex items-center justify-center gap-1.5" role="group" aria-label="Response mode">
                       <button type="button" aria-pressed={!isCodingMode} onClick={() => setIsCodingMode(false)} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${!isCodingMode ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200/60'}`}>Voice / Text</button>
                       <button type="button" aria-pressed={isCodingMode} onClick={enterCodingMode} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${isCodingMode ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200/60'}`}><FileText aria-hidden className="w-3 h-3 inline mr-1" />Code</button>
@@ -2620,15 +3522,19 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                   ) : (
                     <div className={`bg-white border rounded-xl p-2 flex transition-all ${aiHasFloor ? "border-ink-200/60 opacity-60" : "border-ink-200 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/10"}`}>
                       <label htmlFor="live-answer-input" className="sr-only">Your response</label>
+                      {/* Uncontrolled (defaultValue + ref) so the forced-English
+                          STT can write recognised words straight into it in
+                          real-time, mirroring the REST answer box. */}
                       <textarea
                         id="live-answer-input"
-                        value={draft}
+                        ref={textAreaRef}
+                        defaultValue={draft}
                         disabled={aiHasFloor}
                         onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendLiveText(); }
                         }}
-                        placeholder={aiHasFloor ? "Wait for the interviewer to finish…" : "Speak naturally or type your response..."}
+                        placeholder={aiHasFloor ? "Wait for the interviewer to finish…" : "Speak in English or type your response..."}
                         className="flex-1 bg-transparent px-2 py-2 resize-none text-sm focus:outline-none text-ink-800 placeholder-ink-400 disabled:cursor-not-allowed"
                         rows={2}
                       />
@@ -2639,10 +3545,22 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                     <p className="text-[11px] text-ink-500">
                       {isCodingMode
                         ? "Write and run your code, then Send it to the interviewer for evaluation."
-                        : aiHasFloor ? "Listen — you can respond once the interviewer finishes." : "Talk naturally or type. Keep background noise low."}
+                        : aiHasFloor ? "Listen - you can respond once the interviewer finishes." : usingGeminiStt ? "Talk naturally - your spoken answer sends automatically when you pause. Or type it. Keep background noise low." : "Talk naturally or type. Keep background noise low."}
                     </p>
                     <div className="flex gap-2 shrink-0">
-                      <Button type="button" size="sm" onClick={handleSendLiveText} disabled={aiHasFloor || !draft.trim()}>
+                      {!isCodingMode && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={redoAnswer}
+                          disabled={aiHasFloor}
+                          title="Clear your answer and speak/type it again"
+                        >
+                          <RefreshCw aria-hidden className="w-3.5 h-3.5" /> Re-do
+                        </Button>
+                      )}
+                      <Button type="button" id="send-btn" size="sm" onClick={handleSendLiveText} disabled={aiHasFloor}>
                         <Send aria-hidden className="w-3.5 h-3.5" /> {isCodingMode ? "Submit code" : "Send"}
                       </Button>
                       <Button type="button" variant="danger" size="sm" onClick={endLiveInterview}>
@@ -2675,7 +3593,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                     </div>
                     <div className="flex items-center gap-1.5" role="group" aria-label="Response input mode">
                       <button type="button" aria-pressed={!isCodingMode} onClick={() => setIsCodingMode(false)} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${!isCodingMode ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200/60'}`}>Voice / Text</button>
-                      {isTech && <button type="button" aria-pressed={isCodingMode} onClick={enterCodingMode} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${isCodingMode ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200/60'}`}><FileText aria-hidden className="w-3 h-3 inline mr-1" />Code</button>}
+                      {isTechRound && track === "placement" && <button type="button" aria-pressed={isCodingMode} onClick={enterCodingMode} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${isCodingMode ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200/60'}`}><FileText aria-hidden className="w-3 h-3 inline mr-1" />Code</button>}
                     </div>
                   </div>
                   )}
@@ -2732,14 +3650,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => {
-                            setDraft("");
-                            setInterimDraft("");
-                            draftRef.current = "";
-                            if (textAreaRef.current) textAreaRef.current.value = "";
-                            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-                            startListening();
-                          }}
+                          onClick={redoAnswer}
                           disabled={isProcessing}
                         >
                           Clear & Re-answer

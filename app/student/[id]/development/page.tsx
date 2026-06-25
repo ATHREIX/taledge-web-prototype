@@ -1,6 +1,6 @@
-import { notFound } from "next/navigation";
 import { ScoreRing, Sparkline } from "@/components/score-ring";
 import { getStudent } from "@/lib/data";
+import { getCandidate } from "@/lib/talent-store";
 import {
   PageShell,
   PageHeader,
@@ -21,8 +21,14 @@ export default async function Development({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const s = getStudent(id);
-  if (!s) notFound();
+  // Prefer the durable talent-store record (real/invited candidate with live
+  // results) over the seed fallback so real users see their actual scores and
+  // quadrant, not a hollow all-zero "New Candidate". Demo mode keeps the seed.
+  const base = getStudent(id);
+  const stored = await getCandidate(id);
+  const s = stored
+    ? { ...base, ...stored, fit: { ...base.fit, ...(stored.fit ?? {}) }, dnla: stored.dnla ?? base.dnla }
+    : base;
 
   const strengths = s.strengths ?? [];
   const developmentAreas = s.developmentAreas ?? [];

@@ -1,0 +1,7 @@
+# Never upload local secrets or local env overrides to Vercel.
+# Production config comes from the Vercel dashboard env vars, not these files.
+.env
+.env.*.local
+.env.local
+serviceAccount.json
+*.pem

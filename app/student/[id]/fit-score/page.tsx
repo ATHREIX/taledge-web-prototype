@@ -49,6 +49,11 @@ const ROLE_JDS: Record<string, string> = {
   "Consultant · Strategy": "Analytical reasoning, problem-solving, structured case interview frameworks, market entry analysis, financial modeling, slide deck creation, business strategy. Ability to interface with clients, manage stakeholders, and design organizational growth playbooks."
 };
 
+// Demo (pilot) mode: when auth is NOT enforced, the seeded persona's DNLA may be
+// folded into the demo candidate's score. In enforced mode every candidate is a
+// real, distinct user — never borrow the sample persona's psychometrics.
+const DEMO = process.env.NEXT_PUBLIC_AUTH_ENFORCED !== "true";
+
 // Stable, module-level defaults so empty-state resets keep a referentially
 // stable object (avoids re-creating the empty report on every render).
 const emptyReportDefaults: GenReport = {
@@ -58,7 +63,7 @@ const emptyReportDefaults: GenReport = {
   success_probability: -1,
   verdict: "Awaiting evidence",
   narrative:
-    "Complete the technical and behavioural interviews to generate a Fit Score grounded in captured assessment evidence. DNLA will be included only after the provider import is connected.",
+    "Complete the technical and behavioural interviews to generate a Fit Score grounded in captured assessment evidence, combined with your DNLA psychometric profile.",
   technical_breakdown: [],
   resume_breakdown: [],
   behavioural_breakdown: [],
@@ -184,15 +189,22 @@ export default function FitScorePage() {
   const readTranscripts = useCallback(() => {
     try {
       const tech = localStorage.getItem(`taledge:interview:${id}:technical`);
-      const behav = localStorage.getItem(`taledge:interview:${id}:behavioural`);
-      const dnlaCache = localStorage.getItem(`taledge:dnla:${id}`);
+      // The guided funnel routes the behavioural round to /interview/dnla, so it
+      // persists the transcript under the `:dnla` key. Prefer the standalone
+      // `:behavioural` key when present, otherwise fall back to the funnel's
+      // `:dnla` transcript - this is the key mismatch that previously left the
+      // behavioural score permanently "Pending".
+      const behav =
+        localStorage.getItem(`taledge:interview:${id}:behavioural`) ||
+        localStorage.getItem(`taledge:interview:${id}:dnla`);
+      const final = localStorage.getItem(`taledge:interview:${id}:final`);
       return {
         technical: tech ? (JSON.parse(tech) as Msg[]) : [],
         behavioural: behav ? (JSON.parse(behav) as Msg[]) : [],
-        dnla: dnlaCache ? JSON.parse(dnlaCache).report : null,
+        final: final ? (JSON.parse(final) as Msg[]) : [],
       };
     } catch {
-      return { technical: [] as Msg[], behavioural: [] as Msg[], dnla: null };
+      return { technical: [] as Msg[], behavioural: [] as Msg[], final: [] as Msg[] };
     }
   }, [id]);
 
@@ -211,7 +223,7 @@ export default function FitScorePage() {
   const generate = useCallback(async () => {
     setStatus("generating");
     setGenError("");
-    const { technical, behavioural, dnla } = readTranscripts();
+    const { technical, behavioural, final } = readTranscripts();
     const profile = readWorkspaceProfile();
     try {
       const r = await authedFetch("/api/generate-fit-score", {
@@ -222,6 +234,10 @@ export default function FitScorePage() {
           track,
           candidateName: profile.fullName || s.name,
           targetRole: profile.targetRole || s.targetRole,
+          // Off-campus invite linkage: send the invite TOKEN; the server resolves
+          // the recruiter/job binding from it (never trusts a client recruiterId).
+          inviteToken: profile.inviteToken || undefined,
+          college: profile.institution || undefined,
           resumeSummary: [
             profile.resumeSummary || s.resumeSummary,
             profile.aspiration ? `Career aspiration: ${profile.aspiration}` : "",
@@ -230,10 +246,16 @@ export default function FitScorePage() {
           resumeProjects: profile.resumeProjects?.length ? profile.resumeProjects : s.projects,
           technicalQA: technical,
           behaviouralQA: behavioural,
-          dnla: dnla?.dnla || [],
-          dnlaStrengths: dnla?.strengths || [],
-          dnlaDevelopmentAreas: dnla?.developmentAreas || [],
-          dnlaRisks: dnla?.risks || [],
+          finalQA: final,
+          // DNLA provider isn't wired yet. Use the seeded psychometric profile
+          // ONLY for the demo persona (candidate-001) - never borrow it for a real
+          // or invited candidate (that would leak one person's DNLA to everyone and
+          // contaminate their score). Real candidates show "DNLA pending" until the
+          // live /api/dnla provider is set.
+          dnla: DEMO && id === "candidate-001" ? (s.dnla || []) : [],
+          dnlaStrengths: DEMO && id === "candidate-001" ? (s.strengths || []) : [],
+          dnlaDevelopmentAreas: DEMO && id === "candidate-001" ? (s.developmentAreas || []) : [],
+          dnlaRisks: DEMO && id === "candidate-001" ? (s.risks || []) : [],
         }),
       });
       const data = await r.json();
@@ -262,15 +284,24 @@ export default function FitScorePage() {
 
   useEffect(() => {
     setStatus("checking");
+    // Freshness baseline: the newest interview round on THIS device. A stored
+    // report (local OR server) is trusted only if generated AFTER this, so
+    // retaking any round still forces a regenerate.
+    const lastTechUpdate = Number(localStorage.getItem(`taledge:interview:${id}:technical:updatedAt`) || 0);
+    // Behavioural round can land under either key; take the freshest of both
+    // plus the final round so retaking ANY round invalidates a stale report.
+    const lastBehavUpdate = Math.max(
+      Number(localStorage.getItem(`taledge:interview:${id}:behavioural:updatedAt`) || 0),
+      Number(localStorage.getItem(`taledge:interview:${id}:dnla:updatedAt`) || 0)
+    );
+    const lastFinalUpdate = Number(localStorage.getItem(`taledge:interview:${id}:final:updatedAt`) || 0);
+    const lastUpdate = Math.max(lastTechUpdate, lastBehavUpdate, lastFinalUpdate);
+
     let hydrated = false;
     try {
       const cached = localStorage.getItem(`taledge:fit-score:${id}`);
       if (cached) {
         const parsed = JSON.parse(cached);
-        const lastTechUpdate = Number(localStorage.getItem(`taledge:interview:${id}:technical:updatedAt`) || 0);
-        const lastBehavUpdate = Number(localStorage.getItem(`taledge:interview:${id}:behavioural:updatedAt`) || 0);
-        const lastUpdate = Math.max(lastTechUpdate, lastBehavUpdate);
-
         // Auto-regenerate if a new interview has been taken since the report was generated
         if (parsed?.report?.fit_score != null && parsed.ts > lastUpdate) {
           setReport(normalizeReport(parsed.report));
@@ -281,18 +312,48 @@ export default function FitScorePage() {
         }
       }
     } catch {
-      /* fall through to auto-generate */
+      /* fall through to server / auto-generate */
     }
+
     if (!hydrated) {
-      const { technical, behavioural } = readTranscripts();
-      const userAnswers =
-        technical.filter((m) => m.role === "user").length +
-        behavioural.filter((m) => m.role === "user").length;
-      if (userAnswers > 0) {
-        void generate();
-      } else {
-        setStatus("idle");
-      }
+      void (async () => {
+        // No fresh LOCAL report (new device / cleared storage): try the durable
+        // SERVER copy before regenerating - it's free (no LLM call) and works
+        // cross-device. Accept it only if it's fresher than the latest round.
+        try {
+          const r = await authedFetch(`/api/generate-fit-score?studentId=${encodeURIComponent(id)}`);
+          if (r.ok) {
+            const d = await r.json();
+            if (d?.ok && d.report?.fit_score != null && (Number(d.ts) || 0) > lastUpdate) {
+              setReport(normalizeReport(d.report));
+              setSource(d.source || "stored");
+              setGeneratedAt(Number(d.ts) || null);
+              setStatus("generated");
+              try {
+                localStorage.setItem(
+                  `taledge:fit-score:${id}`,
+                  JSON.stringify({ report: d.report, source: d.source || "stored", ts: Number(d.ts) || Date.now() })
+                );
+              } catch {
+                /* non-fatal */
+              }
+              return;
+            }
+          }
+        } catch {
+          /* fall through to local regenerate */
+        }
+        const { technical, behavioural, final } = readTranscripts();
+        const userAnswers =
+          technical.filter((m) => m.role === "user").length +
+          behavioural.filter((m) => m.role === "user").length +
+          final.filter((m) => m.role === "user").length;
+        if (userAnswers > 0) {
+          void generate();
+        } else {
+          setStatus("idle");
+        }
+      })();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -323,7 +384,7 @@ export default function FitScorePage() {
           <PageHeader
             eyebrow="Fit Score & Success Probability"
             title={`Structured feedback report for ${candidateFirst}`}
-            description="Composite Fit Score synthesized from technical interview, behavioural interview, resume signals, and cross-component checks. DNLA remains pending until import is connected."
+            description="Composite Fit Score synthesized from technical interview, behavioural interview, DNLA psychometrics, resume signals, and cross-component checks."
             actions={
               <div className="flex items-center gap-2 print:hidden">
                 <Button type="button" variant="ghost" size="sm" onClick={() => window.print()} aria-label="Print or save report as PDF">
@@ -360,9 +421,9 @@ export default function FitScorePage() {
               </Heading>
               <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-ink-600">
                 We could not find a captured assessment for
-                {" "}{candidateFirst}. Complete the assessment first - DNLA, then
-                the AI technical and behavioural interviews - to generate a
-                personalized Fit Score report grounded in your responses.
+                {" "}{candidateFirst}. Complete the AI technical and behavioural
+                interviews to generate a personalized Fit Score report grounded
+                in your responses.
               </p>
               <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
                 <ButtonLink
@@ -404,7 +465,7 @@ export default function FitScorePage() {
                     <HeadlineStat
                       label="Behavioural Score"
                       value={report.behavioural_score === -1 ? "Pending" : `${report.behavioural_score}%`}
-                      hint="Behavioural interview; DNLA after import"
+                      hint="Behavioural interview + DNLA"
                     />
                     <HeadlineStat
                       label="Fit Score"
@@ -569,8 +630,9 @@ export default function FitScorePage() {
                     DNLA Social Competence
                   </Heading>
                   <p className="mt-2 max-w-2xl text-sm text-ink-500">
-                    Per PRD §9.3 · DNLA remains pending until the official provider
-                    import is connected. No placeholder psychometric scores are shown.
+                    Psychometric competency profile, scored 1–7 against the
+                    top-performer benchmark. Demo profile shown pending the verified
+                    DNLA provider import.
                   </p>
                 </div>
                 <ButtonLink href={`${flowBase}/${s.id}/dnla`} variant="ghost" size="sm">
@@ -579,11 +641,36 @@ export default function FitScorePage() {
                 </ButtonLink>
               </div>
               <Card variant="default" className="w-full rounded-xl2 overflow-hidden p-6">
-                <Eyebrow>Awaiting DNLA import</Eyebrow>
-                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-600">
-                  DNLA competencies will appear only after verified external import.
-                  Until then, behavioural scoring is based on interview evidence only.
-                </p>
+                {(s.dnla ?? []).length === 0 ? (
+                  <>
+                    <Eyebrow>DNLA profile</Eyebrow>
+                    <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-600">
+                      No DNLA competencies on file for this candidate yet.
+                    </p>
+                  </>
+                ) : (
+                  <ul className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+                    {[...(s.dnla ?? [])]
+                      .sort((a, b) => b.score - a.score)
+                      .map((d) => (
+                        <li key={d.competency}>
+                          <div className="flex items-baseline justify-between gap-3">
+                            <span className="text-sm font-semibold text-ink-800">{d.competency}</span>
+                            <span className="shrink-0 text-xs font-medium text-ink-500 tabular-nums">
+                              {d.score} / 7<span className="text-ink-400"> · bm {d.benchmark}</span>
+                            </span>
+                          </div>
+                          <div className="mt-1.5">
+                            <Bar
+                              value={d.score}
+                              max={7}
+                              tone={d.score >= 6 ? "success" : d.score >= 4 ? "dark" : d.score >= 3 ? "warn" : "danger"}
+                            />
+                          </div>
+                        </li>
+                      ))}
+                  </ul>
+                )}
               </Card>
             </motion.section>
 

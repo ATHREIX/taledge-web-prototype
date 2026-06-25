@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSession, updateSession } from "@/lib/session-store";
-import { synthesizeInterviewSpeech, getGeminiApiKey, generateGeminiContent } from "@/lib/gemini";
+import { getGeminiApiKey, generateGeminiContent } from "@/lib/gemini";
 import { fetchDnlaQuestion } from "@/lib/dnla-questions";
 import { getPrincipal, unauthorized } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
@@ -214,12 +214,8 @@ export async function POST(req: NextRequest) {
     { sessionId: session.sessionId, studentId: body.studentId, priorInterviews: body.priorInterviews }
   );
 
-  let audioBase64 = "";
-  try {
-    audioBase64 = await synthesizeInterviewSpeech(question, apiKey || "");
-  } catch (ttsErr) {
-    logger.error("interview-start: TTS generation failed", { err: String(ttsErr) });
-  }
+  // No server-side TTS — the live interviewer is Gemini Live native audio.
+  const audioBase64 = "";
 
   // Best-effort: persisting the opening question must never 500 the start. The
   // client receives firstQuestion directly, and the voice route can rebuild the

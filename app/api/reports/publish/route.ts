@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPrincipal, unauthorized, forbidden } from "@/lib/server-auth";
 import { logger } from "@/lib/logger";
 import { isProd } from "@/lib/flags";
+import { upsertCandidate } from "@/lib/talent-store";
 
 export const runtime = "nodejs";
 
@@ -96,6 +97,22 @@ export async function POST(req: NextRequest) {
   try {
     const reportType = body.reportType || "combined";
     const audience = body.audience || "recruiters";
+
+    // Publishing to recruiters is the consent step that makes the candidate
+    // VISIBLE in the recruiter pool (PRD §4.5/§4.6). Mark them published in the
+    // talent store so recruiters actually see them (merges onto the record the
+    // fit-score run already upserted). Best-effort — never fail the publish.
+    if (audience === "recruiters" && subjectId) {
+      try {
+        await upsertCandidate(subjectId, {
+          publishedToRecruiters: true,
+          publishedAt: Date.now(),
+          status: "Published",
+        });
+      } catch (e) {
+        logger.error("publish: talent-store mark-published failed (non-fatal)", { subjectId, err: String(e) });
+      }
+    }
 
     logger.info("report published", {
       uid,

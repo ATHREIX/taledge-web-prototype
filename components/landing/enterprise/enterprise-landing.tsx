@@ -81,7 +81,7 @@ const MODULES = [
   },
   {
     title: "DNLA psychometrics",
-    body: "Competency intelligence across achievement, interpersonal, execution and resilience — benchmarked to top performers.",
+    body: "Competency intelligence across achievement, interpersonal, execution and resilience - benchmarked to top performers.",
     serves: "Competency intelligence",
     path: "M3 3v18h18M7 14l4-4 3 3 5-6",
   },
@@ -99,7 +99,7 @@ const MODULES = [
   },
   {
     title: "Recruiter visibility",
-    body: "Verified, role-matched candidates published with consent — shortlist on evidence, not keywords.",
+    body: "Verified, role-matched candidates published with consent - shortlist on evidence, not keywords.",
     serves: "Recruiter pipeline",
     path: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0 .01M23 21v-2a4 4 0 0 0-3-3.87",
   },
@@ -115,7 +115,7 @@ const ARCHITECTURE = [
   {
     n: "01",
     title: "AI technical interview",
-    body: "Upload a résumé or job description, then a proctored voice AI runs an adaptive technical interview grounded in the candidate's skills, projects and target role — transcribed and rubric-scored live.",
+    body: "Upload a résumé or job description, then a proctored voice AI runs an adaptive technical interview grounded in the candidate's skills, projects and target role - transcribed and rubric-scored live.",
     chips: ["Résumé / JD", "Adaptive", "Proctored"],
   },
   {
@@ -127,13 +127,13 @@ const ARCHITECTURE = [
   {
     n: "03",
     title: "AI behavioural interview",
-    body: "A second AI round, tailored to the DNLA report, probes the candidate's development areas with situational and adversarial follow-ups — again transcribed and scored.",
+    body: "A second AI round, tailored to the DNLA report, probes the candidate's development areas with situational and adversarial follow-ups - again transcribed and scored.",
     chips: ["Behavioural", "DNLA-targeted", "Scored"],
   },
   {
     n: "04",
     title: "The Fit Score, crystallised",
-    body: "Interview evidence, DNLA and résumé signals fuse into one defensible Fit Score and success probability — then fan out to recruiters on consent.",
+    body: "Interview evidence, DNLA and résumé signals fuse into one defensible Fit Score and success probability - then fan out to recruiters on consent.",
     chips: ["Fit Score", "Success %", "Published"],
   },
 ];
@@ -148,17 +148,17 @@ const GOVERNANCE = [
   },
   {
     title: "Access enforced at the database",
-    body: "Security rules enforce access at the database level — not just in the application layer.",
+    body: "Security rules enforce access at the database level - not just in the application layer.",
     path: "M5 11V7a7 7 0 0 1 14 0v4M5 11h14v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9Z",
   },
   {
     title: "Consent-based publishing",
-    body: "Verified candidates are published to recruiters only with consent — the candidate stays in control of who sees their evidence.",
+    body: "Verified candidates are published to recruiters only with consent - the candidate stays in control of who sees their evidence.",
     path: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z",
   },
   {
     title: "Proctored, rubric-scored",
-    body: "Interviews are proctored and scored against a structured rubric — consistent for everyone, with no human bias.",
+    body: "Interviews are proctored and scored against a structured rubric - consistent for everyone, with no human bias.",
     path: "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11",
   },
 ];
@@ -202,7 +202,7 @@ const FAQ = [
   },
   {
     q: "How do the AI interviews work?",
-    a: "A live voice agent conducts proctored technical and behavioural interviews. Responses are transcribed and scored against a structured rubric — no human bias, consistent for everyone.",
+    a: "A live voice agent conducts proctored technical and behavioural interviews. Responses are transcribed and scored against a structured rubric - no human bias, consistent for everyone.",
   },
   {
     q: "Is my data private?",
@@ -231,12 +231,15 @@ const NAV_LINKS = [
 function EntNav() {
   const [open, setOpen] = useState(false);
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/85 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-[80rem] items-center justify-between gap-6 px-5 sm:px-8">
-        <Link href="/" aria-label="Taledge home" className="shrink-0">
+    <div className="sticky top-0 z-50 px-3 pt-3 sm:px-5">
+      <header className="relative mx-auto flex h-14 max-w-[80rem] items-center justify-between gap-6 rounded-full border border-slate-200/70 bg-white/85 px-3 shadow-[0_10px_34px_-18px_rgba(16,24,40,0.18)] backdrop-blur-xl transition-all duration-300 sm:px-4">
+        <Link href="/" aria-label="Taledge home" className="shrink-0 pl-1.5">
           <Logo />
         </Link>
-        <nav aria-label="Primary" className="hidden items-center gap-1 lg:flex">
+        <nav
+          aria-label="Primary"
+          className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1 lg:flex"
+        >
           {NAV_LINKS.map((l) => (
             <a
               key={l.href}
@@ -247,7 +250,7 @@ function EntNav() {
             </a>
           ))}
         </nav>
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           <Link
             href="/login"
             className="hidden rounded-md px-3.5 py-2 text-[14px] font-semibold text-[#081A3A] transition-colors hover:bg-slate-100/80 sm:inline-flex"
@@ -256,7 +259,7 @@ function EntNav() {
           </Link>
           <Link
             href="/register"
-            className="group inline-flex items-center gap-1.5 rounded-md bg-[#0057FF] px-4 py-2.5 text-[14px] font-semibold text-white shadow-sm transition-all hover:bg-[#0F4CFF] hover:shadow-md"
+            className="group inline-flex items-center gap-1.5 rounded-full bg-[#0057FF] px-4 py-2 text-[14px] font-semibold text-white shadow-sm transition-all hover:bg-[#0F4CFF] hover:shadow-md"
           >
             Get started
             <Arrow className="transition-transform group-hover:translate-x-0.5" />
@@ -266,32 +269,32 @@ function EntNav() {
             onClick={() => setOpen((v) => !v)}
             aria-label={open ? "Close menu" : "Open menu"}
             aria-expanded={open}
-            className="grid h-10 w-10 place-items-center rounded-md border border-slate-200 text-[#081A3A] lg:hidden"
+            className="grid h-9 w-9 place-items-center rounded-md border border-slate-200 text-[#081A3A] lg:hidden"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
               {open ? <path d="M6 6l12 12M18 6L6 18" /> : <><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></>}
             </svg>
           </button>
         </div>
-      </div>
+      </header>
       {open && (
-        <div className="border-t border-slate-200 bg-white px-5 py-3 lg:hidden">
+        <div className="mx-auto mt-2 max-w-[80rem] rounded-2xl border border-slate-200/70 bg-white/95 p-2 shadow-lg backdrop-blur-xl lg:hidden">
           {NAV_LINKS.map((l) => (
             <a
               key={l.href}
               href={l.href}
               onClick={() => setOpen(false)}
-              className="block rounded-md px-3 py-3 text-[15px] font-medium text-slate-700 hover:bg-slate-100"
+              className="block rounded-xl px-4 py-3 text-[15px] font-medium text-slate-700 hover:bg-slate-100"
             >
               {l.label}
             </a>
           ))}
-          <a href="/login" className="block rounded-md px-3 py-3 text-[15px] font-semibold text-[#0057FF]">
+          <a href="/login" onClick={() => setOpen(false)} className="block rounded-xl px-4 py-3 text-[15px] font-semibold text-[#0057FF]">
             Sign in
           </a>
         </div>
       )}
-    </header>
+    </div>
   );
 }
 
@@ -425,6 +428,69 @@ function DashboardMock() {
   );
 }
 
+/**
+ * Live proctored-interview mock for the assessment section. Distinct from the
+ * Fit Score dashboard used in the hero - it shows the real product surface:
+ * an AI interviewer turn, the candidate answering live, and the always-on
+ * integrity checks that make the assessment defensible.
+ */
+function InterviewMock() {
+  const checks = ["Face visible", "No second device", "Tab focused", "Quiet environment"];
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_30px_80px_-40px_rgba(8,26,58,0.45)]">
+      {/* window chrome */}
+      <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-3">
+        <span className="h-3 w-3 rounded-full bg-slate-200" />
+        <span className="h-3 w-3 rounded-full bg-slate-200" />
+        <span className="h-3 w-3 rounded-full bg-slate-200" />
+        <span className="ml-3 text-[12px] font-medium text-slate-400">Taledge · Live interview</span>
+        <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Live
+        </span>
+        <span className="text-[11px] font-semibold tabular-nums text-slate-400">12:48</span>
+      </div>
+      <div className="space-y-4 p-4 sm:p-6">
+        {/* AI question */}
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-[#0057FF]">AI interviewer</p>
+          <p className="mt-1.5 text-[13.5px] leading-relaxed text-[#081A3A]">
+            Walk me through how you&apos;d design a rate limiter for a high-traffic API.
+          </p>
+        </div>
+        {/* candidate answer */}
+        <div className="ml-auto max-w-[85%] rounded-xl bg-[#0057FF] p-4 text-white">
+          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-white/70">
+            You
+            <span className="inline-flex gap-0.5" aria-hidden>
+              <span className="h-1 w-1 rounded-full bg-white/80" />
+              <span className="h-1 w-1 rounded-full bg-white/60" />
+              <span className="h-1 w-1 rounded-full bg-white/40" />
+            </span>
+            speaking
+          </p>
+          <p className="mt-1.5 text-[13.5px] leading-relaxed">
+            I&apos;d keep a token bucket per client key in Redis, refilled at a fixed rate…
+          </p>
+        </div>
+        {/* live integrity checks */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+          <p className="mb-3 text-[10px] font-bold uppercase tracking-wide text-slate-400">Live security checks</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+            {checks.map((c) => (
+              <span key={c} className="flex items-center gap-2 text-[12.5px] font-semibold text-slate-600">
+                <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-emerald-500 text-white">
+                  <Check className="h-2.5 w-2.5" />
+                </span>
+                {c}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ----------------------------- sections --------------------------- */
 
 function Hero() {
@@ -436,7 +502,7 @@ function Hero() {
         <div className="absolute -right-40 -top-40 h-[34rem] w-[34rem] rounded-full bg-[#0057FF]/5 blur-3xl" />
       </div>
 
-      <div className="relative mx-auto grid max-w-[80rem] items-center gap-14 px-5 py-20 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:py-28">
+      <div className="relative mx-auto grid max-w-[80rem] items-start gap-14 px-5 pt-10 pb-16 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:pt-14 lg:pb-24">
         <div>
           <Reveal>
             <div className="flex flex-wrap items-center gap-3">
@@ -460,7 +526,7 @@ function Hero() {
 
           <Reveal delay={0.12}>
             <p className="mt-6 max-w-xl text-[1.075rem] leading-relaxed text-slate-600">
-              Taledge measures, predicts and improves human potential — fusing AI
+              Taledge measures, predicts and improves human potential - fusing AI
               interviews, DNLA psychometrics and human coaching into one defensible
               score across placement and competitive-exam success.
             </p>
@@ -516,7 +582,7 @@ function Hero() {
 
 function Credibility() {
   const items = [
-    { k: "Status", v: "Phase 1 · Live", d: "A working, deployed platform — not a concept." },
+    { k: "Status", v: "Phase 1 · Live", d: "A working, deployed platform - not a concept." },
     { k: "Coverage", v: "Two tracks", d: "Placement Success and Competitive Exam Success." },
     { k: "Stakeholders", v: "Four workspaces", d: "Candidate, recruiter, coach and institute." },
     { k: "Method", v: "Proctored & rubric-scored", d: "Consistent evaluation, no human bias." },
@@ -526,7 +592,7 @@ function Credibility() {
       <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
         <Reveal>
           <p className="text-center text-[13px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-            Built for placement and competitive-exam success — UPSC, JEE, NEET and CAT
+            Built for placement and competitive-exam success - UPSC, JEE, NEET and CAT
           </p>
         </Reveal>
         <div className="mt-10 grid gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 sm:grid-cols-2 lg:grid-cols-4">
@@ -556,7 +622,7 @@ function Architecture() {
           </h2>
           <p className="mt-4 text-[1.05rem] leading-relaxed text-slate-600">
             Four sequential stages convert raw potential into a defensible, shareable
-            decision signal. Each stage is evidence-producing — and feeds the next.
+            decision signal. Each stage is evidence-producing - and feeds the next.
           </p>
         </Reveal>
 
@@ -643,14 +709,14 @@ function Assessment() {
 
         <div className="mt-14 grid items-center gap-12 lg:grid-cols-2">
           <Reveal y={34}>
-            <DashboardMock />
+            <InterviewMock />
           </Reveal>
           <div className="space-y-8">
             <Reveal>
               <div className="rounded-2xl border border-slate-200 bg-white p-7">
                 <p className="text-[12px] font-semibold uppercase tracking-wide text-[#0057FF]">Candidate outcome</p>
                 <h3 className="mt-2 text-[1.3rem] font-bold text-[#081A3A]">
-                  See exactly why you&apos;re a fit — and what to fix.
+                  See exactly why you&apos;re a fit - and what to fix.
                 </h3>
                 <p className="mt-2 text-[14px] leading-relaxed text-slate-500">
                   A live Fit Score from AI interviews + DNLA psychometrics, with a coaching
@@ -674,7 +740,7 @@ function Assessment() {
                 </h3>
                 <p className="mt-2 text-[14px] leading-relaxed text-slate-500">
                   Ranked, verified candidates with technical, behavioural and
-                  success-probability signals — published with consent.
+                  success-probability signals - published with consent.
                 </p>
                 <ul className="mt-4 grid gap-2.5">
                   {recruiter.map((p) => (
@@ -749,14 +815,14 @@ function Security() {
             </h2>
             <p className="mt-4 text-[1.05rem] leading-relaxed text-slate-600">
               Candidate evidence is sensitive. Taledge keeps records owner-scoped and
-              shares them only on explicit consent — with access enforced at the data
+              shares them only on explicit consent - with access enforced at the data
               layer, not just the app.
             </p>
             <div className="mt-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5">
-              <p className="text-[12px] font-semibold uppercase tracking-wide text-slate-400">Placeholder — to be published</p>
+              <p className="text-[12px] font-semibold uppercase tracking-wide text-slate-400">Placeholder - to be published</p>
               <p className="mt-1.5 text-[13.5px] leading-relaxed text-slate-500">
                 Formal compliance certifications, data-residency details and a security
-                whitepaper are not yet stated on the site. Reserve this space for them —
+                whitepaper are not yet stated on the site. Reserve this space for them -
                 no claims should appear here until they are verified.
               </p>
             </div>

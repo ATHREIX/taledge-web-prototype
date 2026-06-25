@@ -48,7 +48,7 @@ export function Pipeline() {
       const mm = gsap.matchMedia();
 
       // Animate only when the user hasn't asked for reduced motion. Otherwise
-      // elements keep their natural (fully visible) state — no stuck opacity.
+      // elements keep their natural (fully visible) state - no stuck opacity.
       mm.add("(prefers-reduced-motion: no-preference)", () => {
         // Rail draws top→bottom, scrubbed to the section's scroll progress.
         gsap.fromTo(
@@ -112,7 +112,7 @@ export function Pipeline() {
       </div>
 
       <div data-rail-track className="relative mt-16">
-        {/* glowing rail — origin top so it draws downward on scroll */}
+        {/* glowing rail - origin top so it draws downward on scroll */}
         <div
           aria-hidden
           data-rail

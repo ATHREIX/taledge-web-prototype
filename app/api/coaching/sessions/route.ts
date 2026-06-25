@@ -2,27 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPrincipal, unauthorized } from "@/lib/server-auth";
 import { logger } from "@/lib/logger";
 import { isProd } from "@/lib/flags";
+import { listCoachingSessions, addCoachingSession, type CoachingSession } from "@/lib/coaching-store";
 
 export const runtime = "nodejs";
-
-type CoachingSession = {
-  id: string;
-  studentId: string;
-  coachId: string;
-  track: "placement" | "exam";
-  topic: string;
-  status: "scheduled";
-  scheduledFor: string | null;
-  privacy: string;
-};
-
-/**
- * Owner-scoped, in-memory coaching-session store keyed by the authenticated
- * uid. Each principal only ever reads/writes their own bucket, so a caller can
- * never see another user's sessions. (Per-instance/dev scope - back with a real
- * datastore for production durability.)
- */
-const sessionsByOwner = new Map<string, CoachingSession[]>();
 
 const MAX_FIELD_LEN = 200;
 
@@ -35,7 +17,7 @@ export async function GET(req: NextRequest) {
   if (!principal) return unauthorized();
   const uid = principal.uid;
 
-  const sessions = sessionsByOwner.get(uid) ?? [];
+  const sessions = await listCoachingSessions(uid);
   return NextResponse.json({ ok: true, sessions });
 }
 
@@ -94,6 +76,7 @@ export async function POST(req: NextRequest) {
 
     const session: CoachingSession = {
       id: `sess_${studentId}_${Math.random().toString(36).slice(2, 8)}`,
+      ownerUid: uid,
       studentId,
       coachId,
       track,
@@ -104,12 +87,12 @@ export async function POST(req: NextRequest) {
         track === "exam"
           ? "exam risk indicators remain restricted to candidate, counsellor, and exam institute"
           : "placement development insights visible to authorized placement stakeholders",
+      createdAt: Date.now(),
     };
 
-    // Persist into the caller's own bucket so subsequent GETs are owner-scoped.
-    const owned = sessionsByOwner.get(uid) ?? [];
-    owned.push(session);
-    sessionsByOwner.set(uid, owned);
+    // Durably persist owner-scoped (Firestore or file) so it survives restarts
+    // and is shared across serverless instances — no longer an in-memory Map.
+    await addCoachingSession(session);
 
     return NextResponse.json({ ok: true, session });
   } catch (err) {

@@ -12,6 +12,7 @@ import {
   Heading,
   Eyebrow,
   Stat,
+  useToast,
 } from "@/components/ui";
 import { EASE, transition } from "@/lib/motion";
 
@@ -42,6 +43,7 @@ export default function CoachAI() {
 }
 
 function CoachAIPhaseTwo() {
+  const { toast } = useToast();
   const [vol, setVol] = useState(0);
   const [conn, setConn] = useState(false);
   const [turn, setTurn] = useState(0);
@@ -364,6 +366,7 @@ function CoachAIPhaseTwo() {
                 type="button"
                 variant="ghost"
                 className="mt-5 w-full rounded-xl"
+                onClick={() => toast("Nudge sent to your phone.", "success")}
               >
                 Send to Phone
               </Button>

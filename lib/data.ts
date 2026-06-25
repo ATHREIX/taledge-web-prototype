@@ -325,6 +325,10 @@ export const examAspirants: ExamAspirant[] = [
 
 export type Institute = {
   id: string;
+  /** Firebase uids allowed to administer this institute (mint share links,
+   *  manage interventions). Empty/unset = no admins configured; in enforced
+   *  auth that means access is denied (fail-closed). Demo mode ignores this. */
+  adminUids?: string[];
   name: string;
   kind: "placement" | "exam";
   cohort: number;
@@ -339,6 +343,15 @@ export type Institute = {
     avgBehav: number;
     avgFit: number;
     topGap: string;
+  }[];
+  /** Organisations planning a campus drive at this institute (PRD §4 — campus
+   *  engagement). Seeded today; wired to recruiter intent later. */
+  campusDrives?: {
+    company: string;
+    role: string;
+    date: string;
+    openings: number;
+    status: "Confirmed" | "In discussion" | "Scheduled";
   }[];
 };
 
@@ -362,6 +375,12 @@ export const institutes: Institute[] = [
       { name: "ECE 2026", size: 78, avgTech: 74, avgBehav: 62, avgFit: 69, topGap: "Collaborative communication" },
       { name: "Mechanical 2027", size: 62, avgTech: 64, avgBehav: 68, avgFit: 65, topGap: "Technical depth in analytics" },
     ],
+    campusDrives: [
+      { company: "Atlas Systems", role: "Software Engineer", date: "Aug 12, 2026", openings: 24, status: "Confirmed" },
+      { company: "Northwind Analytics", role: "Data Analyst", date: "Aug 20, 2026", openings: 12, status: "Confirmed" },
+      { company: "Vertex Cloud", role: "Associate PM", date: "Sep 02, 2026", openings: 8, status: "Scheduled" },
+      { company: "Lumen Robotics", role: "Embedded Engineer", date: "Sep 15, 2026", openings: 10, status: "In discussion" },
+    ],
   },
   {
     id: "institute-exam",
@@ -383,9 +402,29 @@ export const institutes: Institute[] = [
       { name: "CAT 2026", size: 46, avgTech: 72, avgBehav: 74, avgFit: 73, topGap: "Quant accuracy under timer" },
     ],
   },
+  {
+    id: "institute-tech",
+    name: "TalEdge Institute of Technology",
+    kind: "placement",
+    cohort: 0, // analytics derive from the live cohort assigned to this institute
+    interviewReady: 0,
+    avgFit: 0,
+    topGap: "Communication in panel rounds",
+    insights: [
+      { label: "Cohort analytics build from each candidate's completed assessment", severity: "info" },
+    ],
+    batches: [],
+    campusDrives: [
+      { company: "Quanta Labs", role: "Backend Engineer", date: "Aug 28, 2026", openings: 16, status: "Confirmed" },
+      { company: "Helios Fintech", role: "Full-stack Engineer", date: "Sep 10, 2026", openings: 9, status: "In discussion" },
+    ],
+  },
 ];
 
 export type RecruiterRow = {
+  /** Unique per-row id (the pool can list the same candidate for two roles).
+   * Used for React keys + selection identity; studentId stays for drill-down links. */
+  poolId: string;
   studentId: string;
   name: string;
   college: string;
@@ -399,6 +438,7 @@ export type RecruiterRow = {
 
 export const recruiterPool: RecruiterRow[] = [
   {
+    poolId: "candidate-001-swe",
     studentId: "candidate-001",
     name: "Aarav Mehta",
     college: "IIT Bombay",
@@ -410,6 +450,7 @@ export const recruiterPool: RecruiterRow[] = [
     flags: ["Feedback reception below benchmark"],
   },
   {
+    poolId: "candidate-002-apm",
     studentId: "candidate-002",
     name: "Diya Sharma",
     college: "BITS Pilani",
@@ -421,6 +462,7 @@ export const recruiterPool: RecruiterRow[] = [
     flags: [],
   },
   {
+    poolId: "candidate-003",
     studentId: "candidate-003",
     name: "Rohan Verma",
     college: "NIT Trichy",
@@ -432,6 +474,7 @@ export const recruiterPool: RecruiterRow[] = [
     flags: ["Overconfidence flag", "Disagreement handling"],
   },
   {
+    poolId: "candidate-004",
     studentId: "candidate-004",
     name: "Ananya Iyer",
     college: "VIT Vellore",
@@ -443,6 +486,7 @@ export const recruiterPool: RecruiterRow[] = [
     flags: ["Early readiness - limited mock history"],
   },
   {
+    poolId: "candidate-002-pa",
     studentId: "candidate-002",
     name: "Diya Sharma",
     college: "BITS Pilani",
@@ -454,6 +498,7 @@ export const recruiterPool: RecruiterRow[] = [
     flags: [],
   },
   {
+    poolId: "candidate-001-be",
     studentId: "candidate-001",
     name: "Aarav Mehta",
     college: "IIT Bombay",
@@ -532,6 +577,13 @@ export const personas: Persona[] = [
   { kind: "counsellor", id: "counsellor-001" },
 ];
 
+/** Known coaches. Mirrors the institute/exam registries so /coach/[id] can
+ *  notFound() an unknown id instead of rendering a generic dashboard for any URL. */
+export const coaches = [{ id: "coach-001", name: "Lead Coach" }];
+export function getCoach(id: string) {
+  return coaches.find((c) => c.id === id);
+}
+
 export function getStudent(id: string) {
   return students.find((s) => s.id === id) || {
     id,
@@ -553,38 +605,15 @@ export function getStudent(id: string) {
     status: "Not started" as const
   };
 }
+// Return undefined for unknown ids so the page-level `if (!e) notFound()` guard
+// fires the real not-found UX instead of rendering a hollow all-zero dashboard.
+// (Exam aspirants are fixed demo entities, never per-user uids, so a strict
+// lookup is safe — unlike getStudent, where real users browse under their uid.)
 export function getExam(id: string) {
-  return examAspirants.find((e) => e.id === id) || {
-    id,
-    name: "New Aspirant",
-    avatar: "NA",
-    exam: "UPSC Civil Services",
-    attempt: "1st Attempt",
-    monthsPreparing: 0,
-    successPotential: 0,
-    motivation: 0,
-    consistency: 0,
-    resilience: 0,
-    stressIndex: 0,
-    risks: [],
-    consistencyTrend: [],
-    moodTrend: [],
-    studyHoursTrend: [],
-    institute: "TalEdge Institute",
-  };
+  return examAspirants.find((e) => e.id === id);
 }
 export function getInstitute(id: string) {
-  return institutes.find((i) => i.id === id) || {
-    id,
-    name: "TalEdge Institute",
-    kind: "placement" as const,
-    cohort: 0,
-    interviewReady: 0,
-    avgFit: 0,
-    topGap: "None",
-    insights: [],
-    batches: [],
-  };
+  return institutes.find((i) => i.id === id);
 }
 
 /* ───────────────────────── Institute cohort (pilot) ─────────────────────────

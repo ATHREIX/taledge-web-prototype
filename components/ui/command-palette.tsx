@@ -12,18 +12,32 @@ import { AnimatePresence, motion } from "framer-motion";
  */
 type Command = { label: string; group: string; href: string; keywords?: string };
 
-const COMMANDS: Command[] = [
+// Role-agnostic destinations every signed-in user can safely reach. The
+// dashboard already surfaces each user's own role-correct deep links, so these
+// are the only nav entries we expose when auth is enforced.
+const SAFE_COMMANDS: Command[] = [
   { label: "Dashboard", group: "Navigate", href: "/dashboard", keywords: "home overview command center" },
   { label: "My Profile", group: "Navigate", href: "/profile", keywords: "account settings name" },
+  { label: "Start assessment", group: "Navigate", href: "/onboarding", keywords: "begin resume upload onboarding" },
+];
+
+// Seed-persona deep links — DEMO mode only. In enforced mode these would let a
+// signed-in user jump straight into another persona's uid-keyed workspace
+// (privacy / wrong data), so they are excluded.
+const DEMO_COMMANDS: Command[] = [
   { label: "Candidate workspace", group: "Candidate", href: "/student/candidate-001", keywords: "student development analytics" },
   { label: "DNLA report", group: "Candidate", href: "/student/candidate-001/dnla", keywords: "psychometrics competencies behavioural" },
   { label: "Fit Score", group: "Candidate", href: "/student/candidate-001/fit-score", keywords: "report success probability score" },
   { label: "Development pathway", group: "Candidate", href: "/student/candidate-001/development", keywords: "coaching gaps learning" },
-  { label: "Start assessment", group: "Candidate", href: "/onboarding", keywords: "begin resume upload onboarding" },
   { label: "Recruiter console", group: "Workspaces", href: "/recruiter/recruiter-001", keywords: "candidates pipeline hiring shortlist" },
   { label: "Institute dashboard", group: "Workspaces", href: "/institute/institute-placement", keywords: "cohort placement readiness" },
   { label: "Coach workspace", group: "Workspaces", href: "/coach/coach-001", keywords: "sessions coaching queue" },
 ];
+
+const COMMANDS: Command[] =
+  process.env.NEXT_PUBLIC_AUTH_ENFORCED === "true"
+    ? SAFE_COMMANDS
+    : [...SAFE_COMMANDS, ...DEMO_COMMANDS];
 
 function disabledOn(p: string | null): boolean {
   return (

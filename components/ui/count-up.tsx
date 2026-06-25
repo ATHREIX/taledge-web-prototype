@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 
 /**
  * Animated integer count-up on mount. Respects prefers-reduced-motion (renders
- * the final value immediately). Use for whole-number metrics only — pass the
- * already-formatted string for "Pending"/"—" cases instead.
+ * the final value immediately). Use for whole-number metrics only - pass the
+ * already-formatted string for "Pending"/"-" cases instead.
  */
 export function CountUp({
   value,

@@ -147,7 +147,7 @@ export function Features() {
           ))}
         </div>
 
-        {/* Scrub progress bar — desktop only */}
+        {/* Scrub progress bar - desktop only */}
         <div aria-hidden className="absolute bottom-6 left-1/2 hidden h-1 w-48 -translate-x-1/2 overflow-hidden rounded-full bg-ink-200/60 lg:block">
           <div data-progress className="h-full w-full origin-left rounded-full bg-gradient-to-r from-brand-600 to-accent-500" style={{ transform: "scaleX(0)" }} />
         </div>

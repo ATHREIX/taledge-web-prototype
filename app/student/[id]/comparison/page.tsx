@@ -58,7 +58,26 @@ const ROUNDS = {
   dnla: {
     label: "DNLA Interview",
     short: "DNLA (behavioural)",
-    transcriptKey: (id: string) => `taledge:interview:${id}:dnla`,
+    // The guided funnel chains technical→final→fit-score and never writes
+    // `:dnla`, so a candidate who finished the real funnel would otherwise be
+    // told the behavioural round is missing. Resolve to the first key that
+    // actually holds a transcript - `:behavioural`, then `:dnla`, then
+    // `:final` - mirroring fit-score/page.tsx. Defaults to `:dnla` (seed demo
+    // candidate-001 has a `:dnla` transcript, and SSR has no localStorage).
+    transcriptKey: (id: string) => {
+      const candidates = [
+        `taledge:interview:${id}:behavioural`,
+        `taledge:interview:${id}:dnla`,
+        `taledge:interview:${id}:final`,
+      ];
+      if (typeof window !== "undefined") {
+        for (const k of candidates) {
+          const v = localStorage.getItem(k);
+          if (v && v !== "[]") return k;
+        }
+      }
+      return candidates[1];
+    },
     primary: "behavioural" as const,
     interviewMode: "dnla",
   },
@@ -73,7 +92,7 @@ function normalizeReport(raw: Partial<GenReport> | null | undefined): GenReport 
     behavioural_score: typeof r.behavioural_score === "number" ? r.behavioural_score : -1,
     fit_score: typeof r.fit_score === "number" ? r.fit_score : -1,
     success_probability: typeof r.success_probability === "number" ? r.success_probability : -1,
-    verdict: r.verdict || "—",
+    verdict: r.verdict || "-",
     narrative: r.narrative || "",
     technical_breakdown: Array.isArray(r.technical_breakdown) ? r.technical_breakdown : [],
     resume_breakdown: Array.isArray(r.resume_breakdown) ? r.resume_breakdown : [],
@@ -152,6 +171,10 @@ export default function ComparisonReportPage() {
         resumeProjects: profile.resumeProjects?.length ? profile.resumeProjects : s.projects,
         technicalQA,
         behaviouralQA,
+        // Carry the off-campus invite binding so this path also lands the
+        // candidate in the right recruiter pool (server resolves it from token).
+        inviteToken: profile.inviteToken || undefined,
+        college: profile.institution || undefined,
       }),
     });
     const data = await r.json();
@@ -219,14 +242,14 @@ export default function ComparisonReportPage() {
     const dnlaResume = resumeAvg(dnla);
 
     const flags: CrossFlag[] = [];
-    // Both reports score the SAME resume — a wide gap means low signal stability.
+    // Both reports score the SAME resume - a wide gap means low signal stability.
     if (aiResume != null && dnlaResume != null) {
       const d = Math.abs(aiResume - dnlaResume);
       flags.push({
         label: "Resume-signal consistency",
         verdict: d <= 10
           ? `Resume alignment read consistently across both rounds (${aiResume}% vs ${dnlaResume}%).`
-          : `Resume alignment diverged between rounds (${aiResume}% vs ${dnlaResume}%) — interpret round scores with that variance in mind.`,
+          : `Resume alignment diverged between rounds (${aiResume}% vs ${dnlaResume}%) - interpret round scores with that variance in mind.`,
         tone: d <= 10 ? "ok" : d <= 20 ? "warn" : "danger",
       });
     }
@@ -238,7 +261,7 @@ export default function ComparisonReportPage() {
       flags.push({
         label: "Skills vs behaviour balance",
         verdict: d <= 10
-          ? `Balanced profile — skills and behavioural performance are within ${d} pts.`
+          ? `Balanced profile - skills and behavioural performance are within ${d} pts.`
           : `${stronger} clearly outperformed ${weaker} by ${d} pts; prioritise developing the ${weaker} round.`,
         tone: d <= 10 ? "ok" : d <= 20 ? "warn" : "danger",
       });
@@ -322,7 +345,7 @@ export default function ComparisonReportPage() {
                   <Eyebrow>Comparison summary</Eyebrow>
                   <p className="mt-3 text-base font-medium leading-relaxed text-ink-800">
                     {analysis.strongerKey === "tie"
-                      ? `${candidateFirst} performed evenly across both rounds (AI ${analysis.aiP}% vs DNLA ${analysis.dnlaP}%) — a balanced profile with no single weak round to prioritise.`
+                      ? `${candidateFirst} performed evenly across both rounds (AI ${analysis.aiP}% vs DNLA ${analysis.dnlaP}%) - a balanced profile with no single weak round to prioritise.`
                       : `${candidateFirst}'s ${analysis.strongerKey === "ai" ? "AI (skills)" : "DNLA (behavioural)"} round was the stronger of the two (AI ${analysis.aiP}% vs DNLA ${analysis.dnlaP}%). The ${analysis.strongerKey === "ai" ? "DNLA (behavioural)" : "AI (skills)"} round is the clearer development priority.`}
                   </p>
                 </Card>
@@ -420,12 +443,12 @@ function RoundCard({
         {highlight && <Badge tone="success">Stronger round</Badge>}
       </div>
       <div className="mt-4 flex items-end gap-3">
-        <span className={`text-5xl font-bold tabular-nums ${ring}`}>{p === -1 ? "—" : `${p}%`}</span>
+        <span className={`text-5xl font-bold tabular-nums ${ring}`}>{p === -1 ? "-" : `${p}%`}</span>
         <span className="mb-1.5 text-xs font-semibold text-ink-500">{cfg.short} score</span>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-        <MiniStat label="Fit" value={report.fit_score === -1 ? "—" : `${report.fit_score}%`} />
-        <MiniStat label="Success prob." value={report.success_probability === -1 ? "—" : `${report.success_probability}%`} />
+        <MiniStat label="Fit" value={report.fit_score === -1 ? "-" : `${report.fit_score}%`} />
+        <MiniStat label="Success prob." value={report.success_probability === -1 ? "-" : `${report.success_probability}%`} />
       </div>
       <div className="mt-3">
         <Badge tone={report.fit_score >= 70 ? "success" : "warn"}>{report.verdict}</Badge>
@@ -452,10 +475,10 @@ function DiffRow({ label, a, b }: { label: string; a: number; b: number }) {
   return (
     <div className="grid grid-cols-12 items-center border-b border-ink-100 px-6 py-4 text-sm last:border-0">
       <div className="col-span-4 font-medium text-ink-800">{label}</div>
-      <div className="col-span-3 text-right font-bold tabular-nums text-ink-900">{a === -1 ? "—" : `${a}%`}</div>
-      <div className="col-span-3 text-right font-bold tabular-nums text-ink-900">{b === -1 ? "—" : `${b}%`}</div>
+      <div className="col-span-3 text-right font-bold tabular-nums text-ink-900">{a === -1 ? "-" : `${a}%`}</div>
+      <div className="col-span-3 text-right font-bold tabular-nums text-ink-900">{b === -1 ? "-" : `${b}%`}</div>
       <div className={`col-span-2 text-right font-semibold tabular-nums ${delta == null ? "text-ink-400" : delta === 0 ? "text-ink-500" : delta > 0 ? "text-emerald-600" : "text-rose-600"}`}>
-        {delta == null ? "—" : `${delta > 0 ? "+" : ""}${delta}`}
+        {delta == null ? "-" : `${delta > 0 ? "+" : ""}${delta}`}
       </div>
     </div>
   );

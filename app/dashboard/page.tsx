@@ -21,12 +21,12 @@ import { doc, getDoc } from "firebase/firestore";
 import { useAuth } from "@/components/AuthProvider";
 import { db } from "@/lib/firebase";
 import { PageShell, Card, Heading, Badge, Avatar, CountUp, Tooltip } from "@/components/ui";
-import { roleDef, workspacePath, type Role } from "@/lib/roles";
+import { roleDef, workspaceId, workspacePath, type Role } from "@/lib/roles";
 
 type Tile = { title: string; desc: string; href: string; icon: React.ReactNode };
 
-function tilesFor(role: Role): Tile[] {
-  const ws = workspacePath(role);
+function tilesFor(role: Role, uid?: string | null): Tile[] {
+  const ws = workspacePath(role, uid);
   const profile: Tile = { title: "My Profile", desc: "View and edit your account details.", href: "/profile", icon: <UserCircle className="h-5 w-5" /> };
 
   if (role === "candidate") {
@@ -67,7 +67,7 @@ export default function DashboardPage() {
   const [name, setName] = useState("");
   const [state, setState] = useState<"loading" | "ready" | "anon">("loading");
   const [today, setToday] = useState("");
-  // Real, client-present progress (localStorage) — never fabricated.
+  // Real, client-present progress (localStorage) - never fabricated.
   const [progress, setProgress] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -112,7 +112,10 @@ export default function DashboardPage() {
       /* date is decorative */
     }
     if (role !== "candidate") return;
-    const id = roleDef(role).demoId;
+    // Read progress under the SAME id the interview/fit-score flow writes. Under
+    // enforced auth that is the user's uid (workspacePath -> /student/<uid>), not
+    // the seeded demoId - otherwise the pipeline froze at 0/4 for every real user.
+    const id = workspaceId(role, user?.uid);
     const has = (k: string) => {
       try {
         return !!localStorage.getItem(k);
@@ -128,25 +131,27 @@ export default function DashboardPage() {
     } catch {
       /* ignore */
     }
+    // Derive progress from the keys the interview flow ACTUALLY writes
+    // (`taledge:interview:${id}:{technical,dnla,final}`). The old keys
+    // (`taledge:dnla:*`, `:behavioural`) are never written by the real funnel,
+    // so the pipeline froze and "Next step" pointed at off-funnel rounds.
     setProgress({
       profile: profileDone,
-      dnla: has(`taledge:dnla:${id}`),
       technical: has(`taledge:interview:${id}:technical`),
-      behavioural: has(`taledge:interview:${id}:behavioural`),
+      final: has(`taledge:interview:${id}:final`),
       fit: has(`taledge:fit-score:${id}`),
     });
-  }, [state, role]);
+  }, [state, role, user?.uid]);
 
   const def = roleDef(role);
-  const ws = workspacePath(role);
+  const ws = workspacePath(role, user?.uid);
 
   const stages: Stage[] = useMemo(() => {
     if (role !== "candidate") return [];
     return [
       { key: "profile", label: "Profile & Résumé", href: "/onboarding", done: !!progress.profile },
-      { key: "dnla", label: "DNLA Psychometrics", href: `${ws}/dnla`, done: !!progress.dnla },
       { key: "technical", label: "Technical Interview", href: `${ws}/interview/technical`, done: !!progress.technical },
-      { key: "behavioural", label: "Behavioural Interview", href: `${ws}/interview/behavioural`, done: !!progress.behavioural },
+      { key: "final", label: "Final Interview", href: `${ws}/interview/final`, done: !!progress.final },
       { key: "fit", label: "Fit Score", href: `${ws}/fit-score`, done: !!progress.fit },
     ];
   }, [role, ws, progress]);
@@ -190,7 +195,7 @@ export default function DashboardPage() {
     );
   }
 
-  const tiles = tilesFor(role);
+  const tiles = tilesFor(role, user?.uid);
   const first = (name || "there").split(" ")[0];
 
   return (
@@ -377,7 +382,7 @@ export default function DashboardPage() {
             <Card className="p-6">
               <div className="flex items-center gap-1.5">
                 <SectionLabel>Assessment progress</SectionLabel>
-                <Tooltip label="Profile · DNLA · Technical · Behavioural · Fit Score">
+                <Tooltip label="Profile · Technical · Final · Fit Score">
                   <button type="button" aria-label="What counts as a step" className="grid h-4 w-4 place-items-center rounded-full bg-ink-100 text-[10px] font-bold text-ink-500 hover:bg-ink-200">
                     i
                   </button>

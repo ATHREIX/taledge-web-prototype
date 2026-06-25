@@ -127,6 +127,7 @@ Return EXACTLY this JSON shape (no markdown fences, no commentary):
     const { parsed, model } = await generateGeminiJson(apiKey, prompt, {
       maxOutputTokens: 3000,
       temperature: 0.2,
+      thinkingBudget: 0,
     });
 
     const generated = {
@@ -194,7 +195,10 @@ Return EXACTLY this JSON shape (no markdown fences, no commentary):
           ? {}
           : { detail: e?.upstreamError || e?.rawPreview || e?.message?.slice(0, 200) }),
       },
-      { status: status === 422 ? 422 : 502 }
+      // Preserve meaningful upstream statuses (rate-limit / unavailable / timeout)
+      // so any client retry/back-off keyed on them behaves correctly; only map
+      // genuinely-unexpected errors to a generic 502.
+      { status: status === 422 ? 422 : [429, 503, 504].includes(status) ? status : 502 }
     );
   }
 }

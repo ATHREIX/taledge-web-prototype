@@ -9,7 +9,7 @@ import { toneClasses, type Tone } from "@/lib/dashboard-theme";
 import { cn } from "@/lib/utils";
 
 /**
- * Shared dashboard kit — one consistent shell, header, KPI strip, section, and
+ * Shared dashboard kit - one consistent shell, header, KPI strip, section, and
  * empty/loading states across ALL four stakeholder dashboards (candidate,
  * recruiter, coach, institute) so they feel like one product. Content stays
  * role-specific; structure + motion + look are unified.

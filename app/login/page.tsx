@@ -66,7 +66,7 @@ export default function LoginPage() {
       : code === "auth/too-many-requests"
       ? "Too many attempts. Please try again later."
       : code === "auth/operation-not-allowed"
-      ? "Single sign-on isn't enabled for this workspace yet — please sign in with your email."
+      ? "Single sign-on isn't enabled for this workspace yet - please sign in with your email."
       : code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request"
       ? ""
       : fallback;
@@ -77,7 +77,13 @@ export default function LoginPage() {
     setInfo("");
     setLoading(true);
     try {
-      await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+      // Persistence is best-effort: it touches web storage, which throws in
+      // private/incognito or storage-blocked contexts. A failure here must NOT
+      // abort sign-in (firebase.ts already defaults to local persistence), so
+      // swallow it rather than letting it skip signIn/popup entirely.
+      await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence).catch(
+        () => {}
+      );
       const cred = await signInWithEmailAndPassword(auth, email, password);
       await routeAfterAuth(cred);
     } catch (err: any) {
@@ -91,8 +97,21 @@ export default function LoginPage() {
     setError("");
     setInfo("");
     setSso(which);
+    // Safety net: signInWithPopup resolves via a cross-window message. If the
+    // popup is closed in a way that never delivers that message (COOP/COEP
+    // isolation, an abandoned tab), the promise can hang and the button would
+    // stay disabled forever. Regaining focus after the popup closes releases the
+    // spinner so the user can retry without reloading.
+    const release = () => setSso(null);
+    window.addEventListener("focus", release, { once: true });
     try {
-      await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+      // Persistence is best-effort: it touches web storage, which throws in
+      // private/incognito or storage-blocked contexts. A failure here must NOT
+      // abort sign-in (firebase.ts already defaults to local persistence), so
+      // swallow it rather than letting it skip signIn/popup entirely.
+      await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence).catch(
+        () => {}
+      );
       const provider =
         which === "google" ? new GoogleAuthProvider() : new OAuthProvider("microsoft.com");
       const cred = await signInWithPopup(auth, provider);
@@ -101,6 +120,7 @@ export default function LoginPage() {
       const msg = friendly(err?.code || "", err?.message || "Could not complete single sign-on.");
       if (msg) setError(msg);
     } finally {
+      window.removeEventListener("focus", release);
       setSso(null);
     }
   };
@@ -125,7 +145,7 @@ export default function LoginPage() {
   return (
     <EnterpriseAuthShell
       heading="Turn potential into proof."
-      sub="The talent-intelligence platform that fuses AI interviews, DNLA psychometrics and human coaching into one defensible score — for the teams that assess, hire and develop talent."
+      sub="The talent-intelligence platform that fuses AI interviews, DNLA psychometrics and human coaching into one defensible score - for the teams that assess, hire and develop talent."
     >
       <div>
         <h1 className="text-[1.9rem] font-extrabold tracking-[-0.02em] text-[#081A3A]">Sign in</h1>

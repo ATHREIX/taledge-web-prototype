@@ -6,7 +6,11 @@ export interface Violation {
   details?: string;
 }
 
-export const useProctoring = () => {
+// The number of integrity violations tolerated before the candidate is flagged.
+// Exported so the UI's "(n/THRESHOLD)" label and the isCheating gate stay in sync.
+export const VIOLATION_THRESHOLD = 3;
+
+export const useProctoring = (active: boolean = true) => {
   const [violations, setViolations] = useState<Violation[]>([]);
 
   const addViolation = useCallback((type: string, details?: string) => {
@@ -14,6 +18,10 @@ export const useProctoring = () => {
   }, []);
 
   useEffect(() => {
+    // Only track once the session is active, so benign interactions on the
+    // standby/pre-interview screen don't accumulate toward the strike count.
+    if (!active) return;
+
     // 1. Tab switching detection
     const handleVisibilityChange = () => {
       if (document.hidden || document.visibilityState === 'hidden') {
@@ -46,10 +54,12 @@ export const useProctoring = () => {
       document.removeEventListener('cut', handleCopyPaste);
       document.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [addViolation]);
+  }, [addViolation, active]);
 
   return {
     violations,
-    isCheating: violations.length > 0,
+    // Only flag once the advertised threshold is reached, so a single benign
+    // right-click / accidental Ctrl+C no longer trips the "/3" integrity badge.
+    isCheating: violations.length >= VIOLATION_THRESHOLD,
   };
 };

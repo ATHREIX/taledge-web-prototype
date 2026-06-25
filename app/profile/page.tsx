@@ -94,7 +94,7 @@ export default function ProfilePage() {
           });
         } else if (!cancelled) {
           // Self-heal: older accounts may have no users/{uid} doc. Create it from
-          // the signed-in identity (no role — we can't infer it, and won't
+          // the signed-in identity (no role - we can't infer it, and won't
           // mislabel a recruiter/institute as a candidate).
           setDoc(
             doc(db, "users", user.uid),
@@ -126,7 +126,7 @@ export default function ProfilePage() {
       bio: fields.bio?.trim() || "",
     };
     try {
-      // Persist directly to the user's Firestore doc — owner-scoped rules allow
+      // Persist directly to the user's Firestore doc - owner-scoped rules allow
       // this for every role, so it works without a service account. Identity
       // fields (role/email/uid) are preserved, never overwritten here.
       await setDoc(
@@ -134,7 +134,7 @@ export default function ProfilePage() {
         { name: name.trim(), profile: profileFields, updatedAt: new Date().toISOString() },
         { merge: true }
       );
-      // Best-effort server mirror (no-op in demo) — never blocks the save.
+      // Best-effort server mirror (no-op in demo) - never blocks the save.
       fetch("/api/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...(await authHeader()) },
@@ -213,7 +213,7 @@ export default function ProfilePage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Identity summary — sticky on desktop */}
+        {/* Identity summary - sticky on desktop */}
         <aside className="lg:col-span-1">
           <Card className="p-6 sm:p-8 lg:sticky lg:top-8">
             <div className="flex flex-col items-center text-center">
@@ -231,15 +231,15 @@ export default function ProfilePage() {
               <dl className="space-y-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
                   <dt className="text-ink-500">Title</dt>
-                  <dd className="truncate font-semibold text-ink-800">{fields.title || "—"}</dd>
+                  <dd className="truncate font-semibold text-ink-800">{fields.title || "-"}</dd>
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <dt className="text-ink-500">Organisation</dt>
-                  <dd className="truncate font-semibold text-ink-800">{fields.organisation || "—"}</dd>
+                  <dd className="truncate font-semibold text-ink-800">{fields.organisation || "-"}</dd>
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <dt className="text-ink-500">Location</dt>
-                  <dd className="truncate font-semibold text-ink-800">{fields.location || "—"}</dd>
+                  <dd className="truncate font-semibold text-ink-800">{fields.location || "-"}</dd>
                 </div>
               </dl>
             </div>

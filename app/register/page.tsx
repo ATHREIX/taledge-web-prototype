@@ -34,15 +34,104 @@ const HIRING_VOLUMES = ["Under 10 / year", "10–100 / year", "100–1,000 / yea
 const PLATFORM_ROLES: { key: string; label: string; desc: string; role: Role; path: string }[] = [
   { key: "recruiter", label: "Recruiter", desc: "Source, assess and shortlist on verified evidence.", role: "recruiter", path: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0 .01" },
   { key: "university", label: "University", desc: "Make whole cohorts interview-ready with readiness heatmaps.", role: "institute", path: "M22 10 12 5 2 10l10 5 10-5ZM6 12v5c0 1 3 3 6 3s6-2 6-3v-5" },
+  { key: "coach", label: "Coach", desc: "Run risk-ranked coaching sessions with every gap in view.", role: "coach", path: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM16 11l2 2 4-4" },
   { key: "candidate", label: "Candidate", desc: "Get assessed by AI, earn a Fit Score, and follow a coaching pathway.", role: "candidate", path: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" },
 ];
 
 const ASSESSMENTS = [
-  { key: "technical", label: "Technical assessments", desc: "Proctored, adaptive technical interviews — transcribed and rubric-scored.", path: "M16 18 22 12 16 6M8 6 2 12l6 6" },
+  { key: "technical", label: "Technical assessments", desc: "Proctored, adaptive technical interviews - transcribed and rubric-scored.", path: "M16 18 22 12 16 6M8 6 2 12l6 6" },
   { key: "interview", label: "Interview workflows", desc: "Sequenced technical + behavioural rounds run by a live voice agent.", path: "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3ZM19 10v2a7 7 0 0 1-14 0v-2" },
   { key: "evaluation", label: "Evaluation templates", desc: "Structured rubrics so every candidate is scored consistently.", path: "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" },
   { key: "pipelines", label: "Candidate pipelines", desc: "Role-matched, verified candidates published to recruiters on consent.", path: "M3 3v18h18M8 17V9M13 17V5M18 17v-6" },
 ];
+
+/* ---- role-aware steps -------------------------------------------------------
+ * One wizard shell, but the Organization (step 2) and Modules (step 3) steps
+ * swap labels + options to fit the persona picked in step 1 - so a university
+ * is asked about cohorts (not "hiring volume"), and a coach about their
+ * practice (not "candidate pipelines"). Keyed by the PLATFORM_ROLES key.
+ */
+type ChoiceField = { key: string; label: string; options: string[] };
+type Step2Config = {
+  title: string;
+  sub: string;
+  nameLabel: string;
+  namePlaceholder: string;
+  fields: [ChoiceField, ChoiceField, ChoiceField];
+};
+type ModuleItem = { key: string; label: string; desc: string; path: string };
+type ModulesConfig = { title: string; sub: string; items: ModuleItem[] };
+
+type PersonaKey = "recruiter" | "university" | "coach" | "candidate";
+
+const STEP2: Record<Exclude<PersonaKey, "candidate">, Step2Config> = {
+  recruiter: {
+    title: "Tell us about your organization",
+    sub: "This tailors your workspace, benchmarks and pipelines.",
+    nameLabel: "Organization name",
+    namePlaceholder: "Acme Corporation",
+    fields: [
+      { key: "industry", label: "Industry", options: INDUSTRIES },
+      { key: "teamSize", label: "Team size", options: TEAM_SIZES },
+      { key: "hiringVolume", label: "Annual hiring volume", options: HIRING_VOLUMES },
+    ],
+  },
+  university: {
+    title: "Tell us about your institution",
+    sub: "This tailors cohort readiness heatmaps and placement benchmarks.",
+    nameLabel: "Institution name",
+    namePlaceholder: "Indian Institute of Technology",
+    fields: [
+      { key: "institutionType", label: "Institution type", options: ["Engineering", "Management", "Arts & Science", "Polytechnic", "Multidisciplinary", "Coaching Institute"] },
+      { key: "cohortSize", label: "Cohort size", options: ["Under 200", "200–1,000", "1,000–5,000", "5,000+"] },
+      { key: "annualPlacements", label: "Graduating students / year", options: ["Under 100", "100–500", "500–2,000", "2,000+"] },
+    ],
+  },
+  coach: {
+    title: "Tell us about your coaching practice",
+    sub: "This tailors your risk-ranked queues and session cadence.",
+    nameLabel: "Practice or affiliated institute",
+    namePlaceholder: "Independent · or your institute name",
+    fields: [
+      { key: "coachingFocus", label: "Coaching focus", options: ["Placement coaching", "Exam counselling", "Both"] },
+      { key: "menteeLoad", label: "Active mentees", options: ["1–10", "11–30", "31–75", "75+"] },
+      { key: "cadence", label: "Typical cadence", options: ["Weekly", "Bi-weekly", "Monthly", "Ad-hoc"] },
+    ],
+  },
+};
+
+const MODULES: Record<PersonaKey, ModulesConfig> = {
+  recruiter: {
+    title: "Configure your assessments",
+    sub: "Select the modules to enable now. Everything stays adjustable from your workspace.",
+    items: ASSESSMENTS,
+  },
+  candidate: {
+    title: "Configure your assessments",
+    sub: "Select the modules to enable now. Everything stays adjustable from your workspace.",
+    items: ASSESSMENTS,
+  },
+  university: {
+    title: "Configure your cohort tools",
+    sub: "Select the modules to enable for your cohort. Everything stays adjustable later.",
+    items: [
+      { key: "readiness", label: "Cohort readiness heatmaps", desc: "Branch- and year-level interview-readiness across the whole cohort.", path: "M3 3v18h18M7 14l3-3 4 4 5-6" },
+      { key: "assessments", label: "Placement assessments", desc: "Proctored technical + behavioural rounds, transcribed and rubric-scored.", path: "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" },
+      { key: "exam-prep", label: "Exam-prep tracks", desc: "Stress, consistency and success-potential tracking for exam aspirants.", path: "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3ZM19 10v2a7 7 0 0 1-14 0v-2" },
+      { key: "publishing", label: "Recruiter publishing", desc: "Publish interview-ready students to recruiters on student consent.", path: "M3 3v18h18M8 17V9M13 17V5M18 17v-6" },
+    ],
+  },
+  coach: {
+    title: "Configure your coaching tools",
+    sub: "Select the modules to enable now. Everything stays adjustable from your workspace.",
+    items: [
+      { key: "queues", label: "Risk-ranked queues", desc: "Mentees auto-prioritised by behavioural drag and exam-stress signals.", path: "M3 3v18h18M8 17V9M13 17V5M18 17v-6" },
+      { key: "scheduling", label: "Session scheduling", desc: "Book and track coaching sessions against each mentee's gaps.", path: "M8 2v4M16 2v4M3 10h18M5 6h14a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" },
+      { key: "goals", label: "Intervention goals", desc: "Set measurable goals and track progress to target dates.", path: "M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0ZM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" },
+      { key: "outcomes", label: "Outcome tracking", desc: "Score lift, readiness conversion and stress-reduction impact over time.", path: "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" },
+    ],
+  },
+};
 
 /* ----------------------------- primitives ------------------------- */
 
@@ -173,8 +262,8 @@ export default function RegisterPage() {
   const stepErrors = [
     "Enter your full name, a valid work email, and a password with at least 6 characters.",
     "Select how you'll use Taledge.",
-    "Add your organization name and choose an industry, team size and hiring volume.",
-    "Select at least one assessment module.",
+    "Add a name and make a selection in each field to continue.",
+    "Select at least one module.",
   ];
 
   const go = (next: number) => {
@@ -187,6 +276,28 @@ export default function RegisterPage() {
     setPrefs((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]));
 
   const selectedRole = PLATFORM_ROLES.find((r) => r.key === platformRole);
+  const persona = (platformRole || "recruiter") as PersonaKey;
+  const cfg2 = STEP2[(persona === "candidate" ? "recruiter" : persona) as Exclude<PersonaKey, "candidate">];
+  const cfg3 = MODULES[persona];
+  // Positional binding of the three org-field selections to their state setters,
+  // so the role-aware step can render whichever labels/options cfg2 defines.
+  const orgFields = [
+    { value: industry, set: setIndustry },
+    { value: teamSize, set: setTeamSize },
+    { value: hiringVolume, set: setHiringVolume },
+  ];
+
+  const pickRole = (key: string) => {
+    setPlatformRole(key);
+    // Each persona has different org options + module set - clear stale org
+    // selections and pre-select all of the chosen persona's modules (keeps the
+    // original "everything on by default" UX, just role-correct).
+    setIndustry("");
+    setTeamSize("");
+    setHiringVolume("");
+    const mods = MODULES[key as PersonaKey] ?? MODULES.recruiter;
+    setPrefs(mods.items.map((m) => m.key));
+  };
 
   const createAccount = async () => {
     setError("");
@@ -205,10 +316,13 @@ export default function RegisterPage() {
           published: false,
           organization: {
             name: orgName,
-            industry,
-            teamSize,
-            hiringVolume,
             persona: platformRole,
+            // Store the three selections under the persona's own field keys
+            // (e.g. cohortSize/annualPlacements for a university), not the
+            // recruiter-centric industry/teamSize/hiringVolume names.
+            [cfg2.fields[0].key]: industry,
+            [cfg2.fields[1].key]: teamSize,
+            [cfg2.fields[2].key]: hiringVolume,
           },
           assessmentPreferences: prefs,
           createdAt: new Date().toISOString(),
@@ -236,23 +350,28 @@ export default function RegisterPage() {
 
   const launchDashboard = () => {
     const role = selectedRole?.role ?? "recruiter";
+    // Honor a same-origin ?next= (e.g. a recruiter who signed up to open an
+    // institute's shared link returns to it). Candidates still enter onboarding.
+    const nextParam =
+      typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("next") : null;
+    const safeNext = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : null;
     // A brand-new candidate starts the assessment funnel; orgs go to the hub.
-    router.push(role === "candidate" ? "/onboarding" : postAuthPath(role));
+    router.push(safeNext || (role === "candidate" ? "/onboarding" : postAuthPath(role)));
   };
 
   const isSuccess = step === 4;
 
   return (
     <div style={{ fontFamily: FONT }} className="grid min-h-screen bg-white text-[#081A3A] antialiased lg:grid-cols-[1.05fr_1fr]">
-      {/* Left — editorial enterprise panel (sticky, full height) */}
+      {/* Left - editorial enterprise panel (sticky, full height) */}
       <div className="lg:sticky lg:top-0 lg:h-screen">
         <BrandPanel
           heading="Build your talent workflow."
-          sub="Set up assessments, recruiter pipelines and analytics in minutes — the enterprise platform that turns candidate potential into one defensible score."
+          sub="Set up assessments, recruiter pipelines and analytics in minutes - the enterprise platform that turns candidate potential into one defensible score."
         />
       </div>
 
-      {/* Right — onboarding */}
+      {/* Right - onboarding */}
       <div className="relative flex min-h-screen flex-col">
         {/* top bar */}
         <header className="flex items-center justify-between px-5 py-5 sm:px-8">
@@ -322,13 +441,13 @@ export default function RegisterPage() {
                 </div>
               )}
 
-              {/* ---------- STEP 1 — WELCOME ---------- */}
+              {/* ---------- STEP 1 - WELCOME ---------- */}
               {step === 0 && (
                 <div>
                   <StepHeading
                     kicker={`Step ${pos} of ${total}`}
                     title="Let's build your hiring workflow"
-                    sub="A few quick details and your talent-intelligence workspace is ready — assessments, recruiter pipelines and analytics in one place."
+                    sub="A few quick details and your talent-intelligence workspace is ready - assessments, recruiter pipelines and analytics in one place."
                   />
                   <div className="mt-7 space-y-4">
                     <EntField label="Full name" value={name} onChange={setName} placeholder="Priya Sharma" autoComplete="name" required />
@@ -348,36 +467,25 @@ export default function RegisterPage() {
                 </div>
               )}
 
-              {/* ---------- ORGANIZATION ---------- */}
+              {/* ---------- ORGANIZATION (role-aware) ---------- */}
               {step === 2 && (
                 <div>
-                  <StepHeading kicker={`Step ${pos} of ${total}`} title="Tell us about your organization" sub="This tailors your workspace, benchmarks and pipelines." />
+                  <StepHeading kicker={`Step ${pos} of ${total}`} title={cfg2.title} sub={cfg2.sub} />
                   <div className="mt-7 space-y-6">
-                    <EntField label="Organization name" value={orgName} onChange={setOrgName} placeholder="Acme Corporation" required />
-                    <div>
-                      <p className="mb-2.5 text-[13px] font-semibold text-[#081A3A]">Industry</p>
-                      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-                        {INDUSTRIES.map((x) => (
-                          <Pill key={x} selected={industry === x} onClick={() => setIndustry(x)}>{x}</Pill>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="mb-2.5 text-[13px] font-semibold text-[#081A3A]">Team size</p>
-                      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                        {TEAM_SIZES.map((x) => (
-                          <Pill key={x} selected={teamSize === x} onClick={() => setTeamSize(x)}>{x}</Pill>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="mb-2.5 text-[13px] font-semibold text-[#081A3A]">Annual hiring volume</p>
-                      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                        {HIRING_VOLUMES.map((x) => (
-                          <Pill key={x} selected={hiringVolume === x} onClick={() => setHiringVolume(x)}>{x}</Pill>
-                        ))}
-                      </div>
-                    </div>
+                    <EntField label={cfg2.nameLabel} value={orgName} onChange={setOrgName} placeholder={cfg2.namePlaceholder} required />
+                    {cfg2.fields.map((f, i) => {
+                      const cols = f.options.some((o) => o.length > 14) ? "sm:grid-cols-2" : "sm:grid-cols-3";
+                      return (
+                        <div key={f.key}>
+                          <p className="mb-2.5 text-[13px] font-semibold text-[#081A3A]">{f.label}</p>
+                          <div className={`grid grid-cols-2 gap-2.5 ${cols}`}>
+                            {f.options.map((x) => (
+                              <Pill key={x} selected={orgFields[i].value === x} onClick={() => orgFields[i].set(x)}>{x}</Pill>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -385,13 +493,13 @@ export default function RegisterPage() {
               {/* ---------- PLATFORM SETUP ---------- */}
               {step === 1 && (
                 <div>
-                  <StepHeading kicker={`Step ${pos} of ${total}`} title="How will you use Taledge?" sub="Choose your primary role — you can invite the rest of your team later." />
+                  <StepHeading kicker={`Step ${pos} of ${total}`} title="How will you use Taledge?" sub="Choose your primary role - you can invite the rest of your team later." />
                   <div className="mt-7 grid gap-3">
                     {PLATFORM_ROLES.map((r) => (
                       <OptionCard
                         key={r.key}
                         selected={platformRole === r.key}
-                        onClick={() => setPlatformRole(r.key)}
+                        onClick={() => pickRole(r.key)}
                         title={r.label}
                         desc={r.desc}
                         path={r.path}
@@ -401,12 +509,12 @@ export default function RegisterPage() {
                 </div>
               )}
 
-              {/* ---------- STEP 4 — ASSESSMENT PREFERENCES ---------- */}
+              {/* ---------- STEP 4 - MODULES (role-aware) ---------- */}
               {step === 3 && (
                 <div>
-                  <StepHeading kicker={`Step ${pos} of ${total}`} title="Configure your assessments" sub="Select the modules to enable now. Everything stays adjustable from your workspace." />
+                  <StepHeading kicker={`Step ${pos} of ${total}`} title={cfg3.title} sub={cfg3.sub} />
                   <div className="mt-7 grid gap-3 sm:grid-cols-2">
-                    {ASSESSMENTS.map((a) => (
+                    {cfg3.items.map((a) => (
                       <OptionCard
                         key={a.key}
                         selected={prefs.includes(a.key)}
@@ -420,7 +528,7 @@ export default function RegisterPage() {
                 </div>
               )}
 
-              {/* ---------- STEP 5 — SUCCESS ---------- */}
+              {/* ---------- STEP 5 - SUCCESS ---------- */}
               {step === 4 && (
                 <div className="py-6 text-center">
                   <motion.div

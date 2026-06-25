@@ -6,7 +6,7 @@ import Lenis from "lenis";
 /**
  * Lenis smooth-scroll for the enterprise landing. Mounts once, drives Lenis off
  * requestAnimationFrame, and bails out entirely for users who prefer reduced
- * motion (accessibility first — native scrolling stays intact for them).
+ * motion (accessibility first - native scrolling stays intact for them).
  */
 export function SmoothScroll({ children }: { children: React.ReactNode }) {
   useEffect(() => {

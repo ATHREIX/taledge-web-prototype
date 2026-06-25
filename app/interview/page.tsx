@@ -5,14 +5,15 @@ import { motion } from "framer-motion";
 import { Mic, MicOff, Play, Square, AlertTriangle, Code, LayoutDashboard, Loader2, X } from "lucide-react";
 import Editor from "@monaco-editor/react";
 import { useGeminiLive } from "@/hooks/useGeminiLive";
-import { useProctoring } from "@/hooks/useProctoring";
+import { useProctoring, VIOLATION_THRESHOLD } from "@/hooks/useProctoring";
 import { Button, Badge, Eyebrow } from "@/components/ui";
 import { Logo } from "@/components/logo";
 import { itemVariants } from "@/lib/motion";
 
 export default function InterviewSession() {
-  const { isConnected, connect, disconnect, startMicrophone, messages } = useGeminiLive();
-  const { isCheating, violations } = useProctoring();
+  const { isConnected, connect, disconnect, startMicrophone, setMicMuted, messages } = useGeminiLive();
+  // Only count integrity violations while the session is actually live.
+  const { isCheating, violations } = useProctoring(isConnected);
 
   // Guard fetched/derived collections so the UI never crashes on undefined.
   const safeMessages = messages ?? [];
@@ -39,10 +40,19 @@ export default function InterviewSession() {
   };
 
   const toggleMic = async () => {
-    if (!isMicOn) {
+    if (isMicOn) {
+      // Turn OFF: hard-mute the stream (the hook keeps the stream owned by
+      // connect/disconnect). Without this branch the toggle was a dead control
+      // once enabled - no way to mute for the rest of the session.
+      setMicMuted(true);
+      setIsMicOn(false);
+      return;
+    }
+    {
       setMicError(null);
       try {
         await startMicrophone();
+        setMicMuted(false); // clear any prior hard-mute so frames flow again
         setIsMicOn(true);
       } catch (err) {
         // Surface getUserMedia / permission / device failures in the UI.
@@ -72,7 +82,7 @@ export default function InterviewSession() {
             >
               <Badge tone="danger" className="px-3 py-1.5 text-sm">
                 <AlertTriangle className="w-4 h-4" />
-                <span>Integrity Violation ({safeViolations.length}/3)</span>
+                <span>Integrity Violation ({safeViolations.length}/{VIOLATION_THRESHOLD})</span>
               </Badge>
             </motion.div>
           )}

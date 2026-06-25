@@ -3,15 +3,17 @@ import Link from "next/link";
 import { Section } from "@/components/glass";
 import { ScoreRing, Bar } from "@/components/score-ring";
 import {
-  examAspirants,
   getInstitute,
-  students,
   type ExamAspirant,
   type Institute,
   type Student,
 } from "@/lib/data";
+import { resolveInstituteForView, listCandidatesByInstitute, listExamAspirants, listInterventions } from "@/lib/talent-store";
+import { InterventionsPanel } from "./InterventionsPanel";
 import { FadeIn, SlideUp, StaggerContainer, StaggerItem } from "@/components/motion";
 import { MotionDiv } from "./ClientMotion";
+import { HeaderActions } from "./HeaderActions";
+import { CohortManager, type CohortStudent } from "./CohortManager";
 import {
   PageShell,
   Card,
@@ -32,6 +34,8 @@ type PlacementAnalytics = {
   readinessPct: number;
   interventionLoad: number;
   recruitableCount: number;
+  cohortSize: number;
+  readyCount: number;
   batchRows: {
     name: string;
     group: string;
@@ -97,12 +101,51 @@ export default async function InstitutePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const inst = getInstitute(id);
+  // `id` may be an institute doc-id (demo) or a logged-in user's uid (enforced
+  // mode routes nav to /institute/<uid>). Resolve to the actual institute and use
+  // ITS id for every downstream query - otherwise a uid would query empty cohorts.
+  const inst = await resolveInstituteForView(id);
   if (!inst) notFound();
+  const instituteId = inst.id;
 
   const isExam = inst.kind === "exam";
-  const placementAnalytics = !isExam ? buildPlacementAnalytics(inst, students) : null;
-  const examAnalytics = isExam ? buildExamAnalytics(inst, examAspirants) : null;
+  // Durable data from the talent store (seed today; live candidate results once
+  // they complete the interview flow). A placement institute sees its own cohort;
+  // the exam institute sees its aspirant base.
+  const candidates = !isExam ? await listCandidatesByInstitute(instituteId) : [];
+  const aspirants = isExam ? await listExamAspirants() : [];
+  const placementAnalytics = !isExam ? buildPlacementAnalytics(inst, candidates) : null;
+  const examAnalytics = isExam ? buildExamAnalytics(inst, aspirants) : null;
+  const interventions = await listInterventions(instituteId);
+  // CSV-ready cohort rows for the "Export cohort CSV" action.
+  const cohortRows: Record<string, unknown>[] = isExam
+    ? aspirants.map((a) => ({
+        Name: a.name, Exam: a.exam, Attempt: a.attempt, "Months preparing": a.monthsPreparing,
+        "Success potential": a.successPotential, Motivation: a.motivation, Consistency: a.consistency,
+        Resilience: a.resilience, "Stress index": a.stressIndex, Institute: a.institute,
+      }))
+    : candidates.map((c) => ({
+        Name: c.name, College: c.college, Branch: c.branch, Dept: c.dept ?? c.branch, Semester: c.semester ?? "",
+        CGPA: c.cgpa, "Target role": c.targetRole, Fit: c.fit.fit, Technical: c.fit.technical,
+        Behavioural: c.fit.behavioural, "Success %": c.fit.successProbability, Status: c.status,
+      }));
+
+  // Serialisable cohort list for the interactive CohortManager (students list +
+  // 20-60-20 distribution + filters + drill-down + upload).
+  const cohortStudents: CohortStudent[] = isExam
+    ? []
+    : candidates.map((c) => ({
+        id: c.id,
+        name: c.name,
+        branch: c.branch,
+        dept: c.dept ?? c.branch,
+        year: c.year,
+        semester: c.semester ?? null,
+        fit: c.fit?.fit ?? 0,
+        status: c.status ?? "",
+        published: (c as { publishedToRecruiters?: boolean }).publishedToRecruiters ?? false,
+        targetRole: c.targetRole ?? "",
+      }));
 
   return (
     <PageShell>
@@ -118,28 +161,13 @@ export default async function InstitutePage({
               {isExam ? "Aspirant Success Command Center" : "Placement Readiness Command Center"}
             </Display>
             <p className="mt-4 max-w-2xl text-sm text-ink-500 sm:text-base">
-              Production view for <span className="font-semibold text-ink-900">{inst.cohort}</span> learners across{" "}
+              Production view for <span className="font-semibold text-ink-900">{isExam ? inst.cohort : (placementAnalytics?.cohortSize ?? inst.cohort)}</span> learners across{" "}
               <span className="font-semibold text-ink-900">{inst.batches.length}</span> active groups. Current priority:
               {" "}
               <span className="font-semibold text-ink-900">{inst.topGap}</span>.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="ghost" size="lg">
-              <IconDownload /> Export cohort CSV
-            </Button>
-            {!isExam ? (
-              <ButtonLink href="/recruiter/recruiter-001" variant="primary" size="lg">
-                Recruiter share
-                <IconArrow />
-              </ButtonLink>
-            ) : (
-              <Button type="button" variant="primary" size="lg">
-                Plan interventions
-                <IconArrow />
-              </Button>
-            )}
-          </div>
+          <HeaderActions isExam={isExam} cohort={placementAnalytics?.cohortSize ?? inst.cohort} instituteId={inst.id} cohortRows={cohortRows} />
         </FadeIn>
       </Card>
 
@@ -148,6 +176,27 @@ export default async function InstitutePage({
           <PlacementKpis inst={inst} analytics={placementAnalytics} />
         )}
         {isExam && examAnalytics && <ExamKpis inst={inst} analytics={examAnalytics} />}
+
+        {!isExam && (
+          <Section className="mt-12">
+            <SlideUp delay={0.3} className="mb-5">
+              <Eyebrow className="inline-flex items-center gap-2">
+                <IconInstitute /> Cohort Management
+              </Eyebrow>
+              <Heading className="mt-2">Students, distribution & intake</Heading>
+              <p className="mt-1 text-sm text-ink-500">
+                Complete cohort list with a 20·60·20 performance split, filtering, drill-down, and bulk/manual student upload.
+              </p>
+            </SlideUp>
+            <CohortManager
+              instituteId={inst.id}
+              students={cohortStudents}
+              // campusDrives is static, code-defined reference data - read it from
+              // lib/data, NOT the persisted store record (which may predate the field).
+              campusDrives={getInstitute(inst.id)?.campusDrives ?? inst.campusDrives ?? []}
+            />
+          </Section>
+        )}
 
         <Section className="mt-12">
           <SlideUp delay={0.3} className="mb-5">
@@ -189,11 +238,15 @@ export default async function InstitutePage({
         </Section>
 
         {!isExam && placementAnalytics && (
-          <PlacementDashboard inst={inst} analytics={placementAnalytics} cohort={students} />
+          <PlacementDashboard inst={inst} analytics={placementAnalytics} cohort={candidates} />
         )}
         {isExam && examAnalytics && (
-          <ExamDashboard inst={inst} analytics={examAnalytics} aspirants={examAspirants} />
+          <ExamDashboard inst={inst} analytics={examAnalytics} aspirants={aspirants} />
         )}
+
+        <div id="interventions" className="mt-12 scroll-mt-24 sm:mt-16">
+          <InterventionsPanel instituteId={inst.id} isExam={isExam} initial={interventions} />
+        </div>
       </div>
     </PageShell>
   );
@@ -214,7 +267,7 @@ function PlacementKpis({
             <ScoreRing value={analytics.readinessPct} size={92} stroke={10} tone="dark" label="Ready" />
             <Stat
               label="Batch readiness"
-              value={`${inst.interviewReady}/${inst.cohort}`}
+              value={`${analytics.readyCount}/${analytics.cohortSize}`}
               sub="Fit threshold: 70+"
             />
           </div>
@@ -431,14 +484,14 @@ function PlacementDashboard({
               Scoped Employer Access
             </Heading>
             <p className="mt-3 text-sm leading-6 text-ink-500">
-              Share only eligible candidate profiles, Fit Scores, interview summaries, and publish status with approved recruiters.
+              Share only consented candidate profiles, Fit Scores, interview summaries, and publish status with approved recruiters - via a scoped, expiring link.
             </p>
             <div className="mt-5 rounded-xl border border-dashed border-ink-200 bg-ink-50/60 p-4 text-xs font-medium text-ink-600">
-              /recruiter/recruiter-001?institute={inst.id}
+              Use <b>“Generate recruiter link”</b> in the header to mint a tokenised,
+              account-gated link to this cohort. The recruiter opens it at
+              <span className="text-ink-800"> /recruiter/shared/&lt;token&gt;</span> - no
+              other institute’s candidates are ever exposed.
             </div>
-            <ButtonLink href="/recruiter/recruiter-001" variant="primary" size="lg" className="mt-5 w-full">
-              Open recruiter view
-            </ButtonLink>
           </Card>
 
           <Card variant="frosted" hover className="rounded-xl3 p-2 sm:p-3 lg:col-span-2">
@@ -890,8 +943,10 @@ function buildPlacementAnalytics(inst: Institute, cohort: Student[]): PlacementA
   const gapCounts = new Map<string, number>();
   inst.batches.forEach((batch) => addGap(gapCounts, batch.topGap, Math.max(2, Math.round(batch.size / 28))));
   cohort.forEach((student) => {
-    student.developmentAreas.forEach((gap) => addGap(gapCounts, normalizeGap(gap), 1));
-    student.risks.forEach((risk) => addGap(gapCounts, normalizeGap(risk), 1));
+    // NULL-SAFE: a freshly-upserted candidate (e.g. mid-assessment) may not yet
+    // have these arrays - never let one incomplete record crash the dashboard.
+    (student.developmentAreas ?? []).forEach((gap) => addGap(gapCounts, normalizeGap(gap), 1));
+    (student.risks ?? []).forEach((risk) => addGap(gapCounts, normalizeGap(risk), 1));
   });
 
   const topGaps = Array.from(gapCounts.entries())
@@ -903,16 +958,16 @@ function buildPlacementAnalytics(inst: Institute, cohort: Student[]): PlacementA
       tone: index === 0 ? "danger" as BarTone : index < 3 ? "warn" as BarTone : "dark" as BarTone,
     }));
 
-  const heatmapCompetencies = Array.from(new Set(cohort.flatMap((student) => student.dnla.map((score) => score.competency))));
+  const heatmapCompetencies = Array.from(new Set(cohort.flatMap((student) => (student.dnla ?? []).map((score) => score.competency))));
   const heatmapRows = cohort.map((student) => {
     const scores = heatmapCompetencies.map((competency) => ({
       competency,
-      score: student.dnla.find((item) => item.competency === competency)?.score || 0,
+      score: (student.dnla ?? []).find((item) => item.competency === competency)?.score || 0,
     }));
     return {
       id: student.id,
       name: student.name,
-      context: `${student.branch} - ${student.year}`,
+      context: `${student.branch ?? "-"} - ${student.year ?? "-"}`,
       status: student.status,
       scores,
       average: roundAvg(scores.map((score) => score.score), 1),
@@ -920,10 +975,21 @@ function buildPlacementAnalytics(inst: Institute, cohort: Student[]): PlacementA
   });
 
   const fallbackGap = topGaps[0]?.label || inst.topGap;
+  // Derive readiness from the SAME cohort array the heatmap/roster render, so the
+  // KPI strip reconciles with the lists below it (previously the KPIs used the
+  // hardcoded inst.cohort/interviewReady, e.g. 168/320, while the lists showed 40).
+  const cohortSize = cohort.length;
+  const readyCount = cohort.filter(
+    (s) => s.status === "Interview-ready" || s.status === "Published"
+  ).length;
   return {
-    readinessPct: pct(inst.interviewReady, inst.cohort),
+    readinessPct: cohortSize ? pct(readyCount, cohortSize) : 0,
     interventionLoad: batchRows.filter((batch) => batch.avgFit < 70).length,
-    recruitableCount: inst.interviewReady,
+    // "Recruiter-visible" must mean actually consented/published - not merely
+    // interview-ready (the two are different; a ready student may not have opted in).
+    recruitableCount: cohort.filter((s) => (s as { publishedToRecruiters?: boolean }).publishedToRecruiters).length,
+    cohortSize,
+    readyCount,
     batchRows,
     topGaps: topGaps.length ? topGaps : [{ label: fallbackGap, count: 1, tone: "warn" }],
     interventions: buildPlacementInterventions(topGaps.length ? topGaps.map((gap) => gap.label) : [fallbackGap]),
@@ -933,8 +999,12 @@ function buildPlacementAnalytics(inst: Institute, cohort: Student[]): PlacementA
 }
 
 function buildExamAnalytics(inst: Institute, aspirants: ExamAspirant[]): ExamAnalytics {
+  const DEMO = process.env.NEXT_PUBLIC_AUTH_ENFORCED !== "true";
   const cohort = aspirants.filter((aspirant) => aspirant.institute === inst.name);
-  const tracked = cohort.length ? cohort : aspirants;
+  // The whole-seed fallback fabricates a cohort (no seed aspirant matches any
+  // institute name), so only borrow it in DEMO. In enforced mode an unmatched
+  // tenant gets an empty `tracked` and renders the clean empty states below.
+  const tracked = cohort.length ? cohort : (DEMO ? aspirants : []);
   const highStressCount = tracked.filter((aspirant) => aspirant.stressIndex >= 65).length;
   const mediumStressCount = tracked.filter((aspirant) => aspirant.stressIndex >= 50 && aspirant.stressIndex < 65).length;
   const lowStressCount = tracked.filter((aspirant) => aspirant.stressIndex < 50).length;

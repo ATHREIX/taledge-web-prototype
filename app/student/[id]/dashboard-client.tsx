@@ -2,7 +2,7 @@
 import { motion } from "framer-motion";
 import { Star, User, ArrowRight, Zap, Target, Compass, TrendingUp, Brain, Play, Rocket, ClipboardList, Gauge, Award, BarChart3, Activity } from "lucide-react";
 import { Student } from "@/lib/data";
-import { Card, Button, ButtonLink, Badge, Eyebrow, Heading, Stat } from "@/components/ui";
+import { Card, Button, ButtonLink, Badge, Eyebrow, Heading, Stat, useToast } from "@/components/ui";
 import { Bar } from "@/components/score-ring";
 import { itemVariants } from "@/lib/motion";
 import { DashboardShell, DashboardHeader, KPIGrid } from "@/components/dashboard";
@@ -17,8 +17,9 @@ const COACHES: Coach[] = [
 ];
 
 export default function DashboardClient({ student }: { student: Student }) {
-  const techScore = student?.fit?.technical || 75;
-  const behavScore = student?.fit?.behavioural || 65;
+  const { toast } = useToast();
+  const techScore = student?.fit?.technical ? student.fit.technical : -1;
+  const behavScore = student?.fit?.behavioural ? student.fit.behavioural : -1;
   const targetRole = student?.targetRole || "your target role";
   const coaches: Coach[] = COACHES;
 
@@ -39,9 +40,12 @@ export default function DashboardClient({ student }: { student: Student }) {
     ? "Pick up where you left off. Your assessment progress is saved - jump back into the pilot flow or review your results."
     : "Begin your assessment with the DNLA behavioural profile (step 1), then move on to the technical and behavioural interviews.";
 
-  const fitScore = student?.fit?.fit ?? -1;
-  const successProb = student?.fit?.successProbability ?? -1;
-  const fmt = (n: number) => (n < 0 ? "—" : `${n}`);
+  // Treat a 0 / missing score as "not started" so the synthetic fallback record
+  // (getStudent returns fit.fit = 0 for unknown ids) renders an em-dash instead
+  // of a misleading "0". Real candidates always have a non-zero composite.
+  const fitScore = student?.fit?.fit ? student.fit.fit : -1;
+  const successProb = student?.fit?.successProbability ? student.fit.successProbability : -1;
+  const fmt = (n: number) => (n < 0 ? "-" : `${n}`);
 
   return (
     <DashboardShell>
@@ -51,13 +55,13 @@ export default function DashboardClient({ student }: { student: Student }) {
         description={`Comprehensive breakdown of your competencies, actionable gaps, and personalized path to achieving your target role as ${targetRole}.`}
       />
 
-      {/* KPI strip — the same top-line metric pattern every dashboard now shares */}
+      {/* KPI strip - the same top-line metric pattern every dashboard now shares */}
       <KPIGrid
         items={[
           { label: "Fit Score", value: fmt(fitScore), hint: "Weighted composite", tone: scoreToTone(fitScore), icon: <Gauge size={16} /> },
-          { label: "Success Probability", value: fitScore < 0 ? "—" : `${fmt(successProb)}%`, hint: "Placement likelihood", tone: scoreToTone(successProb), icon: <Award size={16} /> },
-          { label: "Technical", value: `${techScore}`, hint: "Tech interview + coding", tone: scoreToTone(techScore), icon: <BarChart3 size={16} /> },
-          { label: "Behavioural", value: `${behavScore}`, hint: "Behavioural + DNLA", tone: scoreToTone(behavScore), icon: <Activity size={16} /> },
+          { label: "Success Probability", value: fitScore < 0 ? "-" : `${fmt(successProb)}%`, hint: "Placement likelihood", tone: scoreToTone(successProb), icon: <Award size={16} /> },
+          { label: "Technical", value: fmt(techScore), hint: "Tech interview + coding", tone: scoreToTone(techScore), icon: <BarChart3 size={16} /> },
+          { label: "Behavioural", value: fmt(behavScore), hint: "Behavioural + DNLA", tone: scoreToTone(behavScore), icon: <Activity size={16} /> },
         ]}
       />
 
@@ -129,14 +133,14 @@ export default function DashboardClient({ student }: { student: Student }) {
 
               {/* Score tiles */}
               <div className="mb-6 grid grid-cols-2 gap-4">
-                <Stat label="Technical" value={techScore} tone="brand" />
-                <Stat label="Behavioural" value={behavScore} tone="success" />
+                <Stat label="Technical" value={fmt(techScore)} tone="brand" />
+                <Stat label="Behavioural" value={fmt(behavScore)} tone="success" />
               </div>
 
               {/* 2x2 Matrix */}
               <div
                 role="img"
-                aria-label={`Strength vs. development quadrant: your technical score is ${techScore} and behavioural score is ${behavScore}, plotted against the batch average.`}
+                aria-label={`Strength vs. development quadrant: your technical score is ${fmt(techScore)} and behavioural score is ${fmt(behavScore)}, plotted against the batch average.`}
                 className="relative w-full aspect-square max-h-[400px] border border-white/40 shadow-[inset_0_0_30px_rgba(0,0,0,0.02)] rounded-xl2 bg-white/40 overflow-hidden backdrop-blur-md group hover:bg-white/50 transition-colors duration-500"
               >
                 {/* Axes */}
@@ -156,6 +160,7 @@ export default function DashboardClient({ student }: { student: Student }) {
                 <div className="absolute top-1/2 left-0 w-1/2 h-1/2 bg-gradient-to-tr from-rose-500/10 to-rose-500/5 backdrop-blur-[2px] transition-colors hover:bg-rose-500/20" />
 
                 {/* Data Points */}
+                {techScore >= 0 && behavScore >= 0 && (
                 <motion.div
                   initial={{ scale: 0, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
@@ -177,6 +182,7 @@ export default function DashboardClient({ student }: { student: Student }) {
                     <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-ink-900/95 border-r border-b border-white/10 rotate-45" />
                   </div>
                 </motion.div>
+                )}
 
                 {/* Example Batch Average */}
                 <motion.div
@@ -236,6 +242,7 @@ export default function DashboardClient({ student }: { student: Student }) {
                 <button
                   type="button"
                   aria-label="Open micro-module: System Trade-offs (15 minute read plus interactive drill)"
+                  onClick={() => toast("Micro-module: System Trade-offs is coming soon.", "info")}
                   className="group block w-full rounded-xl2 border border-white/80 bg-white/60 p-3 text-left transition-colors hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
                 >
                   <div className="flex justify-between items-center">
@@ -247,6 +254,7 @@ export default function DashboardClient({ student }: { student: Student }) {
                 <button
                   type="button"
                   aria-label="Open STAR Story Builder interactive worksheet"
+                  onClick={() => toast("STAR Story Builder is coming soon.", "info")}
                   className="group block w-full rounded-xl2 border border-white/80 bg-white/60 p-3 text-left transition-colors hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
                 >
                   <div className="flex justify-between items-center">

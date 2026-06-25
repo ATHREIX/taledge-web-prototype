@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { PageShell, Card, Button, ButtonLink, Badge, Heading } from "@/components/ui";
 import { authedFetch } from "@/lib/api-client";
+import { useAuth } from "@/components/AuthProvider";
+import { workspaceId } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 
 const steps = ["Profile", "Goal", "Context", "Done"];
@@ -62,6 +65,11 @@ type ParsedResume = {
 type ResumeStatus = "idle" | "uploading" | "parsing" | "parsed" | "manual" | "error";
 
 export default function Onboarding() {
+  const router = useRouter();
+  // Candidates must have an account before they assess - so the result a
+  // recruiter sees is tied to a real, verified identity (not anonymous). Same
+  // gate pattern as the recruiter shared-link view.
+  const { user, loading: authLoading } = useAuth();
   const [step, setStep] = useState(0);
   const [track, setTrack] = useState<"placement" | "exam" | null>(null);
 
@@ -72,7 +80,7 @@ export default function Onboarding() {
   const [resumeSource, setResumeSource] = useState<string>("");
   const [resumeError, setResumeError] = useState<string>("");
   // True when the server could only partially auto-fill (e.g. local extraction
-  // without the AI service) — we ask the user to review the prefilled fields.
+  // without the AI service) - we ask the user to review the prefilled fields.
   const [resumeDegraded, setResumeDegraded] = useState(false);
   const [parseMs, setParseMs] = useState<number>(0);
 
@@ -107,6 +115,62 @@ export default function Onboarding() {
     summary: string;
     target_role: string;
   } | null>(null);
+
+  // Off-campus invite context. When a candidate opens a recruiter's link
+  // (/onboarding?invite=<token>), the recruiter already chose the role + track -
+  // we resolve the token and PREFILL + LOCK those instead of re-asking.
+  const [inviteCtx, setInviteCtx] = useState<
+    { token: string; recruiterId: string; jobId: string; role: string } | null
+  >(null);
+  // Window-dependent values must NOT be read during render (the server has no
+  // window → it would render a different branch than the client's first paint
+  // and trip a hydration mismatch). Resolve them once, after mount, into state.
+  const [mounted, setMounted] = useState(false);
+  const [hasInvite, setHasInvite] = useState(false);
+  const [nextUrl, setNextUrl] = useState("/onboarding");
+
+  useEffect(() => {
+    // An invite token IS the candidate's credential (the recruiter invited this
+    // person by email), so we resolve it on mount regardless of who is signed in
+    // - the assessment is recorded for the invited candidate, not the viewer.
+    setMounted(true);
+    const sp = new URLSearchParams(window.location.search);
+    setNextUrl(window.location.pathname + window.location.search);
+    const token = sp.get("invite");
+    setHasInvite(!!token);
+    if (!token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`/api/invite/${encodeURIComponent(token)}`);
+        const d = await r.json();
+        if (cancelled || !d?.ok) return;
+        setInviteCtx({ token, recruiterId: d.recruiterId, jobId: d.jobId, role: d.role });
+        setTrack("placement"); // a recruiter posting is always placement, never exam
+        if (d.role) setSelectedRole(d.role);
+        if (d.name) setFullName((v) => v || d.name);
+        if (d.email) setEmail((v) => v || d.email);
+      } catch {
+        /* unreadable token - candidate fills it manually, no hard failure */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // The candidate id the assessment runs under. Normally the single pilot id;
+  // for an OFF-CAMPUS INVITE it's a DISTINCT id derived from the token so the
+  // invited person becomes a SEPARATE candidate in the recruiter's pool (instead
+  // of overwriting the shared candidate-001).
+  const candidateId = inviteCtx
+    ? `candidate-inv-${inviteCtx.token.slice(0, 10)}`
+    : workspaceId("candidate", user?.uid);
+  // Exam-track aspirants live under their own id namespace. In enforced mode the
+  // signed-in user owns their exam workspace (their uid); demo falls back to the
+  // shared seed aspirant. Computed in render so it updates once auth resolves.
+  const examId =
+    process.env.NEXT_PUBLIC_AUTH_ENFORCED === "true" && user?.uid ? user.uid : "aspirant-001";
 
   async function handleFile(file: File) {
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
@@ -324,20 +388,34 @@ export default function Onboarding() {
         resumeSummary: parsedExtras?.summary || "",
         resumeSkills: parsedExtras?.skills || [],
         resumeProjects: parsedExtras?.projects || [],
+        // Carry the off-campus invite link so the finished candidate lands in
+        // the INVITING recruiter's own pool (and the invite can be marked done).
+        ...(inviteCtx
+          ? { recruiterId: inviteCtx.recruiterId, jobId: inviteCtx.jobId, inviteToken: inviteCtx.token }
+          : {}),
       });
       localStorage.setItem("taledge:demo-profile", profileData);
       localStorage.setItem("taledge:workspace-profile", profileData);
 
       if (auth.currentUser) {
-        await updateDoc(doc(db, "candidates", auth.currentUser.uid), {
-          institution,
-          yearCohort,
-          aspiration,
-          targetRole: selectedRole,
-          resumeSummary: parsedExtras?.summary || "",
-          resumeSkills: parsedExtras?.skills || [],
-          resumeProjects: parsedExtras?.projects || [],
-        });
+        // Write to users/{uid} with merge: updateDoc on candidates/{uid} silently
+        // failed because that doc is never created for a real user (registration
+        // only makes users/{uid}), and the dashboard/profile read users/{uid}.
+        // setDoc+merge creates-or-updates the doc the rest of the app actually reads.
+        await setDoc(
+          doc(db, "users", auth.currentUser.uid),
+          {
+            institution,
+            yearCohort,
+            aspiration,
+            targetRole: selectedRole,
+            resumeSummary: parsedExtras?.summary || "",
+            resumeSkills: parsedExtras?.skills || [],
+            resumeProjects: parsedExtras?.projects || [],
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
       }
     } catch (e) {
       console.error("Error persisting profile:", e);
@@ -428,6 +506,45 @@ export default function Onboarding() {
       transition: { duration: 0.3, ease: "easeIn" }
     }
   };
+
+  // ── Account gate: a candidate must sign in / create an account first. ──
+  // EXCEPTION: an invite link carries its own credential (the token), so it
+  // skips the gate entirely - the invited candidate just proceeds, no matter who
+  // (if anyone) is signed in. This is why a recruiter clicking their own link no
+  // longer lands on the recruiter dashboard.
+  // Until mounted, the server and the client's first paint render the SAME
+  // neutral loading screen (hasInvite is unknown without window) - this is what
+  // prevents the hydration mismatch. After mount, the real branch renders.
+  if (!mounted || (!hasInvite && authLoading)) {
+    return (
+      <PageShell width="default" className="py-5 sm:py-6">
+        <Card variant="frosted" className="mx-auto max-w-md rounded-xl3 p-10 text-center">
+          <p className="text-sm text-ink-500">Loading…</p>
+        </Card>
+      </PageShell>
+    );
+  }
+  if (!hasInvite && !user) {
+    return (
+      <PageShell width="default" className="py-5 sm:py-6">
+        <Card variant="frosted" className="mx-auto max-w-lg rounded-xl3 p-8 text-center sm:p-10">
+          <Badge tone="brand" className="uppercase tracking-widest">Candidate sign-in</Badge>
+          <Heading as="h1" className="mt-4 text-2xl">Create your account to begin</Heading>
+          <p className="mt-3 text-sm text-ink-500">
+            Your assessment and Fit Score are tied to a verified account, so recruiters know they&apos;re seeing a real, authenticated candidate. It takes a minute - you&apos;ll come right back here.
+          </p>
+          <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <ButtonLink href={`/register?next=${encodeURIComponent(nextUrl)}`} variant="primary" size="lg" className="w-full sm:w-auto">
+              Create candidate account
+            </ButtonLink>
+            <ButtonLink href={`/login?next=${encodeURIComponent(nextUrl)}`} variant="ghost" size="lg" className="w-full sm:w-auto">
+              I already have an account
+            </ButtonLink>
+          </div>
+        </Card>
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell width="default" className="py-5 sm:py-6">
@@ -521,7 +638,7 @@ export default function Onboarding() {
                           <DocIcon className="w-8 h-8 text-brand-500" aria-hidden="true" />
                         </div>
                         <div className="text-lg font-bold text-ink-700 mb-1">Drop your resume PDF</div>
-                        <div className="text-sm font-medium text-ink-500 mb-4">Max 10 MB · TalEdge AI Powered</div>
+                        <div className="text-sm font-medium text-ink-500 mb-4">Max 4 MB · TalEdge AI Powered</div>
                         <Button variant="ghost" size="sm" type="button" className="rounded-full">
                           Choose File
                         </Button>
@@ -737,6 +854,17 @@ export default function Onboarding() {
                     <p className="text-ink-500 font-medium">Select your track to calibrate the system appropriately.</p>
                   </div>
 
+                  {inviteCtx && (
+                    <div className="mb-6 flex items-start gap-3 rounded-xl2 border border-brand-200 bg-brand-50 px-4 py-3">
+                      <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
+                      </span>
+                      <p className="text-left text-sm text-ink-700">
+                        A recruiter invited you{inviteCtx.role ? <> for the <b>{inviteCtx.role}</b> role</> : ""}. Your track and target role are <b>already set</b> from their posting - just continue.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
                     <Choice
                       active={track === "placement"}
@@ -756,9 +884,11 @@ export default function Onboarding() {
                     />
                     <Choice
                       active={track === "exam"}
+                      disabled={!!inviteCtx}
                       onClick={() => {
+                        if (inviteCtx) return; // recruiter postings are placement-only
                         setTrack("exam");
-                        // No exam is preselected — the aspirant must pick one,
+                        // No exam is preselected - the aspirant must pick one,
                         // and a leftover placement role must not appear here.
                         setSelectedRole("");
                         setRoleSearch("");
@@ -874,7 +1004,7 @@ export default function Onboarding() {
                       <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-xl2 border border-dashed border-brand-300/70 bg-brand-50/40">
                         <div className="flex-1 text-center sm:text-left">
                           <p className="text-sm font-bold text-ink-800">Have a specific job description?</p>
-                          <p className="text-xs text-ink-500">Upload the JD (PDF) — we'll set your target role from it and tailor the interview &amp; Fit Score to that exact role.</p>
+                          <p className="text-xs text-ink-500">Upload the JD (PDF) - we'll set your target role from it and tailor the interview &amp; Fit Score to that exact role.</p>
                         </div>
                         <Button
                           type="button"
@@ -1080,27 +1210,30 @@ export default function Onboarding() {
                   </p>
 
                   <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                    <Link
-                      href={track === "exam" ? "/exam/aspirant-001/dnla" : "/student/candidate-001/dnla"}
-                      onClick={persistDemoProfile}
+                    <motion.div
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
                       className="w-full sm:w-auto"
                     >
-                      <motion.div
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        className="w-full"
+                      <Button
+                        size="lg"
+                        type="button"
+                        className="group w-full rounded-full text-lg"
+                        onClick={async () => {
+                          // Await the profile persistence BEFORE navigating so the
+                          // Firestore write isn't abandoned when this page unmounts
+                          // (a Link onClick fired-and-forgot it on slow connections).
+                          await persistDemoProfile();
+                          // "Begin Technical Interview" → start the technical round
+                          // (the canonical first stage), matching the button label.
+                          router.push(track === "exam" ? `/exam/${examId}/dnla` : `/student/${candidateId}/interview/technical`);
+                        }}
                       >
-                        <Button
-                          size="lg"
-                          type="button"
-                          className="group w-full rounded-full text-lg"
-                        >
-                          {track === "exam" ? "Begin Track 02" : "Begin Technical Interview"}
-                          <ArrowRightIcon className="w-5 h-5 transition-transform group-hover:translate-x-1" aria-hidden="true" />
-                        </Button>
-                      </motion.div>
-                    </Link>
-                    <Link href="/student/candidate-001" className="w-full sm:w-auto text-ink-500 hover:text-ink-900 font-medium transition-colors py-4">
+                        {track === "exam" ? "Begin Track 02" : "Begin Technical Interview"}
+                        <ArrowRightIcon className="w-5 h-5 transition-transform group-hover:translate-x-1" aria-hidden="true" />
+                      </Button>
+                    </motion.div>
+                    <Link href={`/student/${candidateId}`} className="w-full sm:w-auto text-ink-500 hover:text-ink-900 font-medium transition-colors py-4">
                       Skip to dashboard
                     </Link>
                   </div>
@@ -1156,14 +1289,17 @@ function Field({ label, value, onChange, autoFilled = false, error }: any) {
   );
 }
 
-function Choice({ active, onClick, tag, title, desc, icon }: any) {
+function Choice({ active, onClick, tag, title, desc, icon, disabled }: any) {
   return (
     <motion.button
-      whileHover={{ scale: 1.02, y: -2 }}
-      whileTap={{ scale: 0.98 }}
+      whileHover={disabled ? undefined : { scale: 1.02, y: -2 }}
+      whileTap={disabled ? undefined : { scale: 0.98 }}
       onClick={onClick}
+      disabled={disabled}
+      aria-disabled={disabled || undefined}
       className={cn(
         "text-left rounded-xl3 p-6 border transition-all duration-300 relative overflow-hidden",
+        disabled && "cursor-not-allowed opacity-50",
         active
           ? "border-brand-500 bg-brand-50/80 shadow-panel"
           : "border-ink-200/60 bg-white/50 backdrop-blur-md hover:border-brand-300 hover:bg-white/70 hover:shadow-panel-hover"

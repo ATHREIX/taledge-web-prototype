@@ -21,7 +21,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { auth } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
-import type { Role } from "@/lib/roles";
+import { workspaceId, type Role } from "@/lib/roles";
 
 type NavLink = { href: string; label: string; icon: LucideIcon };
 
@@ -34,28 +34,38 @@ const demoLinks: NavLink[] = [
   { href: "/coach/coach-001", label: "Coaches", icon: GraduationCap },
 ];
 
-// Per-stakeholder navigation — each role sees ONLY their own workspace links,
-// so the four logins lead to four genuinely different top bars.
-const ROLE_NAV: Record<Role, NavLink[]> = {
-  candidate: [
-    { href: "/dashboard", label: "Home", icon: LayoutDashboard },
-    { href: "/student/candidate-001", label: "My Workspace", icon: UserRound },
-    { href: "/student/candidate-001/fit-score", label: "Fit Score", icon: Gauge },
-    { href: "/student/candidate-001/development", label: "Development", icon: Sparkles },
-  ],
-  recruiter: [
-    { href: "/dashboard", label: "Home", icon: LayoutDashboard },
-    { href: "/recruiter/recruiter-001", label: "Pipeline", icon: Briefcase },
-  ],
-  coach: [
-    { href: "/dashboard", label: "Home", icon: LayoutDashboard },
-    { href: "/coach/coach-001", label: "Coaching", icon: GraduationCap },
-  ],
-  institute: [
-    { href: "/dashboard", label: "Home", icon: LayoutDashboard },
-    { href: "/institute/institute-placement", label: "Cohort", icon: Building2 },
-  ],
-};
+// Per-stakeholder navigation - each role sees ONLY their own workspace links,
+// so the four logins lead to four genuinely different top bars. Workspace ids
+// come from workspaceId() so a real signed-in user lands on THEIR uid-keyed
+// workspace under enforced auth (not the shared `recruiter-001` seed), while
+// demo/pilot keeps the seeded persona ids.
+function roleNav(role: Role, uid?: string | null): NavLink[] {
+  const id = workspaceId(role, uid);
+  switch (role) {
+    case "candidate":
+      return [
+        { href: "/dashboard", label: "Home", icon: LayoutDashboard },
+        { href: `/student/${id}`, label: "My Workspace", icon: UserRound },
+        { href: `/student/${id}/fit-score`, label: "Fit Score", icon: Gauge },
+        { href: `/student/${id}/development`, label: "Development", icon: Sparkles },
+      ];
+    case "recruiter":
+      return [
+        { href: "/dashboard", label: "Home", icon: LayoutDashboard },
+        { href: `/recruiter/${id}`, label: "Pipeline", icon: Briefcase },
+      ];
+    case "coach":
+      return [
+        { href: "/dashboard", label: "Home", icon: LayoutDashboard },
+        { href: `/coach/${id}`, label: "Coaching", icon: GraduationCap },
+      ];
+    case "institute":
+      return [
+        { href: "/dashboard", label: "Home", icon: LayoutDashboard },
+        { href: `/institute/${id}`, label: "Cohort", icon: Building2 },
+      ];
+  }
+}
 
 export function Nav() {
   const pathname = usePathname();
@@ -95,30 +105,47 @@ export function Nav() {
     } catch {
       /* sign-out is best-effort; route away regardless */
     }
+    // Clear the coarse-gate cookie and cached role SYNCHRONOUSLY before
+    // navigating. The cookie is otherwise only cleared as a side-effect of the
+    // async onIdTokenChanged listener, which isn't awaited here - so without
+    // this, the enforced-mode middleware gate could still see a stale token and
+    // the next nav could render role-aware chrome for the just-logged-out user.
+    try {
+      const secure = location.protocol === "https:" ? "; Secure" : "";
+      document.cookie = `firebaseIdToken=; path=/; max-age=0; SameSite=Lax${secure}`;
+      localStorage.removeItem("taledge:role");
+      localStorage.removeItem("taledge:roleUid");
+    } catch {
+      /* best-effort */
+    }
     router.push("/login");
   };
 
   // Hide the global nav on immersive/landing/auth flows and on the in-app
   // workspace pages that ship their own DashboardShell header.
   // Persistent app header EVERYWHERE except the public/auth flows and the
-  // immersive proctored interview (any path containing an /interview segment —
+  // immersive proctored interview (any path containing an /interview segment -
   // the exam must stay full-screen with no chrome).
   const hideNav =
     pathname === "/" ||
     pathname === "/onboarding" ||
     pathname === "/login" ||
     pathname === "/register" ||
+    // Public, token-scoped shared cohort view: it must stay chrome-free and
+    // institute-branded - the global app bar (and the demo role switcher) must
+    // NOT leak onto a shared link given to an external recruiter.
+    !!pathname?.startsWith("/recruiter/shared") ||
     !!pathname?.includes("/interview");
   if (hideNav) return null;
 
   // Link resolution:
   //  - role known        -> that stakeholder's nav (the four logins diverge here)
-  //  - signed in, role still resolving -> a clean neutral (Home) — NEVER the
+  //  - signed in, role still resolving -> a clean neutral (Home) - NEVER the
   //    4-role demo switcher (that would mislabel a logged-in candidate)
   //  - signed out / demo  -> the role switcher so seeded personas stay browsable
   const loggedInNeutral: NavLink[] = [{ href: "/dashboard", label: "Home", icon: LayoutDashboard }];
   const links: NavLink[] =
-    role && ROLE_NAV[role] ? ROLE_NAV[role] : user ? loggedInNeutral : demoLinks;
+    role ? roleNav(role, user?.uid) : user ? loggedInNeutral : demoLinks;
   // Highlight exactly ONE link: the exact route match, otherwise the single
   // longest link whose path is a prefix of the current route. This stops
   // sibling links that share a top segment (e.g. all /student/... links) from

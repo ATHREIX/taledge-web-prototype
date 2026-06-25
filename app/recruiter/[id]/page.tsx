@@ -3,10 +3,13 @@
 import { Section } from "@/components/glass";
 import { Bar, ScoreRing } from "@/components/score-ring";
 import { recruiterPool } from "@/lib/data";
+import { authedFetch } from "@/lib/api-client";
+import { downloadCsv } from "@/lib/csv";
 import Link from "next/link";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { FadeIn, SlideUp, StaggerContainer, StaggerItem } from "@/components/motion";
 import { motion, AnimatePresence } from "framer-motion";
+import { useAuth } from "@/components/AuthProvider";
 import {
   PageShell,
   PageHeader,
@@ -26,7 +29,16 @@ type Segment = "all" | "freshers" | "oneToThree";
 type JobType = "all" | "job" | "internship";
 type DnlaStatus = "all" | "available" | "pending";
 type SortKey = "fit" | "success" | "technical" | "behavioural" | "recent";
-type AdvancedChip = "interviewReady" | "highSuccess" | "dnlaReady" | "noRedFlags";
+type AdvancedChip =
+  | "interviewReady"
+  | "highSuccess"
+  | "dnlaReady"
+  | "noRedFlags"
+  | "published"
+  | "highDrive"
+  | "strongInterpersonal"
+  | "strongExecution"
+  | "highResilience";
 
 const activeJobs: {
   id: string;
@@ -58,18 +70,23 @@ const candidateMeta: Record<
 > = {};
 
 const advancedFilters: { id: AdvancedChip; label: string }[] = [
+  { id: "published", label: "Published to me" },
   { id: "interviewReady", label: "Interview-ready" },
   { id: "highSuccess", label: "Success >= 75%" },
   { id: "dnlaReady", label: "DNLA available" },
   { id: "noRedFlags", label: "No red flags" },
+  // DNLA group competencies (PRD §4.5 multi-criteria) - each ≥ 70/100.
+  { id: "highDrive", label: "High drive / initiative" },
+  { id: "strongInterpersonal", label: "Strong interpersonal" },
+  { id: "strongExecution", label: "Strong execution" },
+  { id: "highResilience", label: "High resilience" },
 ];
 
-const topInstitutes: [string, string, string][] = [];
 
 export default function Recruiter() {
   const [q, setQ] = useState("");
-  const [minFit, setMinFit] = useState(65);
-  const [minSuccess, setMinSuccess] = useState(60);
+  const [minFit, setMinFit] = useState(0);
+  const [minSuccess, setMinSuccess] = useState(0);
   const [segment, setSegment] = useState<Segment>("all");
   const [jobType, setJobType] = useState<JobType>("all");
   const [selectedJob, setSelectedJob] = useState("all");
@@ -81,9 +98,80 @@ export default function Recruiter() {
   const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
   const [quickView, setQuickView] = useState<any | null>(null);
   const { toast } = useToast();
+  // Gate the data loaders on Firebase auth being restored - authedFetch only
+  // attaches a token once auth.currentUser is set, so firing before auth is
+  // ready 401s in enforced mode and silently leaves the demo seed in place.
+  const { user, loading } = useAuth();
+
+  // Live candidate pool from the durable talent store (seed today; real results
+  // once candidates complete the interview flow). Seeded initial value so the
+  // table renders instantly, then replaced with the fetched pool on mount.
+  const [pool, setPool] = useState<any[]>(recruiterPool ?? []);
+  // Recruiter's persisted job/internship postings + shortlist.
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [shortlist, setShortlist] = useState<string[]>([]);
+  // Post-a-job modal.
+  const [showPostJob, setShowPostJob] = useState(false);
+  const [postingJob, setPostingJob] = useState(false);
+  const [jobForm, setJobForm] = useState({ title: "", type: "job", experience: "1-3", location: "", ctc: "", skills: "", description: "" });
+  // Off-campus upload → quotation → pay → invite flow (PRD §4.5).
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploadJobId, setUploadJobId] = useState("");
+  const [uploadText, setUploadText] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{ queued: number; batch: string; invites: { name: string; email: string; link: string }[]; emailsSent: number } | null>(null);
+  // Live status of this recruiter's previously-sent invites (invited→started→completed).
+  const [sentInvites, setSentInvites] = useState<{ token: string; name: string; email: string; status: string }[]>([]);
+  const PRICE_PER_CANDIDATE = 499; // ₹ per off-campus assessment seat
+  // Client mirror of the server PAYMENTS_ENABLED gate. Off (pilot default) ⇒
+  // invites are free and the copy reflects that; on ⇒ a real charge is implied.
+  const paymentsEnabled = process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === "true";
+
+  useEffect(() => {
+    // Wait for auth to restore (mirrors app/recruiter/shared/[token]/page.tsx),
+    // then load - and refetch once auth flips from loading→ready. In enforced
+    // mode a failed/empty response clears state instead of leaving the demo seed
+    // masquerading as live data.
+    if (loading) return;
+    const enforced = process.env.NEXT_PUBLIC_AUTH_ENFORCED === "true";
+    authedFetch("/api/recruiter/candidates")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.ok && Array.isArray(d.candidates)) {
+          setPool(d.candidates.map((r: any) => ({ ...r, poolId: r.studentId })));
+        } else if (enforced) {
+          setPool([]);
+        }
+      })
+      .catch(() => { if (enforced) setPool([]); });
+    authedFetch("/api/recruiter/jobs")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.ok && Array.isArray(d.jobs)) setJobs(d.jobs);
+        else if (enforced) setJobs([]);
+      })
+      .catch(() => { if (enforced) setJobs([]); });
+    authedFetch("/api/recruiter/shortlist")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.ok && Array.isArray(d.candidateIds)) setShortlist(d.candidateIds);
+        else if (enforced) setShortlist([]);
+      })
+      .catch(() => { if (enforced) setShortlist([]); });
+  }, [user, loading]);
+
+  // Load sent-invite statuses whenever the off-campus modal opens or a new
+  // batch is sent, so the recruiter sees invited→started→completed progress.
+  useEffect(() => {
+    if (!showUpload) return;
+    authedFetch("/api/recruiter/candidate-list")
+      .then((r) => r.json())
+      .then((d) => { if (d?.ok && Array.isArray(d.invites)) setSentInvites(d.invites); })
+      .catch(() => {});
+  }, [showUpload, uploadResult]);
 
   const enrichedPool = useMemo(() => {
-    return (recruiterPool ?? []).map((candidate) => {
+    return (pool ?? []).map((candidate) => {
       const flags = candidate.flags ?? [];
       const meta = candidateMeta[candidate.studentId] ?? {};
       // Derive sensible per-row meta from the existing recruiterPool fields so
@@ -117,14 +205,15 @@ export default function Recruiter() {
         experience,
         jobType,
         roleFit,
-        activeJobId: meta.activeJobId ?? "all",
+        // A real candidate's own posting link wins; fall back to demo metadata.
+        activeJobId: (candidate as { jobId?: string }).jobId || meta.activeJobId || "all",
         dnlaSignals: meta.dnlaSignals ?? [],
         availability: meta.availability ?? "Available now",
         notice: meta.notice ?? "Immediate",
         lastUpdated: meta.lastUpdated ?? "Today",
       };
     });
-  }, []);
+  }, [pool]);
 
   const rows = useMemo(() => {
     return enrichedPool
@@ -150,7 +239,14 @@ export default function Recruiter() {
         if (jobType === "internship") return type === "Internship";
         return true;
       })
-      .filter((r) => (selectedJob === "all" ? true : (r.activeJobId ?? "all") === selectedJob))
+      .filter((r) => {
+        if (selectedJob === "all") return true;
+        const aj = r.activeJobId ?? "all";
+        // General/published pool (unassigned) matches any posting; invitees match
+        // only the posting they came in through. So selecting a posting narrows
+        // to that posting's candidates WITHOUT hiding the whole discoverable pool.
+        return aj === "all" || aj === selectedJob;
+      })
       .filter((r) => {
         const dnla = r.dnla ?? "Pending";
         if (dnlaStatus === "available") return dnla === "Available";
@@ -163,7 +259,17 @@ export default function Recruiter() {
       .filter((r) => (chips.includes("highSuccess") ? r.success >= 75 : true))
       .filter((r) => (chips.includes("dnlaReady") ? (r.dnla ?? "Pending") === "Available" : true))
       .filter((r) => (chips.includes("noRedFlags") ? (r.flags ?? []).length === 0 : true))
+      .filter((r) => (chips.includes("published") ? !!r.published : true))
+      // DNLA group competency filters (PRD §4.5 multi-criteria) - each ≥ 70/100.
+      .filter((r) => (chips.includes("highDrive") ? (r.dnlaGroups?.achievement ?? 0) >= 70 : true))
+      .filter((r) => (chips.includes("strongInterpersonal") ? (r.dnlaGroups?.interpersonal ?? 0) >= 70 : true))
+      .filter((r) => (chips.includes("strongExecution") ? (r.dnlaGroups?.execution ?? 0) >= 70 : true))
+      .filter((r) => (chips.includes("highResilience") ? (r.dnlaGroups?.resilience ?? 0) >= 70 : true))
       .sort((a, b) => {
+        // Candidates who just published to recruiters surface first, so a freshly
+        // published candidate is immediately visible (then the chosen sort).
+        if (!!a.published !== !!b.published) return a.published ? -1 : 1;
+        if (a.published && b.published && a.publishedAt !== b.publishedAt) return (b.publishedAt ?? 0) - (a.publishedAt ?? 0);
         if (sort === "technical") return b.tech - a.tech;
         if (sort === "behavioural") return b.behav - a.behav;
         if (sort === "success") return b.success - a.success;
@@ -181,6 +287,213 @@ export default function Recruiter() {
     ? Math.round(enrichedPool.reduce((sum, r) => sum + r.success, 0) / enrichedPool.length)
     : 0;
 
+  // Map persisted postings → the job-card shape, deriving applicant/shortlist
+  // counts from the live candidate pool so the card reflects real matching.
+  const jobCards = useMemo(
+    () =>
+      jobs.map((j) => {
+        const seg = j.experience === "1-3" ? "1–3 years" : "Fresher";
+        // Real per-job linkage (same rule as the table filter ~224-229): the
+        // general/discoverable pool (activeJobId "all") counts toward every
+        // posting; invitees count only for the posting they came in through. So a
+        // brand-new posting shows 0 of its own (non-general) applicants instead of
+        // a fabricated experience-band count.
+        const linkedToJob = (c: any) => {
+          const aj = c.activeJobId ?? "all";
+          return aj === "all" || aj === j.id;
+        };
+        const applicants = enrichedPool.filter(linkedToJob).length;
+        const shortlistedN = enrichedPool.filter(
+          (c) => linkedToJob(c) && shortlist.includes(c.studentId)
+        ).length;
+        return {
+          id: j.id,
+          title: j.title,
+          type: j.type,
+          segment: seg,
+          location: j.location || "Remote / Hybrid",
+          reqs: Math.max(1, (j.skills?.length ?? 0)),
+          applicants,
+          shortlisted: shortlistedN,
+          minFit: 70,
+          status: j.status === "open" ? "Live" : "Closed",
+        };
+      }),
+    [jobs, enrichedPool, shortlist]
+  );
+
+  // Auto-select the first posting when the off-campus invite modal opens, so the
+  // recruiter doesn't have to manually pick a role before generating interview
+  // invite links. They can still change it; the placeholder stays as a fallback.
+  useEffect(() => {
+    if (showUpload && !uploadJobId && jobCards.length > 0) {
+      setUploadJobId(jobCards[0].id);
+    }
+  }, [showUpload, jobCards, uploadJobId]);
+
+  // Top & trending colleges (PRD §4.5) - ranked by average candidate Fit Score
+  // across the live pool, with the candidate count for context.
+  const trendingColleges = useMemo(() => {
+    const byCollege = new Map<string, { sum: number; count: number }>();
+    for (const r of enrichedPool) {
+      const c = (r.college as string) || "Unknown";
+      const cur = byCollege.get(c) ?? { sum: 0, count: 0 };
+      cur.sum += r.fit;
+      cur.count += 1;
+      byCollege.set(c, cur);
+    }
+    return Array.from(byCollege.entries())
+      .map(([name, { sum, count }]) => ({ name, avg: Math.round(sum / count), count }))
+      .sort((a, b) => b.avg - a.avg || b.count - a.count)
+      .slice(0, 6);
+  }, [enrichedPool]);
+
+  // Publish a job (1–3 yr) or internship (fresher) posting (PRD §4.5).
+  const submitJob = async () => {
+    if (!jobForm.title.trim()) { toast("Add a role title first.", "info"); return; }
+    setPostingJob(true);
+    try {
+      const res = await authedFetch("/api/recruiter/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(jobForm),
+      });
+      const data = await res.json();
+      if (data?.ok && data.job) {
+        setJobs((j) => [data.job, ...j]);
+        setShowPostJob(false);
+        setJobForm({ title: "", type: "job", experience: "1-3", location: "", ctc: "", skills: "", description: "" });
+        toast(`${data.job.type === "internship" ? "Internship" : "Job"} posted.`, "success");
+      } else {
+        toast("Could not post the role. Please try again.", "info");
+      }
+    } catch {
+      toast("Could not post the role. Please try again.", "info");
+    } finally {
+      setPostingJob(false);
+    }
+  };
+
+  // Export candidate rows to a real CSV file (PRD §4.5 candidate intelligence).
+  const exportRows = (data: any[], name: string) => {
+    const n = downloadCsv(
+      name,
+      data.map((r) => ({
+        Name: r.name,
+        College: r.college,
+        Role: r.role,
+        Experience: (r.experience === "1-3" ? "1-3 years" : r.experience === "fresher" ? "Fresher" : r.experience) ?? "",
+        Fit: r.fit,
+        Technical: r.tech,
+        Behavioural: r.behav,
+        Success: `${r.success}%`,
+        DNLA: r.dnla ?? (r.dnlaReady ? "Available" : "Pending"),
+        Status: r.status ?? "",
+        Flags: (r.flags ?? []).join("; "),
+      }))
+    );
+    toast(n ? `Exported ${n} candidate${n === 1 ? "" : "s"} to CSV.` : "Nothing to export.", n ? "success" : "info");
+  };
+
+  // Close (delete) a posting (owner-scoped on the server). authedFetch never
+  // throws on a non-2xx (e.g. a 404 on uid-mismatch), so we reconcile against
+  // res.ok / the response body and roll the posting back if it wasn't deleted.
+  const removeJob = async (id: string) => {
+    const removed = jobs.find((x) => x.id === id);
+    setJobs((j) => j.filter((x) => x.id !== id)); // optimistic
+    try {
+      const res = await authedFetch(`/api/recruiter/jobs?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.ok !== false) {
+        toast("Posting closed.", "info");
+      } else {
+        if (removed) setJobs((j) => [removed, ...j]); // rollback
+        toast("Could not close the posting.", "info");
+      }
+    } catch {
+      if (removed) setJobs((j) => [removed, ...j]); // rollback
+      toast("Could not close the posting.", "info");
+    }
+  };
+
+  // Persist the currently-selected candidates into the recruiter's shortlist.
+  const shortlistSelected = async () => {
+    const ids = Array.from(
+      new Set(rows.filter((r) => selected.has(r.poolId)).map((r) => r.studentId))
+    );
+    const prev = shortlist;
+    const next = Array.from(new Set([...shortlist, ...ids]));
+    setShortlist(next); // optimistic
+    try {
+      const res = await authedFetch("/api/recruiter/shortlist", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidateIds: next }),
+      });
+      const data = await res.json();
+      if (data?.ok) {
+        setShortlist(data.candidateIds);
+        toast(`Added ${ids.length} to your shortlist (${data.candidateIds.length} total).`, "success");
+        setSelected(new Set());
+      } else {
+        setShortlist(prev); // rollback - the save did not persist
+        toast("Could not save the shortlist. Please try again.", "info");
+      }
+    } catch {
+      setShortlist(prev); // rollback - the save did not persist
+      toast("Could not save the shortlist. Please try again.", "info");
+    }
+  };
+
+  // Parse the pasted off-campus list ("Name, email" / "Name <email>" / "email"
+  // per line) into invite candidates with a valid email.
+  const parsedUploads = useMemo(() => {
+    return uploadText
+      .split(/\n+/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const email = line.match(/[\w.+-]+@[\w.-]+\.\w+/)?.[0] ?? "";
+        let name = line.replace(email, "").replace(/[,<>]/g, "").trim();
+        if (!name) name = email.split("@")[0] || "Candidate";
+        return { name, email, experienceBand: "1-3" as const };
+      })
+      .filter((c) => c.email);
+  }, [uploadText]);
+
+  // Quotation + (demo) pay + send assessment/interview invite links (PRD §4.5).
+  const sendInvites = async () => {
+    if (!uploadJobId) { toast("Select which role these candidates are for.", "info"); return; }
+    if (parsedUploads.length === 0) { toast("Add at least one candidate (name + email).", "info"); return; }
+    setUploading(true);
+    try {
+      const res = await authedFetch("/api/recruiter/candidate-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: uploadJobId, paid: true, candidates: parsedUploads }),
+      });
+      const data = await res.json();
+      if (data?.ok && data.status === "links_queued") {
+        const sent = data.emailsSent ?? 0;
+        setUploadResult({ queued: data.queued, batch: data.inviteBatchId, invites: data.invites ?? [], emailsSent: sent });
+        toast(
+          sent > 0
+            ? `${sent} invite email${sent === 1 ? "" : "s"} sent automatically.`
+            : `${data.queued} invite link${data.queued === 1 ? "" : "s"} generated.`,
+          "success"
+        );
+      } else if (data?.status === "payment_required") {
+        toast("Payment is required before links are sent.", "info");
+      } else {
+        toast("Could not send the invites. Please try again.", "info");
+      }
+    } catch {
+      toast("Could not send the invites. Please try again.", "info");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   function toggleChip(chip: AdvancedChip) {
     setChips((current) =>
       current.includes(chip) ? current.filter((item) => item !== chip) : [...current, chip]
@@ -188,7 +501,10 @@ export default function Recruiter() {
   }
 
   // ── Selection (bulk actions) ──
-  const visibleIds = rows.map((r) => r.studentId);
+  // Identity is per-row (poolId), not per-candidate (studentId) - the pool can
+  // list the same candidate for two roles, and keying selection on studentId
+  // made those duplicate rows toggle together and mis-count the bulk selection.
+  const visibleIds = rows.map((r) => r.poolId);
   const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
   const someSelected = visibleIds.some((id) => selected.has(id));
   const toggleAll = () =>
@@ -207,8 +523,8 @@ export default function Recruiter() {
   // ── Active-filter chip summary (each chip resets just that filter) ──
   const activeFilters: { key: string; label: string; clear: () => void }[] = [];
   if (q) activeFilters.push({ key: "q", label: `Search: "${q}"`, clear: () => setQ("") });
-  if (minFit !== 65) activeFilters.push({ key: "fit", label: `Fit ≥ ${minFit}`, clear: () => setMinFit(65) });
-  if (minSuccess !== 60) activeFilters.push({ key: "succ", label: `Success ≥ ${minSuccess}%`, clear: () => setMinSuccess(60) });
+  if (minFit !== 0) activeFilters.push({ key: "fit", label: `Fit ≥ ${minFit}`, clear: () => setMinFit(0) });
+  if (minSuccess !== 0) activeFilters.push({ key: "succ", label: `Success ≥ ${minSuccess}%`, clear: () => setMinSuccess(0) });
   if (segment !== "all") activeFilters.push({ key: "seg", label: segment === "freshers" ? "Freshers" : "1–3 yrs", clear: () => setSegment("all") });
   if (jobType !== "all") activeFilters.push({ key: "jt", label: jobType === "job" ? "Jobs" : "Internships", clear: () => setJobType("all") });
   if (dnlaStatus !== "all") activeFilters.push({ key: "dnla", label: `DNLA: ${dnlaStatus === "available" ? "Ready" : "Pending"}`, clear: () => setDnlaStatus("all") });
@@ -230,10 +546,10 @@ export default function Recruiter() {
         description="Command center for jobs, internships, candidate pools, and deep analytics. Manage role fit and success probability effortlessly."
         actions={
           <>
-            <Button type="button" variant="ghost" className="group">
+            <Button type="button" variant="ghost" className="group" onClick={() => { setShowUpload(true); setUploadResult(null); }}>
               <IconUpload className="w-4 h-4 transition-transform group-hover:-translate-y-0.5" /> Upload candidates
             </Button>
-            <Button type="button" variant="primary" className="group bg-ink-900 hover:bg-ink-800">
+            <Button type="button" variant="primary" className="group bg-ink-900 hover:bg-ink-800" onClick={() => setShowPostJob(true)}>
               Post job / internship
               <IconArrow className="w-4 h-4 transition-transform group-hover:translate-x-1" />
             </Button>
@@ -243,7 +559,7 @@ export default function Recruiter() {
 
       {/* KPIs */}
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4 mb-16">
-        <KpiCard label="Active postings" value={`${activeJobs.length}`} hint="Post a job to start matching" icon={<IconPost className="w-6 h-6" />} delay={0.1} />
+        <KpiCard label="Active postings" value={`${jobCards.length}`} hint={jobCards.length ? "Live job & internship postings" : "Post a job to start matching"} icon={<IconPost className="w-6 h-6" />} delay={0.1} />
         <KpiCard label="Shortlist-ready" value={`${shortlisted.length}`} hint="Fit >= 72 and success >= 70%" icon={<IconTarget className="w-6 h-6" />} delay={0.2} />
         <KpiCard label="Avg Fit Score" value={`${avgFit}`} hint={`Avg success ${avgSuccess}%`} icon={<IconGauge className="w-6 h-6" />} delay={0.3} />
         <KpiCard label="DNLA imports" value={`${dnlaAvailable}/${enrichedPool.length}`} hint="Available after provider import" icon={<IconShield className="w-6 h-6" />} delay={0.4} />
@@ -260,16 +576,19 @@ export default function Recruiter() {
             Hiring Demand Surface
           </Heading>
         </div>
-        {activeJobs.length === 0 ? (
+        {jobCards.length === 0 ? (
           <Card variant="frosted" className="p-10 text-center">
             <CardBody className="p-0">
               <Eyebrow className="justify-center">No active postings</Eyebrow>
               <p className="mt-2 text-sm text-ink-500">Post a job or internship to start matching candidates against your hiring demand.</p>
+              <div className="mt-4 flex justify-center">
+                <Button type="button" variant="primary" className="bg-ink-900 hover:bg-ink-800" onClick={() => setShowPostJob(true)}>Post your first role</Button>
+              </div>
             </CardBody>
           </Card>
         ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {(activeJobs ?? []).map((job, idx) => (
+          {jobCards.map((job, idx) => (
             <motion.div
               initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: idx * 0.1 }}
               whileHover={{ y: -4, scale: 1.01 }}
@@ -295,8 +614,8 @@ export default function Recruiter() {
                   <MetricRow label="Location" value={job.location} />
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="ghost" size="md" className="flex-1">Edit</Button>
-                  <Button type="button" variant="primary" size="md" className="flex-1 bg-ink-900 hover:bg-ink-800">Invite</Button>
+                  <Button type="button" variant="ghost" size="md" className="flex-1" onClick={() => removeJob(job.id)}>Close</Button>
+                  <Button type="button" variant="primary" size="md" className="flex-1 bg-ink-900 hover:bg-ink-800" onClick={() => toast("Candidate invites are sent after the paid upload step.", "info")}>Invite</Button>
                 </div>
               </Card>
             </motion.div>
@@ -319,7 +638,7 @@ export default function Recruiter() {
             <Button
               type="button"
               variant="link"
-              onClick={() => { setQ(""); setMinFit(65); setMinSuccess(60); setSegment("all"); setJobType("all"); setSelectedJob("all"); setDnlaStatus("all"); setSort("fit"); setChips([]); }}
+              onClick={() => { setQ(""); setMinFit(0); setMinSuccess(0); setSegment("all"); setJobType("all"); setSelectedJob("all"); setDnlaStatus("all"); setSort("fit"); setChips([]); }}
               className="text-ink-500 hover:text-ink-900"
             >
               Clear filters
@@ -333,7 +652,7 @@ export default function Recruiter() {
             <FilterField label="Posting" htmlFor="recruiter-posting">
               <select id="recruiter-posting" value={selectedJob} onChange={(e) => setSelectedJob(e.target.value)} className="w-full rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all">
                 <option value="all">All postings</option>
-                {activeJobs.map((job) => <option key={job.id} value={job.id}>{job.title}</option>)}
+                {jobCards.map((job) => <option key={job.id} value={job.id}>{job.title}</option>)}
               </select>
             </FilterField>
             <FilterField label="Experience">
@@ -343,10 +662,10 @@ export default function Recruiter() {
               <SegmentedControl ariaLabel="Opening Type" options={[["all", "All"], ["job", "Jobs"], ["internship", "Interns"]]} value={jobType} onChange={(v) => setJobType(v as JobType)} />
             </FilterField>
             <FilterField label="Min Fit Score" htmlFor="recruiter-min-fit">
-              <RangeControl id="recruiter-min-fit" ariaLabel="Min Fit Score" value={minFit} min={45} max={95} onChange={setMinFit} />
+              <RangeControl id="recruiter-min-fit" ariaLabel="Min Fit Score" value={minFit} min={0} max={95} onChange={setMinFit} />
             </FilterField>
             <FilterField label="Min Success Prob" htmlFor="recruiter-min-success">
-              <RangeControl id="recruiter-min-success" ariaLabel="Min Success Prob" value={minSuccess} min={45} max={95} onChange={setMinSuccess} suffix="%" />
+              <RangeControl id="recruiter-min-success" ariaLabel="Min Success Prob" value={minSuccess} min={0} max={95} onChange={setMinSuccess} suffix="%" />
             </FilterField>
             <FilterField label="DNLA Status">
               <SegmentedControl ariaLabel="DNLA Status" options={[["all", "All"], ["available", "Ready"], ["pending", "Pending"]]} value={dnlaStatus} onChange={(v) => setDnlaStatus(v as DnlaStatus)} />
@@ -402,7 +721,7 @@ export default function Recruiter() {
                 </button>
               ))}
             </div>
-            <Button type="button" variant="ghost" onClick={() => toast(`Exported ${rows.length} candidates (demo)`, "info")}><IconDownload className="w-4 h-4"/> Export</Button>
+            <Button type="button" variant="ghost" onClick={() => exportRows(rows, "taledge-candidates.csv")}><IconDownload className="w-4 h-4"/> Export</Button>
             <Button type="button" variant="primary" onClick={() => toast(`Generated group report for ${rows.length} candidates (demo)`, "info")}><IconReport className="w-4 h-4"/> Group Report</Button>
           </div>
         </div>
@@ -467,22 +786,33 @@ export default function Recruiter() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.95 }}
                       transition={{ delay: idx * 0.05 }}
-                      key={r.studentId + r.name}
-                      className={`grid grid-cols-12 items-center px-6 ${rowPad} text-sm transition-colors group ${selected.has(r.studentId) ? "bg-brand-50/50" : "hover:bg-ink-50/60"}`}
+                      key={r.poolId}
+                      className={`grid grid-cols-12 items-center px-6 ${rowPad} text-sm transition-colors group ${selected.has(r.poolId) ? "bg-brand-50/50" : "hover:bg-ink-50/60"}`}
                     >
                       <div className="col-span-3 flex min-w-0 items-center gap-3">
                         <input
                           type="checkbox"
                           aria-label={`Select ${r.name}`}
-                          checked={selected.has(r.studentId)}
-                          onChange={() => toggleOne(r.studentId)}
+                          checked={selected.has(r.poolId)}
+                          onChange={() => toggleOne(r.poolId)}
                           className="h-4 w-4 shrink-0 rounded border-ink-300 accent-brand-600"
                         />
                         <div className={`flex ${avatarSize} shrink-0 items-center justify-center rounded-xl2 bg-gradient-to-br from-brand-600 to-accent-500 text-sm font-bold text-white shadow-sm`}>
                           {initials(r.name)}
                         </div>
                         <div className="min-w-0">
-                          <div className="truncate font-bold text-ink-900 group-hover:text-brand-600 transition-colors">{r.name}</div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate font-bold text-ink-900 group-hover:text-brand-600 transition-colors">{r.name}</span>
+                            {r.verified && (
+                              <span title="Authenticated account" className="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-sky-700">
+                                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
+                                Verified
+                              </span>
+                            )}
+                            {r.published && (
+                              <span className="shrink-0 rounded-md bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-700">Published</span>
+                            )}
+                          </div>
                           <div className="truncate text-xs font-medium text-ink-500">{r.college}</div>
                           <div className="mt-1.5 flex flex-wrap gap-1.5">
                             <span className="rounded-md bg-ink-100 px-2 py-0.5 text-[10px] font-bold text-ink-600">{r.experience ?? "Fresher"}</span>
@@ -563,7 +893,10 @@ export default function Recruiter() {
           <div className="flex items-center gap-2 rounded-full border border-ink-200 bg-white px-3 py-2 shadow-[0_16px_44px_-18px_rgba(16,24,40,0.35)]">
             <span className="px-2 text-sm font-bold text-ink-900">{selected.size} selected</span>
             <span className="h-5 w-px bg-ink-200" />
-            <Button type="button" variant="ghost" size="sm" onClick={() => toast(`Exported ${selected.size} candidates (demo)`, "info")}>
+            <Button type="button" variant="primary" size="sm" className="bg-ink-900 hover:bg-ink-800" onClick={shortlistSelected}>
+              <IconTarget className="w-4 h-4" /> Shortlist
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => exportRows(rows.filter((r) => selected.has(r.poolId)), "taledge-selected.csv")}>
               <IconDownload className="w-4 h-4" /> Export
             </Button>
             <Button type="button" variant="primary" size="sm" onClick={() => toast(`Group report for ${selected.size} candidates (demo)`, "info")}>
@@ -576,6 +909,219 @@ export default function Recruiter() {
         </div>
       )}
 
+      {/* ── Post a role modal (PRD §4.5) ── */}
+      {showPostJob && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Post a role"
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-ink-900/50 backdrop-blur-sm p-4"
+          onClick={() => { if (!postingJob) setShowPostJob(false); }}
+        >
+          <div className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <Card variant="frosted" className="p-6">
+              <div className="mb-4 flex items-center justify-between">
+                <Heading as="h3" className="text-xl">Post a role</Heading>
+                <button type="button" aria-label="Close" onClick={() => setShowPostJob(false)} className="text-lg text-ink-400 hover:text-ink-900">✕</button>
+              </div>
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  {([["job", "Job · 1–3 yrs"], ["internship", "Internship · Fresher"]] as const).map(([v, l]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setJobForm((f) => ({ ...f, type: v, experience: v === "internship" ? "fresher" : "1-3" }))}
+                      className={`flex-1 rounded-xl2 px-3 py-2 text-sm font-bold transition-all ${jobForm.type === v ? "bg-ink-900 text-white" : "bg-ink-100 text-ink-600 hover:bg-ink-200"}`}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  value={jobForm.title}
+                  onChange={(e) => setJobForm((f) => ({ ...f, title: e.target.value }))}
+                  placeholder="Role title (e.g. Backend Engineer)"
+                  className="w-full rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all"
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    value={jobForm.location}
+                    onChange={(e) => setJobForm((f) => ({ ...f, location: e.target.value }))}
+                    placeholder="Location"
+                    className="w-full rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all"
+                  />
+                  <input
+                    value={jobForm.ctc}
+                    onChange={(e) => setJobForm((f) => ({ ...f, ctc: e.target.value }))}
+                    placeholder={jobForm.type === "internship" ? "Stipend" : "CTC range"}
+                    className="w-full rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all"
+                  />
+                </div>
+                <input
+                  value={jobForm.skills}
+                  onChange={(e) => setJobForm((f) => ({ ...f, skills: e.target.value }))}
+                  placeholder="Key skills (comma separated)"
+                  className="w-full rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all"
+                />
+                <textarea
+                  value={jobForm.description}
+                  onChange={(e) => setJobForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="Short description (optional)"
+                  rows={3}
+                  className="w-full resize-none rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all"
+                />
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button type="button" variant="ghost" onClick={() => setShowPostJob(false)} disabled={postingJob}>Cancel</Button>
+                  <Button type="button" variant="primary" className="bg-ink-900 hover:bg-ink-800" onClick={submitJob} disabled={postingJob}>
+                    {postingJob ? "Posting…" : "Publish posting"}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* ── Off-campus upload → quotation → pay → invite (PRD §4.5) ── */}
+      {showUpload && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Upload off-campus candidates"
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-ink-900/50 backdrop-blur-sm p-4"
+          onClick={() => { if (!uploading) setShowUpload(false); }}
+        >
+          <div className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <Card variant="frosted" className="p-6">
+              <div className="mb-4 flex items-center justify-between">
+                <Heading as="h3" className="text-xl">Off-campus candidate list</Heading>
+                <button type="button" aria-label="Close" onClick={() => setShowUpload(false)} className="text-lg text-ink-400 hover:text-ink-900">✕</button>
+              </div>
+              {uploadResult ? (
+                <div className="py-2">
+                  <div className="text-center">
+                    <div aria-hidden className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-2xl text-emerald-600">✓</div>
+                    <p className="text-sm font-bold text-ink-900">
+                      {uploadResult.emailsSent > 0
+                        ? `${uploadResult.emailsSent} invite${uploadResult.emailsSent === 1 ? "" : "s"} sent`
+                        : `${uploadResult.queued} invite link${uploadResult.queued === 1 ? "" : "s"} generated`}
+                    </p>
+                    <p className="mx-auto mt-1 max-w-xs text-xs text-ink-500">Each link starts the candidate at profile → DNLA → AI interview.</p>
+                  </div>
+                  {uploadResult.invites.length > 0 && (
+                    <div className="mt-4 max-h-44 space-y-1.5 overflow-y-auto rounded-xl2 bg-ink-50/70 p-3 ring-1 ring-inset ring-ink-200/60">
+                      {uploadResult.invites.map((inv) => (
+                        <div key={inv.link} className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="truncate text-xs font-semibold text-ink-800">{inv.name}</div>
+                            <div className="truncate font-mono text-[10px] text-ink-400">{inv.link}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => navigator.clipboard?.writeText(inv.link).then(() => toast("Link copied.", "success")).catch(() => {})}
+                            className="shrink-0 rounded-lg bg-white px-2 py-1 text-[10px] font-bold text-ink-700 ring-1 ring-inset ring-ink-200 hover:bg-ink-50"
+                          >Copy</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {uploadResult.emailsSent > 0 ? (
+                    <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[10px] text-emerald-700">
+                      ✓ <b>{uploadResult.emailsSent} invite email{uploadResult.emailsSent === 1 ? "" : "s"} sent automatically.</b> The links below are saved for your records too.
+                    </div>
+                  ) : (
+                    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] text-amber-700">
+                      Links are generated &amp; saved. <b>Add RESEND_API_KEY</b> to auto-send the emails - for now, copy &amp; send them.
+                    </div>
+                  )}
+                  <div className="mt-3 flex justify-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => navigator.clipboard?.writeText(uploadResult.invites.map((i) => `${i.name}: ${i.link}`).join("\n")).then(() => toast("All links copied.", "success")).catch(() => {})}
+                    >Copy all</Button>
+                    <Button type="button" variant="primary" className="bg-ink-900 hover:bg-ink-800" onClick={() => setShowUpload(false)}>Done</Button>
+                  </div>
+                </div>
+              ) : jobCards.length === 0 ? (
+                <div className="py-4 text-center">
+                  <div aria-hidden className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-2xl">📋</div>
+                  <p className="text-sm font-bold text-ink-900">Post a role first</p>
+                  <p className="mx-auto mt-1 max-w-xs text-xs text-ink-500">Off-campus invites attach to a job or internship. Create one, then come back to upload your candidate list.</p>
+                  <div className="mt-5 flex justify-center gap-2">
+                    <Button type="button" variant="ghost" onClick={() => setShowUpload(false)}>Cancel</Button>
+                    <Button type="button" variant="primary" className="bg-ink-900 hover:bg-ink-800" onClick={() => { setShowUpload(false); setShowPostJob(true); }}>Post a role</Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label htmlFor="upload-role" className="text-[10px] font-bold uppercase tracking-wider text-ink-500">Role (invites attach to a posting)</label>
+                    <select
+                      id="upload-role"
+                      value={uploadJobId}
+                      onChange={(e) => setUploadJobId(e.target.value)}
+                      className="mt-1 w-full rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all"
+                    >
+                      <option value="">Select a posted role…</option>
+                      {jobCards.map((j) => <option key={j.id} value={j.id}>{j.title}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="upload-list" className="text-[10px] font-bold uppercase tracking-wider text-ink-500">Candidates · one per line: Name, email</label>
+                    <textarea
+                      id="upload-list"
+                      value={uploadText}
+                      onChange={(e) => setUploadText(e.target.value)}
+                      rows={5}
+                      placeholder={"Aarav Mehta, aarav@example.com\nDiya Sharma, diya@example.com"}
+                      className="mt-1 w-full resize-none rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl2 bg-ink-50/70 p-3 ring-1 ring-inset ring-ink-200/60">
+                    <div className="text-xs text-ink-600">
+                      <span className="font-bold text-ink-900">{parsedUploads.length}</span> candidate{parsedUploads.length === 1 ? "" : "s"}
+                      {paymentsEnabled ? ` · ₹${PRICE_PER_CANDIDATE}/assessment seat` : " · assessment seats"}
+                    </div>
+                    <div className="text-base font-black text-ink-900">
+                      {paymentsEnabled ? `₹${(parsedUploads.length * PRICE_PER_CANDIDATE).toLocaleString("en-IN")}` : "Free · pilot"}
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button type="button" variant="ghost" onClick={() => setShowUpload(false)} disabled={uploading}>Cancel</Button>
+                    <Button type="button" variant="primary" className="bg-ink-900 hover:bg-ink-800" onClick={sendInvites} disabled={uploading || parsedUploads.length === 0 || !uploadJobId}>
+                      {uploading
+                        ? "Processing…"
+                        : `${paymentsEnabled ? "Pay & send" : "Send"} ${parsedUploads.length || ""} invite${parsedUploads.length === 1 ? "" : "s"}`}
+                    </Button>
+                  </div>
+                  <p className="text-center text-[10px] text-ink-400">
+                    {paymentsEnabled
+                      ? "Confirms a real charge before assessment links are sent."
+                      : "Free during the pilot - assessment invite links are sent immediately."}
+                  </p>
+                </div>
+              )}
+
+              {/* Live status of previously-sent invites (invited→started→completed). */}
+              {sentInvites.length > 0 && (
+                <div className="mt-4 border-t border-ink-200/60 pt-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-ink-500">Sent invites · live status</p>
+                  <div className="mt-2 max-h-44 space-y-1 overflow-auto">
+                    {sentInvites.map((inv) => (
+                      <div key={inv.token} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="min-w-0 truncate text-ink-700">{inv.name} · {inv.email}</span>
+                        <Badge tone={inv.status === "completed" ? "success" : inv.status === "started" ? "warn" : "neutral"}>{inv.status}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Card>
+          </div>
+        </div>
+      )}
+
       {/* Candidate quick-view drawer */}
       <Drawer
         open={!!quickView}
@@ -584,10 +1130,19 @@ export default function Recruiter() {
         width="md"
         footer={
           quickView && (
-            <ButtonLink href={`/student/${quickView.studentId}`} className="w-full justify-center">
-              View full profile
-              <IconArrow className="w-4 h-4" />
-            </ButtonLink>
+            <div className="w-full space-y-2">
+              {/* Candidate reports access (PRD §4.5): consolidated Fit Score, the
+                  AI interview report, and the core DNLA report. */}
+              <div className="grid grid-cols-3 gap-2">
+                <ButtonLink href={`/student/${quickView.studentId}/fit-score`} variant="ghost" size="sm" className="justify-center">Fit Score</ButtonLink>
+                <ButtonLink href={`/student/${quickView.studentId}/report/ai`} variant="ghost" size="sm" className="justify-center">AI report</ButtonLink>
+                <ButtonLink href={`/student/${quickView.studentId}/report/dnla`} variant="ghost" size="sm" className="justify-center">DNLA</ButtonLink>
+              </div>
+              <ButtonLink href={`/student/${quickView.studentId}`} className="w-full justify-center">
+                View full profile
+                <IconArrow className="w-4 h-4" />
+              </ButtonLink>
+            </div>
           )
         }
       >
@@ -633,7 +1188,7 @@ export default function Recruiter() {
               </div>
               <div className="col-span-2">
                 <dt className="text-ink-500">Role match</dt>
-                <dd className="font-semibold text-ink-800">{quickView.roleFit ?? "—"}</dd>
+                <dd className="font-semibold text-ink-800">{quickView.roleFit ?? "-"}</dd>
               </div>
             </dl>
 
@@ -657,6 +1212,8 @@ export default function Recruiter() {
           icon={<IconUpload className="w-6 h-6"/>} title="Private hiring assessment"
           desc="Upload external candidates, issue invite links, collect evidence, compare against shared pools."
           action="Create batch" secAction="Pricing" delay={0.1}
+          onAction={() => toast("Private hiring batches are coming soon in the live build.", "info")}
+          onSecAction={() => toast("Pricing details are coming soon.", "info")}
         >
           <div className="space-y-3 my-6">
             <WorkflowStep label="1" title="Upload CSV / resumes" detail="Candidate details, role, email, experience." />
@@ -669,6 +1226,7 @@ export default function Recruiter() {
           icon={<IconReport className="w-6 h-6"/>} title="Reports & Shortlisting"
           desc="Generate comprehensive analytics from your current filtered views."
           action="Generate report" delay={0.2}
+          onAction={() => toast(`Generated group report for ${rows.length} candidates (demo)`, "info")}
         >
           <div className="flex items-center gap-5 my-6">
             <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-brand-50">
@@ -684,8 +1242,8 @@ export default function Recruiter() {
               <div className="text-2xl font-black text-brand-900">{Math.round((shortlisted.length / Math.max(rows.length, 1)) * 100)}%</div>
             </div>
             <div>
-              <div className="text-3xl font-black text-ink-900">{shortlisted.length}</div>
-              <div className="text-sm font-medium text-ink-500 leading-tight mt-1">Candidates in<br/>shortlist</div>
+              <div className="text-3xl font-black text-ink-900">{shortlist.length}</div>
+              <div className="text-sm font-medium text-ink-500 leading-tight mt-1">Candidates in<br/>your shortlist</div>
             </div>
           </div>
           <div className="space-y-2 mb-6">
@@ -695,24 +1253,25 @@ export default function Recruiter() {
         </BottomCard>
 
         <BottomCard
-          icon={<IconLink className="w-6 h-6"/>} title="Shared Institute Access"
-          desc="Institutes share scoped recruiter links for selected batches, roles, and reports."
-          action="Manage links" delay={0.3} secondaryBtn
+          icon={<IconLink className="w-6 h-6"/>} title="Top & Trending Colleges"
+          desc="Colleges ranked by the average Fit Score of their candidates in your pool."
+          action="View all" delay={0.3} secondaryBtn
+          onAction={() => toast("Full college rankings open in the live build.", "info")}
         >
           <div className="space-y-3 my-6">
-            {(topInstitutes ?? []).length === 0 ? (
+            {trendingColleges.length === 0 ? (
               <div className="rounded-xl2 bg-white/50 p-4 ring-1 ring-inset ring-ink-200/50 text-sm text-ink-500">
-                No institutes have shared access yet.
+                No candidate data yet - colleges rank as candidates complete assessments.
               </div>
             ) : (
-              (topInstitutes ?? []).map(([name, score, note], i) => (
-                <div key={i} className="flex items-center justify-between rounded-xl2 bg-white/50 p-3 shadow-sm ring-1 ring-inset ring-ink-200/50">
-                  <div>
-                    <div className="text-sm font-bold text-ink-900">{name}</div>
-                    <div className="text-[10px] font-semibold text-ink-500 uppercase tracking-wide mt-0.5">{note}</div>
+              trendingColleges.map((c, i) => (
+                <div key={c.name} className="flex items-center justify-between rounded-xl2 bg-white/50 p-3 shadow-sm ring-1 ring-inset ring-ink-200/50">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-bold text-ink-900">{i + 1}. {c.name}</div>
+                    <div className="text-[10px] font-semibold text-ink-500 uppercase tracking-wide mt-0.5">{c.count} candidate{c.count === 1 ? "" : "s"} · avg fit</div>
                   </div>
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-ink-900 text-sm font-bold text-white shadow-sm">
-                    {score}
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white shadow-sm ${c.avg >= 75 ? "bg-emerald-600" : c.avg >= 60 ? "bg-ink-900" : "bg-amber-600"}`}>
+                    {c.avg}
                   </div>
                 </div>
               ))
@@ -807,7 +1366,7 @@ function WorkflowStep({ label, title, detail }: { label: string; title: string; 
   );
 }
 
-function BottomCard({ icon, title, desc, action, secAction, secondaryBtn, children, delay }: any) {
+function BottomCard({ icon, title, desc, action, secAction, secondaryBtn, children, delay, onAction, onSecAction }: any) {
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay }} className="h-full">
       <Card variant="frosted" className="flex flex-col h-full rounded-xl3 p-8 relative overflow-hidden">
@@ -822,11 +1381,12 @@ function BottomCard({ icon, title, desc, action, secAction, secondaryBtn, childr
             type="button"
             variant={secondaryBtn ? "ghost" : "primary"}
             className={secondaryBtn ? "flex-1" : "flex-1 bg-ink-900 hover:bg-ink-800"}
+            onClick={onAction}
           >
             {action}
           </Button>
           {secAction && (
-            <Button type="button" variant="ghost">{secAction}</Button>
+            <Button type="button" variant="ghost" onClick={onSecAction}>{secAction}</Button>
           )}
         </div>
       </Card>

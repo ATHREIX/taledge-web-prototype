@@ -8,7 +8,7 @@ Talent Intelligence & Success Platform prototype. A dual-track web app that fuse
 - Tailwind CSS 3
 - Google Gemini API
   - `gemini-2.5-flash` for resume parsing, interview turns, and Fit Score synthesis
-  - `gemini-2.5-flash-native-audio-preview-12-2025` for Gemini Live token provisioning
+  - `gemini-3.1-flash-live-preview` for Gemini Live token provisioning
 - pnpm
 
 ## Local development
@@ -29,7 +29,7 @@ Create a `.env.local` file in the project root (copy from below or create manual
 # Required: Gemini API key for all AI features
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_TEXT_MODEL=gemini-2.5-flash
-GEMINI_LIVE_MODEL=gemini-2.5-flash-native-audio-preview-12-2025
+GEMINI_LIVE_MODEL=gemini-3.1-flash-live-preview
 ```
 
 ### Getting Your Gemini API Key
@@ -45,7 +45,7 @@ GEMINI_LIVE_MODEL=gemini-2.5-flash-native-audio-preview-12-2025
 | --- | --- |
 | `GEMINI_API_KEY` | Required for resume parsing, interview questions, Fit Score synthesis, and Gemini Live token provisioning. Without it, AI endpoints return `503` instead of fake results. |
 | `GEMINI_TEXT_MODEL` | Text/multimodal Gemini model. Defaults to `gemini-2.5-flash`. |
-| `GEMINI_LIVE_MODEL` | Live API model. Defaults to `gemini-2.5-flash-native-audio-preview-12-2025`. |
+| `GEMINI_LIVE_MODEL` | Live API model. Defaults to `gemini-3.1-flash-live-preview`. |
 
 ## Voice Interview Pipeline
 
