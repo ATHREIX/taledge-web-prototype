@@ -246,7 +246,10 @@ export default function Onboarding() {
         setEmail(p.email || "");
         setInstitution(p.institution || "");
         setYearCohort(p.year_cohort || "");
-        if (p.target_role) {
+        // An off-campus invite carries the recruiter's chosen role - that posting
+        // is authoritative, so a role merely INFERRED from the candidate's resume
+        // must NOT silently overwrite it. Without an invite, use the parsed role.
+        if (p.target_role && !inviteCtx) {
           setSelectedRole(p.target_role);
         }
       }
