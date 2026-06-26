@@ -667,14 +667,22 @@ export async function GET(req: NextRequest) {
   if (!sid) {
     return NextResponse.json({ ok: false, error: "studentId required" }, { status: 400 });
   }
-  const readable =
-    principal.demo || sid === principal.uid || sid.startsWith("candidate-inv-");
-  if (!readable) return forbidden();
   try {
     const rec = await getCandidate(sid);
+    // Read access: demo mode; the owner (uid); an invited candidate's report; or
+    // ANY authenticated (non-demo) recruiter viewing a candidate who has
+    // published to recruiters. The recruiter "View" opens this read-only report,
+    // so a published candidate must be readable for the report to render.
+    const readable =
+      principal.demo ||
+      sid === principal.uid ||
+      sid.startsWith("candidate-inv-") ||
+      (!principal.demo && !!(rec as any)?.publishedToRecruiters);
+    if (!readable) return forbidden();
+    const name = (rec as any)?.name ?? null;
     const raw = (rec as any)?.fitReportJson;
     if (!raw || typeof raw !== "string") {
-      return NextResponse.json({ ok: true, report: null });
+      return NextResponse.json({ ok: true, report: null, name });
     }
     let report: unknown = null;
     try {
@@ -687,6 +695,7 @@ export async function GET(req: NextRequest) {
       report,
       ts: (rec as any)?.fitReportTs ?? null,
       source: "stored",
+      name,
     });
   } catch (e) {
     logger.warn("fit-score GET: stored report read failed (non-fatal)", { studentId: sid, err: String(e) });

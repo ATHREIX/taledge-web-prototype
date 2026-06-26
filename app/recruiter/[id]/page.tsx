@@ -863,8 +863,8 @@ export default function Recruiter() {
                         <ButtonLink
                           variant="ghost"
                           size="sm"
-                          href={`/student/${r.studentId}`}
-                          aria-label={`View ${r.name}'s profile`}
+                          href={`/student/${r.studentId}/fit-score?view=recruiter`}
+                          aria-label={`View ${r.name}'s Fit Score report`}
                         >
                           View
                         </ButtonLink>
@@ -1134,12 +1134,12 @@ export default function Recruiter() {
               {/* Candidate reports access (PRD §4.5): consolidated Fit Score, the
                   AI interview report, and the core DNLA report. */}
               <div className="grid grid-cols-3 gap-2">
-                <ButtonLink href={`/student/${quickView.studentId}/fit-score`} variant="ghost" size="sm" className="justify-center">Fit Score</ButtonLink>
+                <ButtonLink href={`/student/${quickView.studentId}/fit-score?view=recruiter`} variant="ghost" size="sm" className="justify-center">Fit Score</ButtonLink>
                 <ButtonLink href={`/student/${quickView.studentId}/report/ai`} variant="ghost" size="sm" className="justify-center">AI report</ButtonLink>
                 <ButtonLink href={`/student/${quickView.studentId}/report/dnla`} variant="ghost" size="sm" className="justify-center">DNLA</ButtonLink>
               </div>
-              <ButtonLink href={`/student/${quickView.studentId}`} className="w-full justify-center">
-                View full profile
+              <ButtonLink href={`/student/${quickView.studentId}/fit-score?view=recruiter`} className="w-full justify-center">
+                View Fit Score report
                 <IconArrow className="w-4 h-4" />
               </ButtonLink>
             </div>

@@ -1,7 +1,7 @@
 "use client";
 
-import { notFound, useParams, useRouter, usePathname } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { notFound, useParams, useRouter, usePathname, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ScoreRing, Bar } from "@/components/score-ring";
 import { getStudent } from "@/lib/data";
@@ -97,10 +97,17 @@ function normalizeReport(raw: Partial<GenReport> | null | undefined): GenReport 
 
 type PublishState = "idle" | "publishing" | "published" | "error";
 
-export default function FitScorePage() {
+function FitScorePageInner() {
   const params = useParams();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // Recruiter-facing read-only view: the recruiter "View" opens this report with
+  // ?view=recruiter. In that mode we render ONLY the candidate's persisted Fit
+  // Score report - no candidate self-actions (Publish / Reattempt / Generate /
+  // Regenerate / "Start assessment"), and we NEVER trigger a Gemini generation
+  // (read the stored server copy only, which is free).
+  const recruiterView = searchParams.get("view") === "recruiter";
   const id = String(params.id);
   const s = getStudent(id);
   if (!s) notFound();
@@ -121,6 +128,9 @@ export default function FitScorePage() {
   const [generatedAt, setGeneratedAt] = useState<number | null>(null);
   const [publishState, setPublishState] = useState<PublishState>("idle");
   const [publishError, setPublishError] = useState<string>("");
+  // Candidate's real name, resolved from the durable record (recruiter view only -
+  // the recruiter's own localStorage profile would otherwise mislabel the report).
+  const [recruiterName, setRecruiterName] = useState<string>("");
 
   // Publish the Fit Score report to the recruiter portal. Confirms intent,
   // shows a loading state, and surfaces a success / error result.
@@ -284,6 +294,31 @@ export default function FitScorePage() {
 
   useEffect(() => {
     setStatus("checking");
+    // Recruiter read-only view: load ONLY the candidate's persisted server report
+    // (free, cross-device). Never read this device's localStorage (it's the
+    // recruiter's, not the candidate's) and never auto-generate (no Gemini cost).
+    if (recruiterView) {
+      void (async () => {
+        try {
+          const r = await authedFetch(`/api/generate-fit-score?studentId=${encodeURIComponent(id)}`);
+          if (r.ok) {
+            const d = await r.json();
+            if (d?.name) setRecruiterName(String(d.name));
+            if (d?.ok && d.report?.fit_score != null) {
+              setReport(normalizeReport(d.report));
+              setSource(d.source || "stored");
+              setGeneratedAt(Number(d.ts) || null);
+              setStatus("generated");
+              return;
+            }
+          }
+        } catch {
+          /* fall through to the read-only empty state */
+        }
+        setStatus("idle");
+      })();
+      return;
+    }
     // Freshness baseline: the newest interview round on THIS device. A stored
     // report (local OR server) is trusted only if generated AFTER this, so
     // retaking any round still forces a regenerate.
@@ -356,13 +391,17 @@ export default function FitScorePage() {
       })();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, recruiterView]);
 
   const profile = readWorkspaceProfile();
   // Prefer the candidate's real onboarding profile name over the seeded demo
   // student record - everyone browses under the same demo id (candidate-001),
-  // so s.name would otherwise label every report with the seeded persona.
-  const candidateName: string = (profile.fullName && String(profile.fullName).trim()) || s.name;
+  // so s.name would otherwise label every report with the seeded persona. In the
+  // recruiter view we have no candidate-local profile, so use the name resolved
+  // from the durable record (never the recruiter's own localStorage profile).
+  const candidateName: string = recruiterView
+    ? (recruiterName || s.name)
+    : (profile.fullName && String(profile.fullName).trim()) || s.name;
   const candidateFirst = candidateName.split(" ")[0];
 
   return (
@@ -375,15 +414,26 @@ export default function FitScorePage() {
         {/* Header */}
         <motion.div variants={itemVariants} className="mb-10">
           <Breadcrumbs
-            items={[
-              { label: "Dashboard", href: "/dashboard" },
-              { label: "Workspace", href: `${flowBase}/${s.id}` },
-              { label: "Fit Score" },
-            ]}
+            items={
+              recruiterView
+                ? [
+                    { label: "Recruiter", href: "/dashboard" },
+                    { label: "Candidate report" },
+                  ]
+                : [
+                    { label: "Dashboard", href: "/dashboard" },
+                    { label: "Workspace", href: `${flowBase}/${s.id}` },
+                    { label: "Fit Score" },
+                  ]
+            }
           />
           <PageHeader
-            eyebrow="Fit Score & Success Probability"
-            title={`Structured feedback report for ${candidateFirst}`}
+            eyebrow={recruiterView ? "Candidate Fit Score Report" : "Fit Score & Success Probability"}
+            title={
+              recruiterView
+                ? `Fit Score report · ${candidateName}`
+                : `Structured feedback report for ${candidateFirst}`
+            }
             description="Composite Fit Score synthesized from technical interview, behavioural interview, DNLA psychometrics, resume signals, and cross-component checks."
             actions={
               <div className="flex items-center gap-2 print:hidden">
@@ -391,9 +441,15 @@ export default function FitScorePage() {
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z" /></svg>
                   Print / PDF
                 </Button>
-                <ButtonLink href={`${flowBase}/${s.id}`} variant="ghost" size="sm" aria-label="Back to student dashboard">
-                  <ArrowLeft /> Back to Dashboard
-                </ButtonLink>
+                {recruiterView ? (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => router.back()} aria-label="Back to recruiter pipeline">
+                    <ArrowLeft /> Back to pipeline
+                  </Button>
+                ) : (
+                  <ButtonLink href={`${flowBase}/${s.id}`} variant="ghost" size="sm" aria-label="Back to student dashboard">
+                    <ArrowLeft /> Back to Dashboard
+                  </ButtonLink>
+                )}
               </div>
             }
           />
@@ -405,6 +461,7 @@ export default function FitScorePage() {
             error={genError}
             generatedAt={generatedAt}
             onRegenerate={generate}
+            readOnly={recruiterView}
           />
         </motion.div>
 
@@ -415,29 +472,32 @@ export default function FitScorePage() {
              instead of a blank/Pending score grid. */
           <motion.div variants={itemVariants}>
             <Card variant="default" className="rounded-xl2 overflow-hidden p-8 text-center sm:p-12">
-              <Eyebrow className="text-brand-500">No assessment evidence yet</Eyebrow>
+              <Eyebrow className="text-brand-500">No Fit Score report yet</Eyebrow>
               <Heading as="h2" className="mt-3">
-                Complete an interview to unlock your Fit Score
+                {recruiterView
+                  ? "This candidate hasn't published a Fit Score report yet"
+                  : "Complete an interview to unlock your Fit Score"}
               </Heading>
               <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-ink-600">
-                We could not find a captured assessment for
-                {" "}{candidateFirst}. Complete the AI technical and behavioural
-                interviews to generate a personalized Fit Score report grounded
-                in your responses.
+                {recruiterView
+                  ? `${candidateName} has not completed the assessment, so there is no Fit Score report to display yet. It will appear here once they finish their interviews and publish.`
+                  : `We could not find a captured assessment for ${candidateFirst}. Complete the AI technical and behavioural interviews to generate a personalized Fit Score report grounded in your responses.`}
               </p>
-              <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-                <ButtonLink
-                  href={`${flowBase}/${s.id}/dnla`}
-                  variant="primary"
-                  size="lg"
-                >
-                  Start assessment
-                  <ArrowRight />
-                </ButtonLink>
-                <Button type="button" onClick={generate} variant="ghost" size="lg">
-                  Generate now
-                </Button>
-              </div>
+              {!recruiterView && (
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                  <ButtonLink
+                    href={`${flowBase}/${s.id}/dnla`}
+                    variant="primary"
+                    size="lg"
+                  >
+                    Start assessment
+                    <ArrowRight />
+                  </ButtonLink>
+                  <Button type="button" onClick={generate} variant="ghost" size="lg">
+                    Generate now
+                  </Button>
+                </div>
+              )}
             </Card>
           </motion.div>
         ) : (
@@ -490,6 +550,7 @@ export default function FitScorePage() {
                       tone={report.fit_score >= 70 ? "ok" : "warn"}
                     />
                   </div>
+                  {!recruiterView && (
                   <div className="space-y-2.5 lg:col-span-3">
                     <Button
                       type="button"
@@ -527,6 +588,7 @@ export default function FitScorePage() {
                       Development Pathway
                     </ButtonLink>
                   </div>
+                  )}
                 </div>
               </Card>
             </motion.div>
@@ -729,7 +791,9 @@ export default function FitScorePage() {
               </Card>
             </motion.section>
 
-            {/* PUBLISH OR REATTEMPT */}
+            {/* PUBLISH OR REATTEMPT - candidate self-actions, hidden in the
+                recruiter read-only view. */}
+            {!recruiterView && (
             <motion.section variants={itemVariants} className="mt-12">
               <Card variant="default" className="rounded-xl2 overflow-hidden p-6 sm:p-8">
                 <div className="flex flex-wrap items-center justify-between gap-6">
@@ -781,8 +845,10 @@ export default function FitScorePage() {
                 </div>
               </Card>
             </motion.section>
+            )}
 
-            {/* NEXT STEP */}
+            {/* NEXT STEP - candidate's onward path, hidden for recruiters. */}
+            {!recruiterView && (
             <motion.section variants={itemVariants} className="mt-12">
               <div className="rounded-xl2 border border-brand-200 bg-brand-50/70 p-6 sm:p-8 shadow-panel">
                 <div className="flex flex-wrap items-center justify-between gap-6">
@@ -807,10 +873,23 @@ export default function FitScorePage() {
                 </div>
               </div>
             </motion.section>
+            )}
           </div>
         )}
       </motion.section>
     </PageShell>
+  );
+}
+
+/**
+ * Suspense boundary required by Next.js 15 for `useSearchParams()` in a client
+ * component. The fallback mirrors the report's loading shell.
+ */
+export default function FitScorePage() {
+  return (
+    <Suspense fallback={<PageShell><ReportSkeleton /></PageShell>}>
+      <FitScorePageInner />
+    </Suspense>
   );
 }
 
@@ -954,14 +1033,19 @@ function GenStatusBanner({
   error,
   generatedAt,
   onRegenerate,
+  readOnly = false,
 }: {
   status: GenStatus;
   source: string;
   error: string;
   generatedAt: number | null;
   onRegenerate: () => void;
+  readOnly?: boolean;
 }) {
   if (status === "idle" || status === "checking") {
+    // Read-only (recruiter) view: the empty state is rendered by the page body
+    // with a recruiter-appropriate message - no "generate" prompt here.
+    if (readOnly) return null;
     return (
       <Card variant="default" className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-xl2 px-5 py-4 text-xs">
         <div className="flex items-center gap-2.5 text-ink-600">
@@ -1007,9 +1091,11 @@ function GenStatusBanner({
             <span className="font-bold text-ink-900">TalEdge AI</span> · <span className="font-semibold text-emerald-700">{ago}</span>
           </span>
         </div>
-        <Button type="button" onClick={onRegenerate} variant="ghost" size="sm">
-          Regenerate Report
-        </Button>
+        {!readOnly && (
+          <Button type="button" onClick={onRegenerate} variant="ghost" size="sm">
+            Regenerate Report
+          </Button>
+        )}
       </div>
     );
   }
