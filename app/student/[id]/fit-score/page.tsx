@@ -102,12 +102,18 @@ function FitScorePageInner() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  // Recruiter-facing read-only view: the recruiter "View" opens this report with
-  // ?view=recruiter. In that mode we render ONLY the candidate's persisted Fit
-  // Score report - no candidate self-actions (Publish / Reattempt / Generate /
-  // Regenerate / "Start assessment"), and we NEVER trigger a Gemini generation
-  // (read the stored server copy only, which is free).
-  const recruiterView = searchParams.get("view") === "recruiter";
+  // External read-only view: a recruiter ("View") or an institute admin ("Drill
+  // down") opens this report with ?view=recruiter / ?view=institute. In that mode
+  // we render ONLY the candidate's persisted Fit Score report - no candidate
+  // self-actions (Publish / Reattempt / Generate / Regenerate / "Start
+  // assessment") - and we NEVER trigger a Gemini generation (read the stored
+  // server copy only, which is free).
+  const viewParam = searchParams.get("view");
+  const instituteView = viewParam === "institute";
+  // Any external viewer = read-only. `recruiterView` keeps its name as the gate
+  // for that behaviour across the page; institute-specific copy keys off
+  // `instituteView`.
+  const recruiterView = viewParam === "recruiter" || instituteView;
   const id = String(params.id);
   const s = getStudent(id);
   if (!s) notFound();
@@ -446,8 +452,8 @@ function FitScorePageInner() {
             items={
               recruiterView
                 ? [
-                    { label: "Recruiter", href: "/dashboard" },
-                    { label: "Candidate report" },
+                    { label: instituteView ? "Institute" : "Recruiter", href: "/dashboard" },
+                    { label: instituteView ? "Student report" : "Candidate report" },
                   ]
                 : [
                     { label: "Dashboard", href: "/dashboard" },
@@ -457,7 +463,13 @@ function FitScorePageInner() {
             }
           />
           <PageHeader
-            eyebrow={recruiterView ? "Candidate Fit Score Report" : "Fit Score & Success Probability"}
+            eyebrow={
+              recruiterView
+                ? instituteView
+                  ? "Student Fit Score Report"
+                  : "Candidate Fit Score Report"
+                : "Fit Score & Success Probability"
+            }
             title={
               recruiterView
                 ? `Fit Score report · ${candidateName}`
@@ -471,8 +483,8 @@ function FitScorePageInner() {
                   Print / PDF
                 </Button>
                 {recruiterView ? (
-                  <Button type="button" variant="ghost" size="sm" onClick={() => router.back()} aria-label="Back to recruiter pipeline">
-                    <ArrowLeft /> Back to pipeline
+                  <Button type="button" variant="ghost" size="sm" onClick={() => router.back()} aria-label={instituteView ? "Back to cohort" : "Back to recruiter pipeline"}>
+                    <ArrowLeft /> {instituteView ? "Back to cohort" : "Back to pipeline"}
                   </Button>
                 ) : (
                   <ButtonLink href={`${flowBase}/${s.id}`} variant="ghost" size="sm" aria-label="Back to student dashboard">
@@ -504,12 +516,12 @@ function FitScorePageInner() {
               <Eyebrow className="text-brand-500">No Fit Score report yet</Eyebrow>
               <Heading as="h2" className="mt-3">
                 {recruiterView
-                  ? "This candidate hasn't published a Fit Score report yet"
+                  ? `This ${instituteView ? "student" : "candidate"} hasn't completed a Fit Score report yet`
                   : "Complete an interview to unlock your Fit Score"}
               </Heading>
               <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-ink-600">
                 {recruiterView
-                  ? `${candidateName} has not completed the assessment, so there is no Fit Score report to display yet. It will appear here once they finish their interviews and publish.`
+                  ? `${candidateName} has not completed the assessment, so there is no Fit Score report to display yet. It will appear here once they finish their interviews.`
                   : `We could not find a captured assessment for ${candidateFirst}. Complete the AI technical and behavioural interviews to generate a personalized Fit Score report grounded in your responses.`}
               </p>
               {!recruiterView && (

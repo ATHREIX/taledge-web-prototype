@@ -390,7 +390,7 @@ export function CohortManager({
                         <div className="text-[10px] uppercase tracking-wide text-ink-400">Fit</div>
                       </div>
                       <Badge tone={s.status === "Interview-ready" ? "success" : s.status === "In progress" ? "warn" : "neutral"}>{s.status || "-"}</Badge>
-                      <ButtonLink href={`/student/${s.id}`} variant="ghost" size="sm">Drill down →</ButtonLink>
+                      <ButtonLink href={`/student/${s.id}/fit-score?view=institute`} variant="ghost" size="sm">Drill down →</ButtonLink>
                     </div>
                   );
                 })}

@@ -4,7 +4,7 @@ import { getPrincipal, unauthorized, forbidden } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { isProd } from "@/lib/flags";
-import { upsertCandidate, getCandidate, getInvite, updateInviteStatus } from "@/lib/talent-store";
+import { upsertCandidate, getCandidate, getInvite, updateInviteStatus, isInstituteAdmin } from "@/lib/talent-store";
 
 // Hard caps to keep payloads bounded and prevent prompt-bloat / cost abuse.
 const MAX_TRANSCRIPT_MESSAGES = 200;
@@ -199,7 +199,32 @@ const ROLE_JDS: Record<string, string> = {
 
 export async function POST(req: NextRequest) {
   // 1. Authenticate. uid is the authorization subject - never trust body ids as identity.
-  const principal = await getPrincipal(req);
+  let principal = await getPrincipal(req);
+
+  // Parse the body up front so an invited (account-less) candidate can be
+  // authenticated via their invite token below, before we reject the request.
+  let body: Body;
+  try {
+    body = (await req.json()) as Body;
+  } catch {
+    return NextResponse.json({ ok: false, error: "Invalid request body" }, { status: 400 });
+  }
+  if (body === null || typeof body !== "object") {
+    return NextResponse.json({ ok: false, error: "Invalid request body" }, { status: 400 });
+  }
+
+  // Invite-token auth fallback. A candidate invited via a recruiter/university
+  // link has NO Firebase account by design - but the invite token IS the
+  // credential the issuer gave them. Without this, their POST 401s in enforced
+  // mode, so their scores/report are NEVER saved and the invite never advances to
+  // "completed". Accept the token ONLY for that invite's own candidate-inv-*
+  // workspace, so a token holder can never write to anyone else's record.
+  if (!principal && typeof body.inviteToken === "string" && body.inviteToken) {
+    const expectedSid = `candidate-inv-${body.inviteToken.slice(0, 10)}`;
+    if (body.studentId === expectedSid && (await getInvite(body.inviteToken))) {
+      principal = { uid: expectedSid, demo: false };
+    }
+  }
   if (!principal) return unauthorized();
   const uid = principal.uid;
 
@@ -208,16 +233,6 @@ export async function POST(req: NextRequest) {
   if (limited) return limited;
 
   const apiKey = getGeminiApiKey();
-  let body: Body;
-  try {
-    body = (await req.json()) as Body;
-  } catch {
-    return NextResponse.json({ ok: false, error: "Invalid request body" }, { status: 400 });
-  }
-
-  if (body === null || typeof body !== "object") {
-    return NextResponse.json({ ok: false, error: "Invalid request body" }, { status: 400 });
-  }
 
   // 3. Validate required string identity/metadata fields.
   if (
@@ -677,7 +692,13 @@ export async function GET(req: NextRequest) {
       principal.demo ||
       sid === principal.uid ||
       sid.startsWith("candidate-inv-") ||
-      (!principal.demo && !!(rec as any)?.publishedToRecruiters);
+      (!principal.demo && !!(rec as any)?.publishedToRecruiters) ||
+      // An institute admin may read a Fit Score report for a student in their own
+      // institute (the "Drill down" action). Checked last so the cheap conditions
+      // short-circuit first.
+      (!principal.demo &&
+        !!(rec as any)?.instituteId &&
+        (await isInstituteAdmin((rec as any).instituteId, principal.uid, principal.demo)));
     if (!readable) return forbidden();
     const name = (rec as any)?.name ?? null;
     // Headline summary from the candidate's aggregate scores. A seed/demo (or any
