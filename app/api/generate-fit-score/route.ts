@@ -680,9 +680,20 @@ export async function GET(req: NextRequest) {
       (!principal.demo && !!(rec as any)?.publishedToRecruiters);
     if (!readable) return forbidden();
     const name = (rec as any)?.name ?? null;
+    // Headline summary from the candidate's aggregate scores. A seed/demo (or any
+    // pre-detailed) candidate has these numbers but no full LLM report yet, so the
+    // recruiter read-only view falls back to this to show the real Fit/Technical/
+    // Behavioural/Success numbers instead of a misleading "no report" state.
+    const summary = {
+      name,
+      targetRole: (rec as any)?.targetRole ?? null,
+      fit: (rec as any)?.fit ?? null,
+      dnla: (rec as any)?.dnla ?? [],
+      published: !!(rec as any)?.publishedToRecruiters,
+    };
     const raw = (rec as any)?.fitReportJson;
     if (!raw || typeof raw !== "string") {
-      return NextResponse.json({ ok: true, report: null, name });
+      return NextResponse.json({ ok: true, report: null, name, summary });
     }
     let report: unknown = null;
     try {
@@ -696,6 +707,7 @@ export async function GET(req: NextRequest) {
       ts: (rec as any)?.fitReportTs ?? null,
       source: "stored",
       name,
+      summary,
     });
   } catch (e) {
     logger.warn("fit-score GET: stored report read failed (non-fatal)", { studentId: sid, err: String(e) });

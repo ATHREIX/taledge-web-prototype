@@ -1332,9 +1332,11 @@ function SegmentedControl({ options, value, onChange, ariaLabel }: { options: [s
 }
 
 function ScoreBarLine({ label, value }: { label: string; value: number }) {
+  // Label column sizes to its content (min 44px) so long labels like
+  // "Behavioural" aren't clipped or overlapped by the bar in the quick-view drawer.
   return (
-    <div className="grid grid-cols-[44px_1fr_34px] items-center gap-3">
-      <span className="text-[10px] font-bold uppercase tracking-wider text-ink-500">{label}</span>
+    <div className="grid grid-cols-[minmax(44px,max-content)_1fr_34px] items-center gap-3">
+      <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wider text-ink-500">{label}</span>
       <div className="h-2 w-full overflow-hidden rounded-full bg-ink-200/50 shadow-inner">
         <motion.div initial={{ width: 0 }} whileInView={{ width: `${value}%` }} transition={{ duration: 1, ease: "easeOut" }} className="h-full rounded-full bg-gradient-to-r from-brand-600 to-accent-500" />
       </div>
