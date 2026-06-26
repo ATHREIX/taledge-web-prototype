@@ -203,25 +203,35 @@ function FitScorePageInner() {
   }, [id, router, flowBase]);
 
   const readTranscripts = useCallback(() => {
-    try {
-      const tech = localStorage.getItem(`taledge:interview:${id}:technical`);
-      // The guided funnel routes the behavioural round to /interview/dnla, so it
-      // persists the transcript under the `:dnla` key. Prefer the standalone
-      // `:behavioural` key when present, otherwise fall back to the funnel's
-      // `:dnla` transcript - this is the key mismatch that previously left the
-      // behavioural score permanently "Pending".
-      const behav =
-        localStorage.getItem(`taledge:interview:${id}:behavioural`) ||
-        localStorage.getItem(`taledge:interview:${id}:dnla`);
-      const final = localStorage.getItem(`taledge:interview:${id}:final`);
-      return {
-        technical: tech ? (JSON.parse(tech) as Msg[]) : [],
-        behavioural: behav ? (JSON.parse(behav) as Msg[]) : [],
-        final: final ? (JSON.parse(final) as Msg[]) : [],
-      };
-    } catch {
-      return { technical: [] as Msg[], behavioural: [] as Msg[], final: [] as Msg[] };
-    }
+    // Parse each round INDEPENDENTLY: one corrupted transcript must not discard
+    // the others (a single shared try/catch previously wiped all three rounds,
+    // silently scoring everything "Pending" off a real, completed interview).
+    const readOne = (...keys: string[]): Msg[] => {
+      for (const k of keys) {
+        const raw = localStorage.getItem(k);
+        if (!raw) continue;
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return parsed as Msg[];
+        } catch {
+          /* corrupted entry for this key - try the next, then give up */
+        }
+      }
+      return [];
+    };
+    // The guided funnel routes the behavioural round to /interview/dnla, so it
+    // persists the transcript under the `:dnla` key. Prefer the standalone
+    // `:behavioural` key when present, otherwise fall back to the funnel's
+    // `:dnla` transcript - this is the key mismatch that previously left the
+    // behavioural score permanently "Pending".
+    return {
+      technical: readOne(`taledge:interview:${id}:technical`),
+      behavioural: readOne(
+        `taledge:interview:${id}:behavioural`,
+        `taledge:interview:${id}:dnla`
+      ),
+      final: readOne(`taledge:interview:${id}:final`),
+    };
   }, [id]);
 
   const readWorkspaceProfile = useCallback(() => {
