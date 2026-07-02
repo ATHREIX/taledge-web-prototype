@@ -1,0 +1,96 @@
+# Firebase App Hosting configuration.
+# Docs: https://firebase.google.com/docs/app-hosting/configure
+#
+# App Hosting builds this Next.js app (SSR + API routes) on Cloud Run. It reads
+# this file at build + runtime. Two kinds of config below:
+#   - env with `value:`  -> plaintext, safe to commit (public config, non-secret)
+#   - env with `secret:` -> pulled from Cloud Secret Manager at runtime (never in git)
+#
+# NEXT_PUBLIC_* vars are baked into the client bundle, so they MUST have
+# availability BUILD (and RUNTIME so server code can read them too).
+#
+# Set secrets once with:
+#   firebase apphosting:secrets:set GEMINI_API_KEY
+# then grant the backend access when prompted. Repeat per secret name below.
+
+runConfig:
+  # Interview endpoints can run ~60s (Gemini live/turn). Cloud Run default request
+  # timeout is 300s, so no override needed. Tune instances to expected load.
+  minInstances: 0
+  maxInstances: 100
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 1024
+
+env:
+  # ---- Public Firebase web config (client SDK). Fill after creating the NEW
+  # project under umerkhan@athreix.com. Safe to commit — these are not secrets. ----
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: "AIzaSyCFAQm6PaxxvL3JiW8joN_3p6CDJpp01RI"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: "int-taledge.firebaseapp.com"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: "int-taledge"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: "int-taledge.firebasestorage.app"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "428275859645"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "1:428275859645:web:bd10d2dcbaa5dda043b7d4"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+    value: "G-461LNPS6Q7"
+    availability: [BUILD, RUNTIME]
+
+  # ---- Public feature flags (non-secret) ----
+  - variable: NEXT_PUBLIC_AUTH_ENFORCED
+    value: "true"
+    availability: [BUILD, RUNTIME]
+
+  # ---- Server-side non-secret config ----
+  - variable: DNLA_API_BASE
+    value: "https://backend.dnla.com"
+    availability: [RUNTIME]
+  - variable: DNLA_AREA
+    value: "ESK"
+    availability: [RUNTIME]
+  - variable: DNLA_SCALE_MAX
+    value: "9"
+    availability: [RUNTIME]
+  - variable: DNLA_SCALE_HIGHER_IS_BETTER
+    value: "true"
+    availability: [RUNTIME]
+
+  # ---- Secrets (Cloud Secret Manager). Create each with:
+  #        firebase apphosting:secrets:set <NAME>
+  #      Required for production: GEMINI_API_KEY.
+  #      Firestore admin access uses ADC from the attached backend service
+  #      account (K_SERVICE runtime) — no FIREBASE_SERVICE_ACCOUNT key needed;
+  #      org policy blocks downloading SA keys anyway. Grant that SA the
+  #      roles/datastore.user + roles/firebaseauth.admin roles. ----
+  - variable: GEMINI_API_KEY
+    secret: GEMINI_API_KEY
+    availability: [RUNTIME]
+
+  # ---- Optional secrets. Uncomment after creating the secret if you use them.
+  # DNLA_API_KEY must be ROTATED — the old value leaked in .env.local.example. ----
+  # - variable: DNLA_API_KEY
+  #   secret: DNLA_API_KEY
+  #   availability: [RUNTIME]
+  # - variable: DNLA_WEBHOOK_SECRET
+  #   secret: DNLA_WEBHOOK_SECRET
+  #   availability: [RUNTIME]
+  # - variable: RESEND_API_KEY
+  #   secret: RESEND_API_KEY
+  #   availability: [RUNTIME]
+  # - variable: PAIZA_API_KEY
+  #   secret: PAIZA_API_KEY
+  #   availability: [RUNTIME]
+  # - variable: GOOGLE_TTS_API_KEY
+  #   secret: GOOGLE_TTS_API_KEY
+  #   availability: [RUNTIME]

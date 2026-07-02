@@ -33,7 +33,9 @@ const contentSecurityPolicy = [
   // Firebase signInWithPopup renders the auth handler from the project's
   // authDomain (*.firebaseapp.com) and the providers' own sign-in screens.
   "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://login.microsoftonline.com",
-  "style-src 'self' 'unsafe-inline'",
+  // cdn.jsdelivr.net: the Monaco editor loads its editor.main.css stylesheet from
+  // jsdelivr; without it here the code editor renders unstyled (broken layout).
+  "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
   "font-src 'self' data:",
   "frame-ancestors 'none'",
 ]

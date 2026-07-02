@@ -10,6 +10,7 @@ import { getStudent } from "@/lib/data";
 import { useGeminiLive } from "@/hooks/useGeminiLive";
 import { CodeRunner, type RunResult, type TestSummary } from "@/components/code/code-runner";
 import { DEFAULT_LANGUAGE_ID, getCodeLanguage } from "@/lib/code-languages";
+import { type Difficulty, DIFFICULTY_OPTIONS, DEFAULT_DIFFICULTY, normalizeDifficulty } from "@/lib/interview-difficulty";
 
 // STT routing switch.
 //
@@ -335,6 +336,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const [isProcessing, setIsProcessing] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [setupStep, setSetupStep] = useState<"resume" | "rules" | "systemcheck" | "verify" | "interview">("rules");
+  // Pre-interview difficulty the candidate picks on the rules screen. It only
+  // sets where the AI STARTS — the interviewer still auto-judges and adapts.
+  const [difficulty, setDifficulty] = useState<Difficulty>(DEFAULT_DIFFICULTY);
   // Pre-flight system check (camera / mic / lighting / network / browser). All
   // checks are LOCAL browser APIs - they make no paid API calls. Camera + mic
   // must pass to continue; lighting / network are advisory warnings.
@@ -423,6 +427,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const connectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasStartedRef = useRef(false);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  // Mirror the chosen difficulty so network callbacks read the live value, never
+  // a stale closure.
+  const difficultyRef = useRef<Difficulty>(DEFAULT_DIFFICULTY);
   const [proctoringReady, setProctoringReady] = useState(false);
   const doneRef = useRef(false);
   // Mirror aiSpeaking into a ref so the speech-recognition onresult handler
@@ -498,6 +505,24 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       setRecording(false);
     }
   }, [done]);
+
+  // Restore a previously chosen difficulty once on mount (per device).
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("taledge:interview-difficulty");
+      if (saved) {
+        const d = normalizeDifficulty(saved);
+        setDifficulty(d);
+        difficultyRef.current = d;
+      }
+    } catch {}
+  }, []);
+
+  // Keep the ref + persistence in sync with the chosen difficulty.
+  useEffect(() => {
+    difficultyRef.current = difficulty;
+    try { localStorage.setItem("taledge:interview-difficulty", difficulty); } catch {}
+  }, [difficulty]);
 
   // Initialize page, camera, and start interview
   useEffect(() => {
@@ -2063,6 +2088,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           track,
           resumeSummary: resumeContext,
           dnlaSummary: buildDnlaSummary(id),
+          difficulty: difficultyRef.current,
           ...(mode === "final" ? { priorInterviews: buildPriorInterviews(id) } : {}),
         },
         { captureMic: !useBrowserStt }
@@ -2323,6 +2349,8 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         body: JSON.stringify({
           role: profile?.targetRole || (isExam ? "the exam" : "Software Engineer"),
           track,
+          // Coding problems only grade easy/medium/hard; "adaptive" maps to medium.
+          difficulty: difficultyRef.current === "adaptive" ? "medium" : difficultyRef.current,
           avoid: codingChallenge?.title ? [codingChallenge.title] : [],
         }),
       });
@@ -2558,6 +2586,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         profile.aspiration ? `Goal/Target Placement: ${profile.aspiration}` : "",
       ].filter(Boolean).join("\n") : "",
       dnlaSummary: buildDnlaSummary(id),
+      difficulty: difficultyRef.current,
       ...(mode === "final" ? { priorInterviews: buildPriorInterviews(id) } : {}),
       transcript: messages.map((mm) => ({
         role: mm.role === "ai" ? "assistant" : "user",
@@ -2572,6 +2601,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         body: JSON.stringify({
           sessionId,
           text: currentText,
+          difficulty: difficultyRef.current,
           recovery,
         }),
       });
@@ -2788,6 +2818,51 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             <div className="bg-rose-50 border border-rose-200 rounded-xl2 p-2.5 mb-4">
               <p className="text-rose-600 text-[10px] font-bold text-center">⚠ 3 violations = automatic termination. No exceptions.</p>
             </div>
+
+            {/* Difficulty picker — asked ONCE, before the AI interview (technical
+                round). The chosen level is persisted per device and reused for the
+                later behavioural/DNLA/final rounds, so we don't ask again there.
+                It only sets where the interviewer STARTS; the AI still auto-judges
+                every answer and adapts up or down from here. */}
+            {mode === "technical" ? (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-ink-800">Starting difficulty</span>
+                  <span className="text-[10px] text-ink-500 font-semibold">AI still adapts to your answers</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {DIFFICULTY_OPTIONS.map((opt) => {
+                    const active = difficulty === opt.key;
+                    return (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => setDifficulty(opt.key)}
+                        aria-pressed={active}
+                        title={opt.blurb}
+                        className={`rounded-xl2 border px-2.5 py-2 text-left transition ${
+                          active
+                            ? "border-brand-500 bg-brand-50 ring-1 ring-brand-500/40"
+                            : "border-ink-200/60 bg-white hover:border-ink-300"
+                        }`}
+                      >
+                        <span className={`block text-xs font-bold leading-tight ${active ? "text-brand-700" : "text-ink-800"}`}>
+                          {opt.label}
+                        </span>
+                        <span className="mt-0.5 block text-[10px] leading-snug text-ink-500">{opt.blurb}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="mb-4 flex items-center justify-between rounded-xl2 border border-ink-200/60 bg-ink-50/60 px-3 py-2">
+                <span className="text-[10px] text-ink-500 font-semibold">Starting difficulty (from your AI interview)</span>
+                <span className="text-xs font-bold text-brand-700">
+                  {DIFFICULTY_OPTIONS.find((o) => o.key === difficulty)?.label ?? "Adaptive"}
+                </span>
+              </div>
+            )}
 
             <Button type="button" onClick={() => setSetupStep("systemcheck")} disabled={!proctoringReady} size="lg" className="w-full">
               {proctoringReady ? "Continue to System Check" : <><Loader2 className="w-4 h-4 animate-spin" /> Initializing AI Proctoring Engine...</>}

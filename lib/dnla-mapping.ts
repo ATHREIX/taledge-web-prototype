@@ -24,6 +24,22 @@ export const AXIS_LABEL: Record<AxisKey, string> = {
   stress_capacity: "Stress Capacity",
 };
 
+// ───────────────────────────────────────────────────────────────────────────
+// TODO(DNLA meeting) — fill in from the answers to DNLA_MEETING_NOTES.md.
+// Until confirmed, the values here are best-guesses and the integration stays
+// behind the DNLA feature flag.
+//
+//   [ ] Q1 SCALE     → env DNLA_SCALE_MAX (raw max; guess 9) +
+//                      DNLA_SCALE_HIGHER_IS_BETTER (guess true). Confirm whether
+//                      any factor is reverse-scored (would need per-factor flags).
+//   [ ] Q1 NORMS     → env DNLA_BENCHMARK, or switch to per-factor norms if DNLA
+//                      returns an "Idealbereich" per factor (extend DnlaItem).
+//   [ ] Q2 CATALOGUE → replace the keyword heuristics in axisForFactor() with the
+//                      FULL factor-key → axis map below (keys + EN/DE labels +
+//                      official groups). Confirm our 4 axes match DNLA's groups.
+//   [ ] Q8 AREA      → env DNLA_API_AREA (ESK | AZS); catalogue differs per area.
+// ───────────────────────────────────────────────────────────────────────────
+
 // Explicit placements for the keys documented in the DNLA spec. Extend this as
 // the full ESK factor list is confirmed — anything not listed is routed by the
 // keyword heuristics in axisForFactor().
