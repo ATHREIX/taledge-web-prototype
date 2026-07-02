@@ -51,6 +51,12 @@ env:
   - variable: NEXT_PUBLIC_AUTH_ENFORCED
     value: "true"
     availability: [BUILD, RUNTIME]
+  # Server-side auth enforcement: requires a valid Firebase ID token on every
+  # API route and scopes each user to their uid. Firestore admin runs via ADC
+  # (see firebase-admin.ts). Keep in sync with NEXT_PUBLIC_AUTH_ENFORCED.
+  - variable: AUTH_ENFORCED
+    value: "true"
+    availability: [BUILD, RUNTIME]
 
   # ---- Server-side non-secret config ----
   - variable: DNLA_API_BASE
