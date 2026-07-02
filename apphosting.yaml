@@ -57,6 +57,14 @@ env:
   - variable: AUTH_ENFORCED
     value: "true"
     availability: [BUILD, RUNTIME]
+  # Pilot escape hatch: enable the Gemini Live interviewer in enforced/production
+  # mode. Without this, AUTH_ENFORCED=true disables the Live path (DEMO_MODE off).
+  # TRADE-OFF: hands GEMINI_API_KEY to logged-in, rate-limited browsers. Accepted
+  # for a controlled pilot; replace with a server-side WS proxy before open public
+  # launch. Set to "false" to disable Live interviews.
+  - variable: LIVE_INTERVIEW_ENABLED
+    value: "true"
+    availability: [RUNTIME]
 
   # ---- Server-side non-secret config ----
   - variable: DNLA_API_BASE
