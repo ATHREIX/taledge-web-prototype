@@ -11,6 +11,8 @@ export type LiveContext = {
   resumeSummary?: string;
   dnlaSummary?: string;
   priorInterviews?: string;
+  /** Pre-interview difficulty anchor ("adaptive" | "easy" | "medium" | "hard"). */
+  difficulty?: string;
 };
 
 export type LiveMessage = { role: "ai" | "user"; text: string };

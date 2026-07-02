@@ -16,8 +16,10 @@ import { getFirestore, type Firestore } from "firebase-admin/firestore";
  * Configuration (any one):
  *   - FIREBASE_SERVICE_ACCOUNT  = full service-account JSON (stringified)
  *   - GOOGLE_APPLICATION_CREDENTIALS = path to service-account file (ADC)
+ *   - Running on App Hosting / Cloud Run (K_SERVICE set) = ADC from the
+ *     attached backend service account, no key file needed.
  *
- * If NEITHER is set we DO NOT initialize - `adminAuth`/`adminDb` are null and
+ * If none apply we DO NOT initialize - `adminAuth`/`adminDb` are null and
  * callers degrade gracefully (demo mode). This keeps local dev runnable without
  * a service account while making production security a config flip.
  */
@@ -34,6 +36,12 @@ function init(): App | null {
       return initializeApp({ credential: cert(creds) });
     }
     if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      return initializeApp({ credential: applicationDefault() });
+    }
+    // Google-managed runtimes (App Hosting / Cloud Run) expose ADC via the
+    // attached service account — no key file required (and org policy may block
+    // downloading one). K_SERVICE is injected by Cloud Run; use it as the signal.
+    if (process.env.K_SERVICE) {
       return initializeApp({ credential: applicationDefault() });
     }
   } catch (e) {

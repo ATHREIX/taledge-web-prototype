@@ -4,6 +4,8 @@ import { GEMINI_LIVE_MODEL, getGeminiApiKey } from "@/lib/gemini";
 import { getPrincipal, unauthorized } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { DEMO_MODE } from "@/lib/flags";
+import { normalizeDifficulty, difficultyDirective } from "@/lib/interview-difficulty";
+import { questionBankDirective } from "@/lib/interview-question-bank";
 
 export const runtime = "nodejs";
 
@@ -18,6 +20,7 @@ type Body = {
   resumeSummary?: string;
   dnlaSummary?: string;
   priorInterviews?: string;
+  difficulty?: string;
 };
 
 const cap = (s: unknown, n: number) => (typeof s === "string" ? s.slice(0, n) : "");
@@ -78,6 +81,7 @@ function buildSystemInstruction(b: Body): string {
   const role = cap(b.role, 200) || "the role";
   const track = b.track === "exam" ? "exam" : "placement";
   const mode = b.mode || "technical";
+  const difficulty = normalizeDifficulty(b.difficulty);
 
   const roleLine =
     track === "exam"
@@ -104,6 +108,12 @@ function buildSystemInstruction(b: Body): string {
     // interviewer out of an otherwise agreeable native-audio model.
     INTERVIEWER_BEHAVIOR,
     IDK_PROTOCOL,
+    // Where to START on the ladder (the candidate's pre-interview choice). The
+    // adaptive ladder above still governs how you move from there.
+    difficultyDirective(difficulty),
+    // Seed bank of strong, big-company-style questions for this role/round —
+    // inspiration only; tailor and follow up adaptively.
+    questionBankDirective(role, mode, track),
     // Drive a real coding task for technical placement interviews.
     (mode === "technical" || mode === "final") && track === "placement"
       ? `CODING TASK: For a technical role (software / data / ML / engineering), include at least ONE hands-on coding task: ask the candidate to implement a specific function or algorithm and tell them to write and RUN it in the on-screen "Code" tab (a multi-language compiler with a Run button). They will submit it as a typed answer marked "[Coding answer · <language>]" with its execution output — then critique its correctness, efficiency, and edge cases out loud, and follow up on it.`
