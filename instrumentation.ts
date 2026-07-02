@@ -16,13 +16,18 @@ export async function register() {
   const enforced = process.env.AUTH_ENFORCED === "true";
   const hasAdminCreds = !!(
     process.env.FIREBASE_SERVICE_ACCOUNT?.trim() ||
-    process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim()
+    process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim() ||
+    // App Hosting / Cloud Run: the attached service account provides Application
+    // Default Credentials (no key file). K_SERVICE is injected by the runtime and
+    // is exactly the signal firebase-admin.ts uses to initialize via ADC.
+    process.env.K_SERVICE?.trim()
   );
 
   if (enforced && !hasAdminCreds) {
     throw new Error(
       "[boot] AUTH_ENFORCED=true but no Firebase Admin credentials are configured " +
-        "(set FIREBASE_SERVICE_ACCOUNT or GOOGLE_APPLICATION_CREDENTIALS). " +
+        "(set FIREBASE_SERVICE_ACCOUNT or GOOGLE_APPLICATION_CREDENTIALS, or run on " +
+        "App Hosting/Cloud Run where K_SERVICE provides ADC). " +
         "Refusing to start: enforced auth without admin would reject every request, and " +
         "disabling enforcement to 'fix' it would silently reopen the app. " +
         "Configure the service account, or set AUTH_ENFORCED=false for demo mode."
