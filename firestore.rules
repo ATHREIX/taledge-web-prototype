@@ -18,6 +18,14 @@ service cloud.firestore {
     function hasRole(role) {
       return isSignedIn() && request.auth.token[role] == true;
     }
+    // Recruiter-visibility / scoring keys on a candidate doc. These are written
+    // ONLY by the server Admin SDK (which bypasses these rules); a candidate must
+    // never be able to client-set them and forge a recruiter-visible, verified,
+    // or scored record.
+    function candidatePrivilegedKeys() {
+      return ['fit', 'publishedToRecruiters', 'publishedAt', 'verified',
+              'status', 'sourcedFrom', 'recruiterId', 'instituteId', 'jobId'];
+    }
 
     // Account profile: a user reads/writes only their own record. Identity
     // fields (uid/email/role) are enforced server-side; client writes here are
@@ -26,12 +34,22 @@ service cloud.firestore {
       allow read, write: if isOwner(uid);
     }
 
-    // Candidate profiles: a user can read/write only their own document.
+    // Candidate profiles: a user reads their own document; recruiters/institutes
+    // read profiles the candidate consented to publish.
     match /candidates/{uid} {
-      allow read, write: if isOwner(uid);
-      // Recruiters/institutes read candidate profiles the candidate published.
+      allow read: if isOwner(uid);
       allow read: if (hasRole('recruiter') || hasRole('institute'))
-                  && resource.data.published == true;
+                  && resource.data.publishedToRecruiters == true;
+      // The owner may create/update their own profile but must NOT set the
+      // privileged recruiter-visibility/scoring keys — those flow through the
+      // Admin SDK only (which bypasses these rules), so a client cannot forge a
+      // recruiter-visible or verified record. hasOnly(non-privileged) is
+      // expressed here as "the affected keys include none of the privileged set".
+      allow create: if isOwner(uid)
+                    && !request.resource.data.keys().hasAny(candidatePrivilegedKeys());
+      allow update: if isOwner(uid)
+                    && !request.resource.data.diff(resource.data)
+                          .affectedKeys().hasAny(candidatePrivilegedKeys());
     }
 
     // ── Catalog / aggregate collections ──────────────────────────────────────
@@ -77,7 +95,7 @@ service cloud.firestore {
                          && resource.data.ownerUid == request.auth.uid;
       allow create: if isSignedIn()
                     && request.resource.data.ownerUid == request.auth.uid;
-      allow read: if hasRole('recruiter') && resource.data.published == true;
+      allow read: if hasRole('recruiter') && resource.data.publishedToRecruiters == true;
     }
 
     // Coaching sessions: owner-only; coaches read sessions assigned to them.
@@ -86,7 +104,8 @@ service cloud.firestore {
                          && resource.data.ownerUid == request.auth.uid;
       allow create: if isSignedIn()
                     && request.resource.data.ownerUid == request.auth.uid;
-      allow read: if hasRole('coach');
+      // A coach reads ONLY the sessions assigned to them, never every tenant's.
+      allow read: if hasRole('coach') && resource.data.coachId == request.auth.uid;
     }
 
     // Everything else: explicit deny.

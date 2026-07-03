@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
   if (!principal) return unauthorized();
   const uid = principal.uid;
 
-  const limited = enforceRateLimit(req, {
+  const limited = await enforceRateLimit(req, {
     uid,
     limit: 10,
     windowMs: 60_000,

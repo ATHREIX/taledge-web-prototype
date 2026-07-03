@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import { syncSessionCookie } from "@/lib/session-cookie";
 import { Logo } from "@/components/logo";
 import { postAuthPath, type Role } from "@/lib/roles";
 import {
@@ -226,6 +227,13 @@ export default function RegisterPage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [dir, setDir] = useState(1);
+  // Same-origin ?next= threaded through to the "Sign in" cross-link so a
+  // deep-link/invite survives if the user switches to logging in instead.
+  const [next, setNext] = useState<string | null>(null);
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("next");
+    setNext(raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : null);
+  }, []);
 
   // account
   const [name, setName] = useState("");
@@ -348,8 +356,12 @@ export default function RegisterPage() {
     }
   };
 
-  const launchDashboard = () => {
+  const launchDashboard = async () => {
     const role = selectedRole?.role ?? "recruiter";
+    // Write the middleware gate cookie before navigating to a protected page
+    // (/onboarding and the role hubs are all gated), so the RSC fetch isn't
+    // bounced back to /login by enforced-mode middleware.
+    await syncSessionCookie(auth.currentUser);
     // Honor a same-origin ?next= (e.g. a recruiter who signed up to open an
     // institute's shared link returns to it). Candidates still enter onboarding.
     const nextParam =
@@ -380,7 +392,7 @@ export default function RegisterPage() {
           {!isSuccess && (
             <p className="text-[14px] text-slate-500">
               Already have an account?{" "}
-              <Link href="/login" className="font-semibold text-[#0057FF] hover:underline">Sign in</Link>
+              <Link href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"} className="font-semibold text-[#0057FF] hover:underline">Sign in</Link>
             </p>
           )}
         </header>

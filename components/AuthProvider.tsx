@@ -6,21 +6,15 @@ import type { User } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { Role } from '@/lib/roles';
+import { writeSessionCookie, clearSessionCookie } from '@/lib/session-cookie';
 
-// Mirror the Firebase ID token into a cookie the Edge middleware can read.
-// Firebase client auth lives in IndexedDB (no cookie), so without this the
-// server-side route guard (AUTH_ENFORCED=true) bounces every navigation to
-// /login. The token is still verified per-request via getPrincipal in API
-// routes - this cookie is only the coarse page gate.
-const TOKEN_COOKIE = 'firebaseIdToken';
+// The gate cookie the Edge middleware reads lives in lib/session-cookie so the
+// login/register flows can write it SYNCHRONOUSLY before navigating (avoiding
+// the race with this async listener). Here we only keep it fresh on token
+// refresh / sign-out.
 function setTokenCookie(token: string | null) {
-  if (typeof document === 'undefined') return;
-  const secure = typeof location !== 'undefined' && location.protocol === 'https:' ? '; Secure' : '';
-  if (token) {
-    document.cookie = `${TOKEN_COOKIE}=${token}; path=/; max-age=3600; SameSite=Lax${secure}`;
-  } else {
-    document.cookie = `${TOKEN_COOKIE}=; path=/; max-age=0; SameSite=Lax${secure}`;
-  }
+  if (token) writeSessionCookie(token);
+  else clearSessionCookie();
 }
 
 type AuthContextType = {

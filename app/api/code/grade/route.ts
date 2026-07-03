@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
   if (!principal) return unauthorized();
   const uid = principal.uid;
 
-  const limited = enforceRateLimit(req, { uid, limit: 15, windowMs: 60_000, scope: "code-grade" });
+  const limited = await enforceRateLimit(req, { uid, limit: 15, windowMs: 60_000, scope: "code-grade" });
   if (limited) return limited;
 
   const apiKey = getGeminiApiKey();

@@ -4,7 +4,7 @@ import { getPrincipal, unauthorized, forbidden } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { isProd } from "@/lib/flags";
-import { upsertCandidate, getCandidate, getInvite, updateInviteStatus, isInstituteAdmin } from "@/lib/talent-store";
+import { upsertCandidate, upsertExamAspirant, getCandidate, getInvite, getInstituteRecord, updateInviteStatus, isInstituteAdmin } from "@/lib/talent-store";
 
 // Hard caps to keep payloads bounded and prevent prompt-bloat / cost abuse.
 const MAX_TRANSCRIPT_MESSAGES = 200;
@@ -229,7 +229,7 @@ export async function POST(req: NextRequest) {
   const uid = principal.uid;
 
   // 2. Rate limit every Gemini-backed route.
-  const limited = enforceRateLimit(req, { uid, limit: 10, windowMs: 60000, scope: "fit-score" });
+  const limited = await enforceRateLimit(req, { uid, limit: 10, windowMs: 60000, scope: "fit-score" });
   if (limited) return limited;
 
   const apiKey = getGeminiApiKey();
@@ -543,27 +543,91 @@ Strictly valid JSON. No prose before or after.`;
 
     // ── Persist the result to the talent store ───────────────────────────────
     // So recruiters and the candidate's institute see this candidate's REAL
-    // performance (not seed data). Placement track only — exam aspirants are a
-    // separate collection. Best-effort: never fail the response on a store error.
-    if (body.track !== "exam") {
-      // WRITE-TARGET GUARD: only persist to ids this flow legitimately owns — the
-      // pilot demo id, an off-campus invite id, or (enforced auth) the caller's
-      // own uid. Never let a public call overwrite a seeded persona (candidate-002…)
-      // or another user's record from a body-supplied studentId.
-      const sid = body.studentId;
-      const writable =
-        (principal.demo && sid === "candidate-001") ||
-        sid.startsWith("candidate-inv-") ||
-        (!principal.demo && sid === uid);
-      if (!writable) {
-        logger.warn("fit-score: refused upsert to a non-owned/seed id", { uid, studentId: sid });
+    // performance (not seed data). PLACEMENT results land in the shared candidate
+    // pool; EXAM (Track 2) results land in the separate examAspirants collection —
+    // BOTH are persisted here. Best-effort: never fail the response on a store error.
+
+    // WRITE-TARGET GUARD: only persist to ids this flow legitimately owns — the
+    // pilot demo id, an off-campus/cohort invite id, or (enforced auth) the
+    // caller's own uid. Never let a public call overwrite a seeded persona
+    // (candidate-002…) or another user's record from a body-supplied studentId.
+    const sid = body.studentId;
+    const writable =
+      (principal.demo && sid === "candidate-001") ||
+      sid.startsWith("candidate-inv-") ||
+      (!principal.demo && sid === uid);
+    if (!writable) {
+      logger.warn("fit-score: refused upsert to a non-owned/seed id", { uid, studentId: sid });
+    } else {
+      const techScore = generated.technical_score as number;
+      const behavScore = generated.behavioural_score as number;
+      // Invite binding is resolved SERVER-SIDE from the invite token (the
+      // credential) — never from a spoofable body recruiterId/jobId. Resolved
+      // ONCE here and reused by both the status-advance and the per-track binding.
+      const invite =
+        typeof body.inviteToken === "string" && body.inviteToken
+          ? await getInvite(body.inviteToken)
+          : null;
+
+      // PRD §4.5 — advance the invite's tracked status for BOTH tracks (placement
+      // AND exam) so the issuing recruiter/institute sees real progress
+      // (invited → started → completed). Previously this lived inside the
+      // placement-only guard, so exam invites never advanced. "completed" once
+      // BOTH assessment rounds are scored; otherwise the candidate has at least
+      // begun. Monotonic in the store (never regresses), best-effort (never fails).
+      if (invite && typeof body.inviteToken === "string" && body.inviteToken) {
+        try {
+          const bothRoundsDone = techScore >= 0 && behavScore >= 0;
+          await updateInviteStatus(body.inviteToken, bothRoundsDone ? "completed" : "started");
+        } catch {
+          /* status tracking is best-effort */
+        }
+      }
+
+      if (body.track === "exam") {
+        // EXAM (Track 2) → examAspirants, scoped to the institute cohort from the
+        // invite. The headline "Success Potential" IS the exam fit composite
+        // (PRD §4.2, computed above with the 0.35/0.35/0.3 weights); the
+        // behavioural stream maps to exam temperament / resilience (see the
+        // scoring comment above). The wellbeing indices/trends the exam-cohort
+        // view also renders (consistency, stress, mood) have no interview source
+        // and stay at their neutral defaults until a tracking signal feeds them.
+        try {
+          const fitNum = generated.fit_score as number;
+          const patch: Record<string, any> = {
+            name: body.candidateName,
+            exam: body.targetRole,
+            fit: {
+              // Do NOT coerce the -1 "pending" sentinel to a misleading 0 — omit
+              // the sub-score so the institute sees "pending", not a real 0.
+              ...(techScore >= 0 ? { technical: techScore } : {}),
+              ...(behavScore >= 0 ? { behavioural: behavScore } : {}),
+              fit: fitNum,
+              successProbability: generated.success_probability as number,
+            },
+            successPotential: fitNum,
+            ...(behavScore >= 0 ? { resilience: behavScore } : {}),
+            fitReportJson: JSON.stringify(generated),
+            fitReportTs: Date.now(),
+          };
+          if (invite?.instituteId) {
+            patch.instituteId = invite.instituteId;
+            if (invite.cohort) patch.cohort = invite.cohort;
+            // The exam-cohort view (buildExamAnalytics) matches aspirants by
+            // institute NAME, so carry the resolved name alongside the id.
+            const inst = await getInstituteRecord(invite.instituteId);
+            if (inst) patch.institute = inst.name;
+          }
+          await upsertExamAspirant(sid, patch);
+        } catch (e) {
+          logger.error("fit-score: exam-aspirant upsert failed (non-fatal)", { studentId: sid, err: String(e) });
+        }
       } else {
+        // PLACEMENT → the shared candidate pool (behaviour unchanged).
         try {
           const fitNum = generated.fit_score as number;
           const status =
             fitNum >= 78 ? "Interview-ready" : fitNum >= 50 ? "In progress" : "Not started";
-          const techScore = generated.technical_score as number;
-          const behavScore = generated.behavioural_score as number;
           const patch: Record<string, any> = {
             name: body.candidateName,
             targetRole: body.targetRole,
@@ -585,34 +649,18 @@ Strictly valid JSON. No prose before or after.`;
           if (dnlaStrengths.length) patch.strengths = dnlaStrengths;
           if (dnlaDevelopmentAreas.length) patch.developmentAreas = dnlaDevelopmentAreas;
           if (dnlaRisks.length) patch.risks = dnlaRisks;
-          // Invite binding resolved SERVER-SIDE from the invite token (the
-          // credential) — never from a spoofable body recruiterId/jobId. An
-          // institute-issued invite binds the result to that cohort; a recruiter
+          // An institute-issued invite binds the result to that cohort; a recruiter
           // invite binds it to the recruiter (and NOT to any institute cohort).
-          if (typeof body.inviteToken === "string" && body.inviteToken) {
-            const invite = await getInvite(body.inviteToken);
-            if (invite) {
-              patch.recruiterId = invite.recruiterId || "";
-              patch.jobId = invite.jobId || "";
-              if (invite.instituteId) {
-                // Institute cohort student — lands in listCandidatesByInstitute,
-                // but stays unpublished to recruiters until the institute shares.
-                patch.instituteId = invite.instituteId;
-                if (invite.cohort) patch.cohort = invite.cohort;
-              } else {
-                patch.instituteId = "";
-              }
-              // PRD §4.5 — advance the invite's tracked status so the issuing
-              // recruiter/institute sees real progress (invited → started →
-              // completed). "completed" once BOTH assessment rounds are scored;
-              // otherwise the candidate has at least begun. Monotonic in the
-              // store (never regresses), and best-effort (never fails the write).
-              try {
-                const bothRoundsDone = techScore >= 0 && behavScore >= 0;
-                await updateInviteStatus(body.inviteToken, bothRoundsDone ? "completed" : "started");
-              } catch {
-                /* status tracking is best-effort */
-              }
+          if (invite) {
+            patch.recruiterId = invite.recruiterId || "";
+            patch.jobId = invite.jobId || "";
+            if (invite.instituteId) {
+              // Institute cohort student — lands in listCandidatesByInstitute,
+              // but stays unpublished to recruiters until the institute shares.
+              patch.instituteId = invite.instituteId;
+              if (invite.cohort) patch.cohort = invite.cohort;
+            } else {
+              patch.instituteId = "";
             }
           }
           if (typeof body.college === "string" && body.college) {
@@ -684,15 +732,25 @@ export async function GET(req: NextRequest) {
   }
   try {
     const rec = await getCandidate(sid);
-    // Read access: demo mode; the owner (uid); an invited candidate's report; or
-    // ANY authenticated (non-demo) recruiter viewing a candidate who has
-    // published to recruiters. The recruiter "View" opens this read-only report,
-    // so a published candidate must be readable for the report to render.
+    // Read access: demo mode; the owner (uid); an invited candidate's report; a
+    // recruiter viewing a candidate who CONSENTED to recruiter visibility; or an
+    // institute admin viewing a student in their own institute.
+    //
+    // SECURITY (FIX): the published-read used to be `!principal.demo &&
+    // publishedToRecruiters` — i.e. ANY authenticated non-demo account could read
+    // a published candidate's full fitReportJson. The recruiter read-only report
+    // view (?view=recruiter on /student/[id]/fit-score) DOES depend on this GET,
+    // so the branch cannot simply be removed. This app has no server-side
+    // recruiter ROLE (every /api/recruiter/* route authorizes as "any
+    // authenticated account"), so the tightest gate available is a FULL
+    // authenticated account (not demo, and NOT an account-less invite-token
+    // holder) viewing a consented candidate. That drops the invite-holder class
+    // the report was never meant for; see the changelog for the residual gap.
     const readable =
       principal.demo ||
       sid === principal.uid ||
       sid.startsWith("candidate-inv-") ||
-      (!principal.demo && !!(rec as any)?.publishedToRecruiters) ||
+      (!principal.demo && !principal.invite && !!(rec as any)?.publishedToRecruiters) ||
       // An institute admin may read a Fit Score report for a student in their own
       // institute (the "Drill down" action). Checked last so the cheap conditions
       // short-circuit first.

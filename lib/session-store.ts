@@ -60,6 +60,9 @@ export interface SessionState {
 
 const TTL_MS = 6 * 60 * 60 * 1000; // 6h
 const COLLECTION = "interviewSessions";
+/** Proctoring: a candidate is blocked once violations REACH this count. Owned
+ *  server-side so it stays consistent with the atomic increment path below. */
+export const MAX_PROCTOR_VIOLATIONS = 3;
 // Use the OS temp dir (writable on serverless like Vercel; the project dir is
 // read-only there). This is the DEMO/local fallback only — production should
 // configure firebase-admin so sessions persist in Firestore instead.
@@ -67,6 +70,19 @@ const SESSION_DIR = path.join(os.tmpdir(), "taledge-sessions");
 const SESSION_FILE = path.join(SESSION_DIR, "sessions.json");
 
 const useFirestore = () => isAdminConfigured && !!adminDb;
+
+/**
+ * PROD vs DEMO error policy. When admin is configured, Firestore IS the session
+ * backend, so a Firestore error must NOT fall through to the per-instance temp
+ * file: on Cloud Run that store is ephemeral + per-instance, so a silent
+ * fallback would strand a session on one instance and lose it on the next.
+ * Rethrow so the caller surfaces a real, retryable error. In local/demo (no
+ * admin creds) the file store is the real backend, so just log and continue.
+ */
+function onFirestoreError(scope: string, e: unknown): void {
+  logger.error(`[session-store] ${scope} failed`, { err: String(e) });
+  if (isAdminConfigured) throw e instanceof Error ? e : new Error(String(e));
+}
 
 /* ----------------------------- file fallback ----------------------------- */
 function ensureDir(): void {
@@ -132,10 +148,9 @@ export async function createSession(params: {
       await adminDb!.collection(COLLECTION).doc(params.sessionId).set(session);
       return session;
     } catch (e) {
-      // A misconfigured/unavailable Firestore (e.g. DB not created, wrong
-      // project) would otherwise throw and 500 the interview start. Degrade to
-      // the file store so the interview still works.
-      logger.error("[session-store] Firestore createSession failed; using file fallback", { err: String(e) });
+      // In prod this rethrows (never diverge to the per-instance file store); in
+      // local/demo it degrades to the file store so the interview still works.
+      onFirestoreError("createSession", e);
     }
   }
   const all = prune(loadAll());
@@ -153,7 +168,7 @@ export async function getSession(sessionId: string): Promise<SessionState | null
       if (s.expiresAt && s.expiresAt < Date.now()) return null;
       return s;
     } catch (e) {
-      logger.error("[session-store] Firestore getSession failed; using file fallback", { err: String(e) });
+      onFirestoreError("getSession", e);
     }
   }
   const all = prune(loadAll());
@@ -168,15 +183,15 @@ export async function updateSession(
     try {
       const ref = adminDb!.collection(COLLECTION).doc(sessionId);
       const snap = await ref.get();
-      if (snap.exists) {
-        const updated = { ...(snap.data() as SessionState), ...updates, updatedAt: Date.now() };
-        await ref.set(updated, { merge: true });
-        return updated;
-      }
-      // Not in Firestore — may live in the file fallback (e.g. created during a
-      // Firestore outage). Fall through to the file store instead of returning null.
+      if (!snap.exists) return null;
+      const now = Date.now();
+      // Write ONLY the provided fields (plus updatedAt), NOT the whole snapshot.
+      // Re-persisting a stale full snapshot lets concurrent disjoint-field
+      // writers clobber each other; a scoped merge lets them compose safely.
+      await ref.set({ ...updates, updatedAt: now }, { merge: true });
+      return { ...(snap.data() as SessionState), ...updates, updatedAt: now };
     } catch (e) {
-      logger.error("[session-store] Firestore updateSession failed; using file fallback", { err: String(e) });
+      onFirestoreError("updateSession", e);
     }
   }
   const all = prune(loadAll());
@@ -188,13 +203,57 @@ export async function updateSession(
   return updated;
 }
 
+/**
+ * ATOMIC proctor-violation increment. The read-compute-write pattern in the
+ * proctor route dropped concurrent violations (two near-simultaneous reports both
+ * read N and wrote N+1, so a cheater could exceed MAX_PROCTOR_VIOLATIONS). In
+ * Firestore mode we run a transaction so the read of the current count and the
+ * write of count+1 (and the derived `blocked`) are serialised per session. In
+ * demo/file mode there is a single instance, so the non-atomic path is fine.
+ * Returns null when the session does not exist (caller surfaces a 404).
+ */
+export async function incrementProctorViolations(
+  sessionId: string
+): Promise<{ violations: number; blocked: boolean } | null> {
+  if (useFirestore()) {
+    try {
+      const ref = adminDb!.collection(COLLECTION).doc(sessionId);
+      return await adminDb!.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) return null;
+        const cur = snap.data() as SessionState;
+        const violations = (cur.proctorViolations || 0) + 1;
+        const blocked = violations >= MAX_PROCTOR_VIOLATIONS || !!cur.blocked;
+        // Scoped merge — never re-persist the whole (possibly stale) snapshot.
+        tx.set(ref, { proctorViolations: violations, blocked, updatedAt: Date.now() }, { merge: true });
+        return { violations, blocked };
+      });
+    } catch (e) {
+      onFirestoreError("incrementProctorViolations", e);
+    }
+  }
+  const all = prune(loadAll());
+  const session = all[sessionId];
+  if (!session) return null;
+  const violations = (session.proctorViolations || 0) + 1;
+  const blocked = violations >= MAX_PROCTOR_VIOLATIONS || !!session.blocked;
+  session.proctorViolations = violations;
+  session.blocked = blocked;
+  session.updatedAt = Date.now();
+  all[sessionId] = session;
+  saveAll(all);
+  return { violations, blocked };
+}
+
 export async function deleteSession(sessionId: string): Promise<void> {
   if (useFirestore()) {
     try {
       await adminDb!.collection(COLLECTION).doc(sessionId).delete();
       return;
     } catch (e) {
-      logger.error("[session-store] Firestore deleteSession failed; using file fallback", { err: String(e) });
+      // Same PROD-vs-DEMO policy: in prod this rethrows (never silently diverge
+      // to the per-instance file store); in local/demo it degrades to the file.
+      onFirestoreError("deleteSession", e);
     }
   }
   const all = loadAll();

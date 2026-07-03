@@ -248,7 +248,7 @@ export async function POST(req: NextRequest) {
   const uid = principal.uid;
 
   // 2. Rate limit every Gemini-backed call.
-  const limited = enforceRateLimit(req, { uid, limit: 20, windowMs: 60000, scope: "interview" });
+  const limited = await enforceRateLimit(req, { uid, limit: 20, windowMs: 60000, scope: "interview" });
   if (limited) return limited;
 
   const apiKey = getGeminiApiKey();
