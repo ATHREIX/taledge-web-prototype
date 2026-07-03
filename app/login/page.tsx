@@ -198,8 +198,8 @@ export default function LoginPage() {
       sub="The talent-intelligence platform that fuses AI interviews, DNLA psychometrics and human coaching into one defensible score - for the teams that assess, hire and develop talent."
     >
       <div>
-        <h1 className="text-[1.9rem] font-extrabold tracking-[-0.02em] text-[#081A3A]">Sign in</h1>
-        <p className="mt-2 text-[14.5px] text-slate-500">
+        <h1 className="text-[1.9rem] font-extrabold tracking-[-0.02em] text-ink-900">Sign in</h1>
+        <p className="mt-2 text-[14.5px] text-ink-500">
           Access your assessments, pipelines and workspace.
         </p>
 
@@ -240,16 +240,16 @@ export default function LoginPage() {
           />
 
           <div className="flex items-center justify-between pt-0.5">
-            <label className="inline-flex cursor-pointer items-center gap-2.5 text-[13.5px] font-medium text-slate-600">
+            <label className="inline-flex cursor-pointer items-center gap-2.5 text-[13.5px] font-medium text-ink-600">
               <input
                 type="checkbox"
                 checked={remember}
                 onChange={(e) => setRemember(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-[#0057FF] accent-[#0057FF] focus:ring-[#0057FF]"
+                className="h-4 w-4 rounded border-ink-300 text-brand-600 accent-brand-600 focus:ring-brand-600"
               />
               Remember me
             </label>
-            <button type="button" onClick={handleForgot} className="text-[13.5px] font-semibold text-[#0057FF] hover:underline">
+            <button type="button" onClick={handleForgot} className="text-[13.5px] font-semibold text-brand-600 hover:underline">
               Forgot password?
             </button>
           </div>
@@ -258,7 +258,7 @@ export default function LoginPage() {
             type="submit"
             disabled={busy}
             aria-busy={loading}
-            className="group inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#0057FF] px-6 py-3.5 text-[15px] font-semibold text-white shadow-sm transition-all hover:bg-[#0F4CFF] hover:shadow-md active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
+            className="group inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-6 py-3.5 text-[15px] font-semibold text-white shadow-sm transition-all hover:bg-brand-700 hover:shadow-md active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
           >
             {loading ? <Spinner /> : <>Sign in <Arrow className="transition-transform group-hover:translate-x-0.5" /></>}
           </button>
@@ -266,32 +266,32 @@ export default function LoginPage() {
 
         {/* SSO */}
         <div className="my-6 flex items-center gap-3">
-          <span className="h-px flex-1 bg-slate-200" />
-          <span className="text-[12px] font-medium uppercase tracking-wider text-slate-400">or continue with</span>
-          <span className="h-px flex-1 bg-slate-200" />
+          <span className="h-px flex-1 bg-ink-200" />
+          <span className="text-[12px] font-medium uppercase tracking-wider text-ink-400">or continue with</span>
+          <span className="h-px flex-1 bg-ink-200" />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <SsoButton onClick={() => handleSso("microsoft")} disabled={busy} icon={sso === "microsoft" ? <Spinner className="text-slate-400" /> : <MicrosoftIcon />}>
+          <SsoButton onClick={() => handleSso("microsoft")} disabled={busy} icon={sso === "microsoft" ? <Spinner className="text-ink-400" /> : <MicrosoftIcon />}>
             Microsoft
           </SsoButton>
-          <SsoButton onClick={() => handleSso("google")} disabled={busy} icon={sso === "google" ? <Spinner className="text-slate-400" /> : <GoogleIcon />}>
+          <SsoButton onClick={() => handleSso("google")} disabled={busy} icon={sso === "google" ? <Spinner className="text-ink-400" /> : <GoogleIcon />}>
             Google
           </SsoButton>
         </div>
 
         {/* Trust */}
-        <div className="mt-7 flex items-center justify-center gap-2 text-[12.5px] text-slate-500">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#0057FF]" aria-hidden>
+        <div className="mt-7 flex items-center justify-center gap-2 text-[12.5px] text-ink-500">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-brand-600" aria-hidden>
             <path d="M12 2 4 6v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V6l-8-4Z" /><path d="m9 12 2 2 4-4" />
           </svg>
           Secure enterprise authentication with encrypted access.
         </div>
 
-        <p className="mt-7 text-center text-[14px] text-slate-500">
+        <p className="mt-7 text-center text-[14px] text-ink-500">
           New to Taledge?{" "}
           <Link
             href={next ? `/register?next=${encodeURIComponent(next)}` : "/register"}
-            className="font-semibold text-[#0057FF] hover:underline"
+            className="font-semibold text-brand-600 hover:underline"
           >
             Get started
           </Link>

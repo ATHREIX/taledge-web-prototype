@@ -75,6 +75,7 @@ export function Nav() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const toggleRef = useRef<HTMLButtonElement | null>(null);
   const { user, role } = useAuth();
 
   useEffect(() => {
@@ -98,6 +99,52 @@ export function Nav() {
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [menuOpen]);
+
+  // When the account menu opens, move focus to the first menuitem so it is
+  // immediately keyboard-operable (WAI-ARIA menu button pattern).
+  useEffect(() => {
+    if (!menuOpen) return;
+    const items = menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]');
+    items?.[0]?.focus();
+  }, [menuOpen]);
+
+  // Roving focus + Escape/Home/End inside the account dropdown. Focus is moved
+  // into the menu on open, so keydown bubbles here from whichever item is active.
+  const focusMenuItem = (index: number) => {
+    const items = menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]');
+    if (!items || items.length === 0) return;
+    const clamped = ((index % items.length) + items.length) % items.length;
+    items[clamped]?.focus();
+  };
+  const onMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []
+    );
+    const currentIndex = items.indexOf(document.activeElement as HTMLElement);
+    switch (e.key) {
+      case "Escape":
+        e.preventDefault();
+        setMenuOpen(false);
+        toggleRef.current?.focus();
+        break;
+      case "ArrowDown":
+        e.preventDefault();
+        focusMenuItem(currentIndex + 1);
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        focusMenuItem(currentIndex - 1);
+        break;
+      case "Home":
+        e.preventDefault();
+        focusMenuItem(0);
+        break;
+      case "End":
+        e.preventDefault();
+        focusMenuItem(items.length - 1);
+        break;
+    }
+  };
 
   const handleLogout = async () => {
     setMenuOpen(false);
@@ -169,8 +216,8 @@ export function Nav() {
         className={cn(
           "relative mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 rounded-full border px-3 backdrop-blur-xl transition-all duration-300 sm:px-4",
           scrolled
-            ? "border-ink-200/80 bg-white/90 shadow-[0_16px_44px_-18px_rgba(16,24,40,0.22)]"
-            : "border-ink-200/60 bg-white/85 shadow-[0_10px_34px_-18px_rgba(16,24,40,0.15)]"
+            ? "border-ink-200/80 bg-white/90 shadow-panel-hover"
+            : "border-ink-200/60 bg-white/85 shadow-panel"
         )}
       >
         <Link
@@ -213,6 +260,7 @@ export function Nav() {
           {user ? (
             <div className="relative" ref={menuRef}>
               <button
+                ref={toggleRef}
                 type="button"
                 onClick={() => setMenuOpen((v) => !v)}
                 aria-haspopup="menu"
@@ -226,7 +274,7 @@ export function Nav() {
                 </svg>
               </button>
               {menuOpen && (
-                <div role="menu" className="absolute right-0 mt-2 w-64 overflow-hidden rounded-xl2 border border-ink-200/70 bg-white py-1.5 shadow-panel">
+                <div role="menu" onKeyDown={onMenuKeyDown} className="absolute right-0 mt-2 w-64 overflow-hidden rounded-xl2 border border-ink-200/70 bg-white py-1.5 shadow-panel">
                   <div className="border-b border-ink-100 px-4 py-2.5">
                     <p className="truncate text-sm font-bold text-ink-900">{user.displayName || "Your account"}</p>
                     <p className="truncate text-xs text-ink-500">

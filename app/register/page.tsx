@@ -12,7 +12,6 @@ import { Logo } from "@/components/logo";
 import { postAuthPath, type Role } from "@/lib/roles";
 import {
   EASE,
-  FONT,
   BrandPanel,
   EntField,
   MailIcon,
@@ -157,18 +156,18 @@ function OptionCard({
       onClick={onClick}
       aria-pressed={selected}
       className={
-        "group relative flex w-full items-start gap-3 rounded-xl border bg-white text-left transition-all focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0057FF]/12 " +
+        "group relative flex w-full items-start gap-3 rounded-xl border bg-white text-left transition-all focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-600/12 " +
         (compact ? "p-3.5 " : "p-4 ") +
         (selected
-          ? "border-[#0057FF] shadow-[0_14px_36px_-22px_rgba(0,87,255,0.6)] ring-1 ring-[#0057FF]"
-          : "border-slate-200 hover:border-[#0057FF]/40 hover:shadow-sm")
+          ? "border-brand-600 shadow-[0_14px_36px_-22px_rgba(79,70,229,0.6)] ring-1 ring-brand-600"
+          : "border-ink-200 hover:border-brand-600/40 hover:shadow-sm")
       }
     >
       {path && (
         <span
           className={
             "grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-colors " +
-            (selected ? "bg-[#0057FF] text-white" : "bg-[#0057FF]/[0.07] text-[#0057FF] group-hover:bg-[#0057FF]/10")
+            (selected ? "bg-brand-600 text-white" : "bg-brand-600/[0.07] text-brand-600 group-hover:bg-brand-600/10")
           }
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -177,14 +176,14 @@ function OptionCard({
         </span>
       )}
       <span className="min-w-0 flex-1">
-        <span className="block text-[14.5px] font-semibold text-[#081A3A]">{title}</span>
-        {desc && <span className="mt-0.5 block text-[12.5px] leading-snug text-slate-500">{desc}</span>}
+        <span className="block text-[14.5px] font-semibold text-ink-900">{title}</span>
+        {desc && <span className="mt-0.5 block text-[12.5px] leading-snug text-ink-500">{desc}</span>}
       </span>
       <span
         aria-hidden
         className={
           "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border transition-all " +
-          (selected ? "border-[#0057FF] bg-[#0057FF] text-white" : "border-slate-300 text-transparent")
+          (selected ? "border-brand-600 bg-brand-600 text-white" : "border-ink-300 text-transparent")
         }
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
@@ -200,10 +199,10 @@ function Pill({ selected, onClick, children }: { selected: boolean; onClick: () 
       onClick={onClick}
       aria-pressed={selected}
       className={
-        "rounded-lg border px-4 py-3 text-[14px] font-semibold transition-all focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0057FF]/12 " +
+        "rounded-lg border px-4 py-3 text-[14px] font-semibold transition-all focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-600/12 " +
         (selected
-          ? "border-[#0057FF] bg-[#0057FF]/[0.06] text-[#0057FF] ring-1 ring-[#0057FF]"
-          : "border-slate-200 bg-white text-slate-600 hover:border-[#0057FF]/40 hover:text-[#081A3A]")
+          ? "border-brand-600 bg-brand-600/[0.06] text-brand-600 ring-1 ring-brand-600"
+          : "border-ink-200 bg-white text-ink-600 hover:border-brand-600/40 hover:text-ink-900")
       }
     >
       {children}
@@ -214,9 +213,9 @@ function Pill({ selected, onClick, children }: { selected: boolean; onClick: () 
 function StepHeading({ kicker, title, sub }: { kicker: string; title: string; sub?: string }) {
   return (
     <div>
-      <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#0057FF]">{kicker}</p>
-      <h1 className="mt-2 text-[1.7rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[2rem]">{title}</h1>
-      {sub && <p className="mt-2 text-[14.5px] leading-relaxed text-slate-500">{sub}</p>}
+      <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-brand-600">{kicker}</p>
+      <h1 className="mt-2 text-[1.7rem] font-extrabold tracking-[-0.02em] text-ink-900 sm:text-[2rem]">{title}</h1>
+      {sub && <p className="mt-2 text-[14.5px] leading-relaxed text-ink-500">{sub}</p>}
     </div>
   );
 }
@@ -374,7 +373,7 @@ export default function RegisterPage() {
   const isSuccess = step === 4;
 
   return (
-    <div style={{ fontFamily: FONT }} className="grid min-h-screen bg-white text-[#081A3A] antialiased lg:grid-cols-[1.05fr_1fr]">
+    <div className="grid min-h-screen bg-white text-ink-900 antialiased lg:grid-cols-[1.05fr_1fr]">
       {/* Left - editorial enterprise panel (sticky, full height) */}
       <div className="lg:sticky lg:top-0 lg:h-screen">
         <BrandPanel
@@ -390,9 +389,9 @@ export default function RegisterPage() {
           <Link href="/" aria-label="Taledge home" className="inline-flex lg:hidden"><Logo /></Link>
           <span aria-hidden className="hidden lg:block" />
           {!isSuccess && (
-            <p className="text-[14px] text-slate-500">
+            <p className="text-[14px] text-ink-500">
               Already have an account?{" "}
-              <Link href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"} className="font-semibold text-[#0057FF] hover:underline">Sign in</Link>
+              <Link href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"} className="font-semibold text-brand-600 hover:underline">Sign in</Link>
             </p>
           )}
         </header>
@@ -410,7 +409,7 @@ export default function RegisterPage() {
                     <span
                       className={
                         "grid h-7 w-7 place-items-center rounded-full text-[12px] font-bold transition-colors " +
-                        (done ? "bg-[#0057FF] text-white" : current ? "bg-[#0057FF]/[0.12] text-[#0057FF] ring-2 ring-[#0057FF]" : "bg-slate-100 text-slate-400")
+                        (done ? "bg-brand-600 text-white" : current ? "bg-brand-600/[0.12] text-brand-600 ring-2 ring-brand-600" : "bg-ink-100 text-ink-400")
                       }
                     >
                       {done ? (
@@ -419,14 +418,14 @@ export default function RegisterPage() {
                         i + 1
                       )}
                     </span>
-                    <span className={"hidden text-[13px] font-semibold sm:inline " + (i <= pos - 1 ? "text-[#081A3A]" : "text-slate-400")}>{STEPS[sIdx]}</span>
+                    <span className={"hidden text-[13px] font-semibold sm:inline " + (i <= pos - 1 ? "text-ink-900" : "text-ink-400")}>{STEPS[sIdx]}</span>
                   </div>
                 );
               })}
             </div>
-            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100">
+            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-ink-100">
               <motion.div
-                className="h-full rounded-full bg-[#0057FF]"
+                className="h-full rounded-full bg-brand-600"
                 initial={false}
                 animate={{ width: `${((pos - 1) / (total - 1)) * 100}%` }}
                 transition={{ duration: 0.5, ease: EASE }}
@@ -489,7 +488,7 @@ export default function RegisterPage() {
                       const cols = f.options.some((o) => o.length > 14) ? "sm:grid-cols-2" : "sm:grid-cols-3";
                       return (
                         <div key={f.key}>
-                          <p className="mb-2.5 text-[13px] font-semibold text-[#081A3A]">{f.label}</p>
+                          <p className="mb-2.5 text-[13px] font-semibold text-ink-900">{f.label}</p>
                           <div className={`grid grid-cols-2 gap-2.5 ${cols}`}>
                             {f.options.map((x) => (
                               <Pill key={x} selected={orgFields[i].value === x} onClick={() => orgFields[i].set(x)}>{x}</Pill>
@@ -547,7 +546,7 @@ export default function RegisterPage() {
                     initial={{ scale: 0.6, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
-                    className="mx-auto grid h-20 w-20 place-items-center rounded-2xl bg-[#0057FF] text-white shadow-[0_24px_60px_-24px_rgba(0,87,255,0.7)]"
+                    className="mx-auto grid h-20 w-20 place-items-center rounded-2xl bg-brand-600 text-white shadow-[0_24px_60px_-24px_rgba(79,70,229,0.7)]"
                   >
                     <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                   </motion.div>
@@ -555,7 +554,7 @@ export default function RegisterPage() {
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, ease: EASE, delay: 0.15 }}
-                    className="mt-7 text-[2rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[2.4rem]"
+                    className="mt-7 text-[2rem] font-extrabold tracking-[-0.02em] text-ink-900 sm:text-[2.4rem]"
                   >
                     Your workspace is ready
                   </motion.h1>
@@ -563,10 +562,10 @@ export default function RegisterPage() {
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, ease: EASE, delay: 0.22 }}
-                    className="mx-auto mt-3 max-w-md text-[15px] leading-relaxed text-slate-500"
+                    className="mx-auto mt-3 max-w-md text-[15px] leading-relaxed text-ink-500"
                   >
                     {orgName ? `${orgName}'s` : "Your"} Taledge workspace is configured as{" "}
-                    <span className="font-semibold text-[#081A3A]">{selectedRole?.label ?? "your team"}</span>. Launch in to start
+                    <span className="font-semibold text-ink-900">{selectedRole?.label ?? "your team"}</span>. Launch in to start
                     turning candidate potential into proof.
                   </motion.p>
                   <motion.div
@@ -578,14 +577,14 @@ export default function RegisterPage() {
                     <button
                       type="button"
                       onClick={launchDashboard}
-                      className="group inline-flex items-center gap-2 rounded-lg bg-[#0057FF] px-7 py-3.5 text-[15px] font-semibold text-white shadow-sm transition-all hover:bg-[#0F4CFF] hover:shadow-md"
+                      className="group inline-flex items-center gap-2 rounded-lg bg-brand-600 px-7 py-3.5 text-[15px] font-semibold text-white shadow-sm transition-all hover:bg-brand-700 hover:shadow-md"
                     >
                       Launch dashboard
                       <Arrow className="transition-transform group-hover:translate-x-0.5" />
                     </button>
                     <Link
                       href="/"
-                      className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-7 py-3.5 text-[15px] font-semibold text-[#081A3A] transition-all hover:border-[#0057FF]/40 hover:bg-slate-50"
+                      className="inline-flex items-center gap-2 rounded-lg border border-ink-300 bg-white px-7 py-3.5 text-[15px] font-semibold text-ink-900 transition-all hover:border-brand-600/40 hover:bg-ink-50"
                     >
                       Schedule a platform walkthrough
                     </Link>
@@ -603,7 +602,7 @@ export default function RegisterPage() {
               type="button"
               onClick={() => go(prevOf(step))}
               disabled={step === 0 || loading}
-              className="inline-flex items-center gap-1.5 rounded-lg px-4 py-3 text-[14px] font-semibold text-slate-500 transition-colors hover:text-[#081A3A] disabled:invisible"
+              className="inline-flex items-center gap-1.5 rounded-lg px-4 py-3 text-[14px] font-semibold text-ink-500 transition-colors hover:text-ink-900 disabled:invisible"
             >
               <Arrow className="rotate-180" /> Back
             </button>
@@ -612,7 +611,7 @@ export default function RegisterPage() {
               <button
                 type="button"
                 onClick={() => (stepValid[step] ? go(nextOf(step)) : setError(stepErrors[step]))}
-                className="group inline-flex items-center gap-2 rounded-lg bg-[#0057FF] px-7 py-3.5 text-[15px] font-semibold text-white shadow-sm transition-all hover:bg-[#0F4CFF] hover:shadow-md"
+                className="group inline-flex items-center gap-2 rounded-lg bg-brand-600 px-7 py-3.5 text-[15px] font-semibold text-white shadow-sm transition-all hover:bg-brand-700 hover:shadow-md"
               >
                 Continue <Arrow className="transition-transform group-hover:translate-x-0.5" />
               </button>
@@ -622,7 +621,7 @@ export default function RegisterPage() {
                 onClick={() => (stepValid[3] ? createAccount() : setError(stepErrors[3]))}
                 disabled={loading}
                 aria-busy={loading}
-                className="group inline-flex items-center gap-2 rounded-lg bg-[#0057FF] px-7 py-3.5 text-[15px] font-semibold text-white shadow-sm transition-all hover:bg-[#0F4CFF] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-70"
+                className="group inline-flex items-center gap-2 rounded-lg bg-brand-600 px-7 py-3.5 text-[15px] font-semibold text-white shadow-sm transition-all hover:bg-brand-700 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {loading ? <Spinner /> : <>Create workspace <Arrow className="transition-transform group-hover:translate-x-0.5" /></>}
               </button>

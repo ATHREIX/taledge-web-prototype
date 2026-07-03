@@ -6,13 +6,12 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Logo } from "@/components/logo";
 
 /* ------------------------------------------------------------------ *
- * Shared enterprise authentication kit. Same design language as the
- * landing page: white surfaces, #0057FF primary, navy (#081A3A), Inter,
+ * Shared enterprise authentication kit. On the product brand: white
+ * surfaces, brand-600 (indigo) primary, ink-900 text, Sora (inherited),
  * consistent radii / shadows / motion. Reused by Sign In and Get Started.
  * ------------------------------------------------------------------ */
 
 export const EASE = [0.16, 1, 0.3, 1] as const;
-export const FONT = "var(--font-inter), system-ui, sans-serif";
 
 export function Spinner({ className = "" }: { className?: string }) {
   return (
@@ -59,12 +58,12 @@ export function EntField({
   const id = useId();
   return (
     <div>
-      <label htmlFor={id} className="mb-1.5 block text-[13px] font-semibold text-[#081A3A]">
+      <label htmlFor={id} className="mb-1.5 block text-[13px] font-semibold text-ink-900">
         {label}
       </label>
       <div className="group relative">
         {icon && (
-          <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-[#0057FF]">
+          <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-400 transition-colors group-focus-within:text-brand-600">
             {icon}
           </span>
         )}
@@ -78,7 +77,7 @@ export function EntField({
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
           className={
-            "w-full rounded-lg border border-slate-300 bg-white py-3 text-[15px] text-[#081A3A] shadow-sm outline-none transition-all placeholder:text-slate-400 focus:border-[#0057FF] focus:ring-4 focus:ring-[#0057FF]/12 " +
+            "w-full rounded-lg border border-ink-300 bg-white py-3 text-[15px] text-ink-900 shadow-sm outline-none transition-all placeholder:text-ink-400 focus:border-brand-600 focus:ring-4 focus:ring-brand-600/12 " +
             (icon ? "pl-11 " : "pl-4 ") +
             (trailing ? "pr-11" : "pr-4")
           }
@@ -143,7 +142,7 @@ export function SsoButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex w-full items-center justify-center gap-2.5 rounded-lg border border-slate-300 bg-white px-4 py-3 text-[14px] font-semibold text-[#081A3A] shadow-sm transition-all hover:border-slate-400 hover:bg-slate-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex w-full items-center justify-center gap-2.5 rounded-lg border border-ink-300 bg-white px-4 py-3 text-[14px] font-semibold text-ink-900 shadow-sm transition-all hover:border-ink-400 hover:bg-ink-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
     >
       {icon}
       {children}
@@ -177,27 +176,27 @@ export function BrandPanel({
 }) {
   const reduce = useReducedMotion();
   return (
-    <div className="relative hidden overflow-hidden bg-[#081A3A] text-white lg:flex">
+    <div className="relative hidden min-h-screen overflow-hidden bg-ink-900 text-white lg:flex">
       <div className="relative flex h-full w-full flex-col px-14 py-10 xl:px-20 xl:py-14">
         {/* Top - identity */}
         <div className="flex items-center justify-between">
           <Link href="/" aria-label="Taledge home" className="inline-flex">
             <Logo inverted />
           </Link>
-          <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Enterprise</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-ink-400">Enterprise</span>
         </div>
 
         {/* Center - executive statement, workflow, and proof points as ONE
             cohesive block, vertically centered (no dead space between them). */}
         <div className="flex flex-1 flex-col justify-center py-10">
           <div className="max-w-lg">
-            <p className="flex items-center gap-3 text-[12px] font-semibold uppercase tracking-[0.2em] text-[#7DA3FF]">
-              <span aria-hidden className="h-px w-8 bg-[#7DA3FF]/50" /> Talent Intelligence &amp; Success Platform
+            <p className="flex items-center gap-3 text-[12px] font-semibold uppercase tracking-[0.2em] text-brand-300">
+              <span aria-hidden className="h-px w-8 bg-brand-300/50" /> Talent Intelligence &amp; Success Platform
             </p>
             <h2 className="mt-5 text-[2.45rem] font-extrabold leading-[1.06] tracking-[-0.03em] [text-wrap:balance] xl:text-[2.95rem]">
               {heading}
             </h2>
-            <p className="mt-4 max-w-md text-[15px] leading-relaxed text-slate-300">{sub}</p>
+            <p className="mt-4 max-w-md text-[15px] leading-relaxed text-ink-300">{sub}</p>
 
             <div className="mt-9 space-y-1">
               {PANEL_PROCESS.map((p, i) => (
@@ -208,9 +207,9 @@ export function BrandPanel({
                   transition={{ duration: 0.5, ease: EASE, delay: 0.25 + i * 0.08 }}
                   className="flex items-baseline gap-6 py-2.5"
                 >
-                  <span className="text-[13px] font-semibold tabular-nums text-[#7DA3FF]">{p.n}</span>
-                  <span className="flex-1 text-[15px] font-medium text-slate-100">{p.t}</span>
-                  <span className="hidden text-[12.5px] text-slate-400 xl:block">{p.d}</span>
+                  <span className="text-[13px] font-semibold tabular-nums text-brand-300">{p.n}</span>
+                  <span className="flex-1 text-[15px] font-medium text-ink-100">{p.t}</span>
+                  <span className="hidden text-[12.5px] text-ink-400 xl:block">{p.d}</span>
                 </motion.div>
               ))}
             </div>
@@ -219,7 +218,7 @@ export function BrandPanel({
               {PANEL_STATS.map((s) => (
                 <div key={s.l}>
                   <p className="text-[1.7rem] font-extrabold leading-none tracking-tight text-white">{s.v}</p>
-                  <p className="mt-2 text-[12px] leading-snug text-slate-400">{s.l}</p>
+                  <p className="mt-2 text-[12px] leading-snug text-ink-400">{s.l}</p>
                 </div>
               ))}
             </div>
@@ -227,7 +226,7 @@ export function BrandPanel({
         </div>
 
         {/* Bottom - copyright pinned to the floor */}
-        <p className="text-[12px] text-slate-500">© 2026 Taledge · Talent Intelligence &amp; Success Platform</p>
+        <p className="text-[12px] text-ink-500">© 2026 Taledge · Talent Intelligence &amp; Success Platform</p>
       </div>
     </div>
   );
@@ -244,9 +243,9 @@ export function EnterpriseAuthShell({
   children: React.ReactNode;
 }) {
   return (
-    <div style={{ fontFamily: FONT }} className="grid min-h-screen bg-white text-[#081A3A] antialiased lg:grid-cols-[1.05fr_1fr]">
+    <div className="grid min-h-screen bg-white text-ink-900 antialiased lg:grid-cols-[1.05fr_1fr]">
       <BrandPanel heading={heading} sub={sub} />
-      <div className="relative flex items-center justify-center px-5 py-12 sm:px-10">
+      <div className="relative flex min-h-screen items-center justify-center px-5 py-12 sm:px-10">
         <Link href="/" aria-label="Taledge home" className="absolute left-6 top-6 inline-flex lg:hidden">
           <Logo />
         </Link>
@@ -273,7 +272,7 @@ export function PasswordToggle({ shown, onToggle }: { shown: boolean; onToggle: 
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       aria-label={shown ? "Hide password" : "Show password"}
-      className="grid h-8 w-8 place-items-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+      className="grid h-8 w-8 place-items-center rounded-md text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-700"
     >
       {shown ? (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c7 0 10 8 10 8a13.2 13.2 0 0 1-1.67 2.68M6.6 6.6A13.3 13.3 0 0 0 2 12s3 8 10 8a9.3 9.3 0 0 0 5.4-1.6M1 1l22 22M9.9 9.9a3 3 0 0 0 4.2 4.2" /></svg>

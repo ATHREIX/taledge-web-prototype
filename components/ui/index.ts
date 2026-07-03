@@ -1,5 +1,6 @@
 // Design-system barrel. Import UI primitives from "@/components/ui".
 export { Button, ButtonLink } from "./button";
+export { Input, Textarea, Select } from "./input";
 export { Card, CardHeader, CardBody } from "./card";
 export { Badge } from "./badge";
 export { PageShell, PageHeader } from "./page-shell";
