@@ -12,7 +12,7 @@ const cap = (s: unknown, n: number) => (typeof s === "string" ? s.slice(0, n).tr
 export async function GET(req: NextRequest) {
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
-  const limited = enforceRateLimit(req, { uid: principal.uid, limit: 60, windowMs: 60_000, scope: "institute-interventions" });
+  const limited = await enforceRateLimit(req, { uid: principal.uid, limit: 60, windowMs: 60_000, scope: "institute-interventions" });
   if (limited) return limited;
   const instituteId = new URL(req.url).searchParams.get("instituteId") || "";
   if (!instituteId) return NextResponse.json({ ok: false, error: "instituteId required" }, { status: 400 });
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
-  const limited = enforceRateLimit(req, { uid: principal.uid, limit: 30, windowMs: 60_000, scope: "institute-interventions-write" });
+  const limited = await enforceRateLimit(req, { uid: principal.uid, limit: 30, windowMs: 60_000, scope: "institute-interventions-write" });
   if (limited) return limited;
 
   let body: any = {};
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
-  const limited = enforceRateLimit(req, { uid: principal.uid, limit: 60, windowMs: 60_000, scope: "institute-interventions-write" });
+  const limited = await enforceRateLimit(req, { uid: principal.uid, limit: 60, windowMs: 60_000, scope: "institute-interventions-write" });
   if (limited) return limited;
   let body: any = {};
   try { body = await req.json(); } catch { return NextResponse.json({ ok: false, error: "Invalid body" }, { status: 400 }); }

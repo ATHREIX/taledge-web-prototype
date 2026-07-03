@@ -16,7 +16,7 @@ export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
-  const limited = enforceRateLimit(req, { uid: principal.uid, limit: 20, windowMs: 60_000, scope: "institute-share-link" });
+  const limited = await enforceRateLimit(req, { uid: principal.uid, limit: 20, windowMs: 60_000, scope: "institute-share-link" });
   if (limited) return limited;
 
   let body: any = {};

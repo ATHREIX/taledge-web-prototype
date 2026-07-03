@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, updateSession } from "@/lib/session-store";
+import { getSession, updateSession, incrementProctorViolations, MAX_PROCTOR_VIOLATIONS } from "@/lib/session-store";
 import { getPrincipal, unauthorized, forbidden } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
@@ -11,7 +11,9 @@ export const runtime = "nodejs";
 // successful face check here; the SERVER owns the count and the blocked state,
 // so a page reload can no longer reset the candidate's violation tally (the #1
 // audit finding — proctoring previously lived only in client React state).
-const MAX_VIOLATIONS = 3;
+// Threshold is owned by the session store (single source of truth for the
+// server-authoritative count + the atomic increment path).
+const MAX_VIOLATIONS = MAX_PROCTOR_VIOLATIONS;
 const MAX_REASON = 300;
 
 type Body = {
@@ -25,7 +27,7 @@ export async function POST(req: NextRequest) {
   if (!principal) return unauthorized();
   const uid = principal.uid;
 
-  const limited = enforceRateLimit(req, { uid, limit: 60, windowMs: 60000, scope: "interview-proctor" });
+  const limited = await enforceRateLimit(req, { uid, limit: 60, windowMs: 60000, scope: "interview-proctor" });
   if (limited) return limited;
 
   let body: Body;
@@ -53,10 +55,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, faceVerified: true });
   }
 
-  // event === "violation"
-  const proctorViolations = (session.proctorViolations || 0) + 1;
-  const blocked = proctorViolations >= MAX_VIOLATIONS || session.blocked;
-  await updateSession(body.sessionId, { proctorViolations, blocked });
+  // event === "violation" — ATOMIC increment in the store (a racy read+write
+  // here previously let concurrent reports both read N and write N+1, dropping
+  // violations so a cheater could slip past MAX_VIOLATIONS).
+  const result = await incrementProctorViolations(body.sessionId);
+  if (!result) return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  const { violations: proctorViolations, blocked } = result;
   logger.info("[proctor] violation", { uid, sessionId: body.sessionId, proctorViolations, blocked, reason: isProd ? undefined : reason });
 
   return NextResponse.json({ ok: true, proctorViolations, blocked, max: MAX_VIOLATIONS });

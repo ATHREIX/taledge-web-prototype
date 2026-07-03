@@ -349,7 +349,11 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const [micLevel, setMicLevel] = useState(0); // live 0..1 input meter for the mic test
   const sysMicCleanupRef = useRef<null | (() => void)>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [verificationResult, setVerificationResult] = useState<{status: "idle" | "verifying" | "success" | "error", message?: string}>({status: "idle"});
+  // `unavailable` marks a SOFT-PASS: the identity service (Gemini) was down/timed
+  // out, so we could neither confirm nor reject the candidate. We let them proceed
+  // (status stays "success") but keep this flag set so the UI shows it was NOT a
+  // clean verification and the session is visibly flagged for manual review.
+  const [verificationResult, setVerificationResult] = useState<{status: "idle" | "verifying" | "success" | "error", message?: string, unavailable?: boolean}>({status: "idle"});
   const [hasStarted, setHasStarted] = useState(false);
   const [blocked, setBlocked] = useState(false);
   // Specific termination reason (impersonation, etc.) shown on the blocked screen.
@@ -555,35 +559,60 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       localProfile.aspiration ? `Goal/Target Placement: ${localProfile.aspiration}` : ""
     ].filter(Boolean).join("\n") : "";
 
-    // Preload first question
-    authedFetch("/api/interview/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-         studentId: id,
-         candidateName: localProfile?.fullName || "Candidate",
-         role: localProfile?.targetRole || (isExam ? "the exam" : "Candidate"),
-         mode,
-         // stage is the legacy shorthand for the AI interview rounds only;
-         // dnla/final are selected via `mode`.
-         ...(mode === "technical" || mode === "behavioural" ? { stage: mode === "technical" ? 1 : 2 } : {}),
-         track,
-         resumeSummary: resumeContext,
-         dnlaSummary: buildDnlaSummary(id),
-         // The final round builds on the earlier AI + DNLA transcripts.
-         ...(mode === "final" ? { priorInterviews: buildPriorInterviews(id) } : {})
-      }),
-    }).then(r => r.json()).then(data => {
-      if (data.ok) {
-        setPreloadedSession(data);
-        // Expose the session id immediately (the server already created the
-        // session). Face verification runs in the setup step BEFORE the
-        // interview is started, and needs this ref to persist faceVerified -
-        // otherwise the voice endpoint 403s every answer. The `sessionId` state
-        // is still set later in startInterview() to flip the "Live" UI.
-        sessionIdRef.current = data.sessionId;
-      }
+    // Preload first question. This POST creates the server session whose id every
+    // later step depends on (face-verify persistence, proctoring, the Live
+    // interviewer). A failed/rate-limited start used to be swallowed silently,
+    // leaving sessionIdRef null with no signal, so we retry once and log the
+    // failure instead of failing invisibly.
+    const startBody = JSON.stringify({
+       studentId: id,
+       candidateName: localProfile?.fullName || "Candidate",
+       role: localProfile?.targetRole || (isExam ? "the exam" : "Candidate"),
+       mode,
+       // stage is the legacy shorthand for the AI interview rounds only;
+       // dnla/final are selected via `mode`.
+       ...(mode === "technical" || mode === "behavioural" ? { stage: mode === "technical" ? 1 : 2 } : {}),
+       track,
+       resumeSummary: resumeContext,
+       dnlaSummary: buildDnlaSummary(id),
+       // The final round builds on the earlier AI + DNLA transcripts.
+       ...(mode === "final" ? { priorInterviews: buildPriorInterviews(id) } : {})
     });
+    const preloadInterviewSession = async (attempt = 1): Promise<void> => {
+      try {
+        const r = await authedFetch("/api/interview/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: startBody,
+        });
+        const data = await r.json();
+        if (data.ok) {
+          setPreloadedSession(data);
+          // Expose the session id immediately (the server already created the
+          // session). Face verification runs in the setup step BEFORE the
+          // interview is started, and needs this ref to persist faceVerified -
+          // otherwise the voice endpoint 403s every answer. The `sessionId` state
+          // is still set later in startInterview() to flip the "Live" UI.
+          sessionIdRef.current = data.sessionId;
+          return;
+        }
+        // Reached the server but it declined to start the session (rate limit,
+        // validation, transient error). Retry once, then log so it's traceable.
+        if (attempt < 2) {
+          await new Promise((res) => setTimeout(res, 1200));
+          return preloadInterviewSession(attempt + 1);
+        }
+        console.error("[interview] /api/interview/start did not create a session", data);
+      } catch (err) {
+        // Network/parse failure. Retry once before giving up.
+        if (attempt < 2) {
+          await new Promise((res) => setTimeout(res, 1200));
+          return preloadInterviewSession(attempt + 1);
+        }
+        console.error("[interview] /api/interview/start request failed", err);
+      }
+    };
+    void preloadInterviewSession();
 
     const timer = setInterval(() => setElapsed(e => e + 1), 1000);
 
@@ -1995,20 +2024,40 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           });
           setCapturedImage(base64Image);
 
-          const vRes = await authedFetch("/api/interview/verify-face", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            // Pass the session so the server records faceVerified atomically with
-            // the passing check (no reliance on the separate proctor POST below).
-            body: JSON.stringify({ imageBase64: base64Image, sessionId: sessionIdRef.current })
-          });
-          const vData = await vRes.json();
-          if (!vData.ok || !vData.verified) {
-            setVerificationResult({
-              status: "error", 
-              message: "Failed: " + (vData.reason || "No clear face detected.")
+          // The verify-face server distinguishes a GENUINE reject (no/multiple
+          // faces) from an INFRA outage (Gemini down/timeout/429/missing key) via
+          // an `unavailable` flag on a verified:false response:
+          //   { ok, verified:true }                        → passed
+          //   { ok, verified:false, unavailable:true }     → service down (NOT the
+          //                                                   candidate's fault)
+          //   { ok, verified:false, unavailable:false }    → genuine reject
+          // A transient outage must not permanently lock out a real candidate, so
+          // we retry a few times and, if it's STILL unavailable, soft-pass.
+          type VerifyResponse = { ok?: boolean; verified?: boolean; unavailable?: boolean; reason?: string };
+          const MAX_VERIFY_ATTEMPTS = 3;
+          let vData: VerifyResponse = {};
+          let unavailable = false;
+          for (let attempt = 1; attempt <= MAX_VERIFY_ATTEMPTS; attempt++) {
+            const vRes = await authedFetch("/api/interview/verify-face", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              // Pass the session so the server records faceVerified atomically with
+              // the passing check (no reliance on the separate proctor POST below).
+              body: JSON.stringify({ imageBase64: base64Image, sessionId: sessionIdRef.current })
             });
-          } else {
+            vData = (await vRes.json()) as VerifyResponse;
+            unavailable = vData.ok === true && vData.verified === false && vData.unavailable === true;
+            // A decisive answer (a pass, or a genuine reject) ends the loop.
+            if (!unavailable) break;
+            // Infra outage: keep a calm "verifying, one moment" state and back off
+            // before retrying the SAME captured frame (no need to re-capture).
+            if (attempt < MAX_VERIFY_ATTEMPTS) {
+              setVerificationResult({ status: "verifying", message: "Verifying… one moment." });
+              await new Promise((r) => setTimeout(r, 1500));
+            }
+          }
+
+          if (vData.ok && vData.verified) {
             setVerificationResult({ status: "success" });
             // Enrol this verified frame as the identity reference. Every later
             // identity check compares the live camera against THIS person.
@@ -2022,6 +2071,28 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 body: JSON.stringify({ sessionId: sessionIdRef.current, event: "verified" }),
               }).catch(() => {});
             }
+          } else if (unavailable) {
+            // SOFT-PASS: still unavailable after every retry. The identity service
+            // is down, which is not the candidate's fault, so we let them proceed
+            // rather than dead-end a real candidate on an infra hiccup. We flag the
+            // session as unavailable (see the amber notice + button in the footer)
+            // so it reads as "verification unavailable — proceed", NOT a clean pass.
+            // Enrol the captured frame anyway so later identity-drift checks have a
+            // baseline to compare against. We deliberately do NOT POST a "verified"
+            // proctor event here — the candidate was never actually verified.
+            referenceImageRef.current = base64Image;
+            setVerificationResult({
+              status: "success",
+              unavailable: true,
+              message: "Verification is temporarily unavailable — proceeding, session flagged for review.",
+            });
+          } else {
+            // GENUINE reject (no face / multiple faces / etc.) → hard fail, keep the
+            // existing "Retake photo" recovery.
+            setVerificationResult({
+              status: "error",
+              message: "Failed: " + (vData.reason || "No clear face detected.")
+            });
           }
         }
       }
@@ -2062,8 +2133,10 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     osc.start(0);
     osc.stop(audioCtxRef.current.currentTime + 0.1);
 
-    // Prefer the realtime Gemini Live HD-voice interviewer. Fall back to the
-    // text/TTS flow if Live can't connect (no token, blocked mic, etc.).
+    // The realtime Gemini Live HD-voice interviewer is the ONLY interviewer path -
+    // there is NO text/TTS fallback. If Live can't connect (no token, blocked mic,
+    // Google outage) we do NOT silently degrade; we surface a clear, retryable
+    // error (see the `else` branch below and the Retry card in the chat panel).
     const resumeContext = profile ? [
       profile.resumeSummary,
       profile.resumeSkills && profile.resumeSkills.length > 0 ? `Skills: ${profile.resumeSkills.join(", ")}` : "",
@@ -3026,11 +3099,19 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                     </div>
                   )}
                   {verificationResult.status === "success" && (
-                    <div className="absolute inset-0 flex items-center justify-center border-2 border-emerald-500 bg-emerald-500/25 backdrop-blur-[2px]">
-                      <div className="scale-110 rounded-full bg-emerald-500 p-3 text-white shadow-lg">
-                        <Check className="h-8 w-8" />
+                    verificationResult.unavailable ? (
+                      <div className="absolute inset-0 flex items-center justify-center border-2 border-amber-500 bg-amber-500/20 backdrop-blur-[2px]">
+                        <div className="scale-110 rounded-full bg-amber-500 p-3 text-white shadow-lg">
+                          <AlertTriangle className="h-8 w-8" />
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center border-2 border-emerald-500 bg-emerald-500/25 backdrop-blur-[2px]">
+                        <div className="scale-110 rounded-full bg-emerald-500 p-3 text-white shadow-lg">
+                          <Check className="h-8 w-8" />
+                        </div>
+                      </div>
+                    )
                   )}
                   {verificationResult.status === "error" && (
                     <div className="absolute inset-0 flex items-center justify-center border-2 border-rose-500 bg-rose-500/20 backdrop-blur-[2px]">
@@ -3108,13 +3189,27 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             {/* ── Footer action bar ───────────────────────────────────────── */}
             <div className="shrink-0 border-t border-ink-200 bg-ink-50 px-6 py-4">
               {verificationResult.status === "success" ? (
-                <button
-                  type="button"
-                  onClick={handleStartInterview}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
-                >
-                  <BadgeCheck className="h-4 w-4" aria-hidden /> Identity verified - Start interview <ArrowRight className="h-4 w-4" aria-hidden />
-                </button>
+                <>
+                  {verificationResult.unavailable && (
+                    <div className="mb-3 flex items-start gap-2.5 rounded-md border border-amber-200 bg-amber-50 p-3" role="status" aria-live="polite">
+                      <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                      <p className="text-[12.5px] font-semibold text-amber-700">
+                        Identity verification is temporarily unavailable. You may proceed — this session is flagged for manual review.
+                      </p>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleStartInterview}
+                    className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 ${verificationResult.unavailable ? "bg-amber-600 hover:bg-amber-700 focus-visible:ring-amber-500/40" : "bg-emerald-600 hover:bg-emerald-700 focus-visible:ring-emerald-500/40"}`}
+                  >
+                    {verificationResult.unavailable ? (
+                      <><ShieldAlert className="h-4 w-4" aria-hidden /> Proceed — verification unavailable <ArrowRight className="h-4 w-4" aria-hidden /></>
+                    ) : (
+                      <><BadgeCheck className="h-4 w-4" aria-hidden /> Identity verified - Start interview <ArrowRight className="h-4 w-4" aria-hidden /></>
+                    )}
+                  </button>
+                </>
               ) : (
                 <button
                   type="button"

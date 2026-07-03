@@ -5,7 +5,7 @@ import { getSession, updateSession, createSession } from "@/lib/session-store";
 import { getPrincipal, unauthorized, forbidden } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
-import { isProd, AUTH_ENFORCED } from "@/lib/flags";
+import { isProd, AUTH_ENFORCED, DEMO_MODE } from "@/lib/flags";
 import { type Difficulty, normalizeDifficulty, ladderStageFor, difficultyDirective } from "@/lib/interview-difficulty";
 import { questionBankDirective } from "@/lib/interview-question-bank";
 
@@ -271,7 +271,7 @@ export async function POST(req: NextRequest) {
     const uid = principal.uid;
 
     // 2. Rate limit every Gemini-backed request.
-    const limited = enforceRateLimit(req, { uid, limit: 40, windowMs: 60000, scope: "interview-voice" });
+    const limited = await enforceRateLimit(req, { uid, limit: 40, windowMs: 60000, scope: "interview-voice" });
     if (limited) return limited;
 
     const contentType = req.headers.get("content-type") || "";
@@ -330,6 +330,22 @@ export async function POST(req: NextRequest) {
       // continue the interview instead of dropping it with a hard 404.
       const seed = normalizeRecoveryTranscript(recovery?.transcript);
       if (recovery && seed.length > 0) {
+        // SECURITY: client-context recovery is DEMO-ONLY. It rebuilds a session
+        // purely from client-supplied context and (below) force-sets
+        // faceVerified=true and starts proctorViolations at 0. In enforced prod
+        // that would let a Firebase-authenticated candidate rotate sessionIds each
+        // turn — re-sending the accumulated transcript — to complete the whole
+        // interview WITHOUT passing /verify-face and with violations never
+        // accumulating. Enforced mode uses Firestore as the durable session store,
+        // so a missing session is a genuine loss: reject and make the client
+        // restart through the real verify-face gate.
+        if (!DEMO_MODE) {
+          logger.warn("[voice] rejected client-context recovery in enforced mode", { uid, sessionId });
+          return NextResponse.json(
+            { error: "Session not found; please restart the interview.", restart: true },
+            { status: 409 }
+          );
+        }
         const recMode = ["technical", "behavioural", "dnla", "final"].includes(recovery.mode)
           ? recovery.mode
           : "technical";

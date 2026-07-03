@@ -16,7 +16,10 @@
 runConfig:
   # Interview endpoints can run ~60s (Gemini live/turn). Cloud Run default request
   # timeout is 300s, so no override needed. Tune instances to expected load.
-  minInstances: 0
+  # Warm floor of 1 so the FIRST interview after idle doesn't pay a cold container
+  # boot + firebase-admin init (matters for timed assessments). Raise before a
+  # scheduled 100-candidate window so scale-up latency doesn't bite the first wave.
+  minInstances: 1
   maxInstances: 100
   concurrency: 80
   cpu: 1
@@ -67,6 +70,15 @@ env:
     availability: [RUNTIME]
 
   # ---- Server-side non-secret config ----
+  # Gemini model ids. Pinned explicitly (they otherwise default in lib/gemini.ts)
+  # so ops can retune without a code deploy. OPS: the browser opens the Live
+  # WebSocket directly against GEMINI_LIVE_MODEL with the project's GEMINI_API_KEY
+  # (hooks/useGeminiLive.ts). If a Live interview fails to connect, VERIFY this
+  # model id is enabled for the int-taledge key (an unknown/disabled id closes the
+  # setup socket before setupComplete and the interview cannot start).
+  - variable: GEMINI_LIVE_MODEL
+    value: "gemini-3.1-flash-live-preview"
+    availability: [RUNTIME]
   - variable: DNLA_API_BASE
     value: "https://backend.dnla.com"
     availability: [RUNTIME]

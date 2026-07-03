@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
   const uid = principal.uid;
 
   // 2. Rate limit (Gemini-backed route).
-  const limited = enforceRateLimit(req, { uid, limit: 20, windowMs: 60000, scope: "interview-start" });
+  const limited = await enforceRateLimit(req, { uid, limit: 20, windowMs: 60000, scope: "interview-start" });
   if (limited) return limited;
 
   let body: Body;

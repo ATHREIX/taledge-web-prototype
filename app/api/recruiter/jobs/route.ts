@@ -12,7 +12,7 @@ const cap = (s: unknown, n: number) => (typeof s === "string" ? s.slice(0, n).tr
 export async function GET(req: NextRequest) {
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
-  const limited = enforceRateLimit(req, { uid: principal.uid, limit: 60, windowMs: 60_000, scope: "recruiter-jobs" });
+  const limited = await enforceRateLimit(req, { uid: principal.uid, limit: 60, windowMs: 60_000, scope: "recruiter-jobs" });
   if (limited) return limited;
   const jobs = await listJobs(principal.uid);
   return NextResponse.json({ ok: true, jobs });
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
-  const limited = enforceRateLimit(req, { uid: principal.uid, limit: 20, windowMs: 60_000, scope: "recruiter-jobs-write" });
+  const limited = await enforceRateLimit(req, { uid: principal.uid, limit: 20, windowMs: 60_000, scope: "recruiter-jobs-write" });
   if (limited) return limited;
 
   let body: any = {};
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
-  const limited = enforceRateLimit(req, { uid: principal.uid, limit: 30, windowMs: 60_000, scope: "recruiter-jobs-write" });
+  const limited = await enforceRateLimit(req, { uid: principal.uid, limit: 30, windowMs: 60_000, scope: "recruiter-jobs-write" });
   if (limited) return limited;
   const id = new URL(req.url).searchParams.get("id") || "";
   if (!id) return NextResponse.json({ ok: false, error: "id required" }, { status: 400 });

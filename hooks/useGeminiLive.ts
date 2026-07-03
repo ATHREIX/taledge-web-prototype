@@ -174,7 +174,8 @@ export function useGeminiLive() {
     }
 
     // 1) Mint the ephemeral token server-side. A failure here is terminal for
-    //    Live; the caller falls back to the REST text interview.
+    //    Live. Gemini Live is the only interviewer path; on connect failure the
+    //    caller surfaces a retryable error (no silent degrade).
     let apiKey: string, model: string, voice: string | undefined, systemInstruction: string | undefined;
     try {
       const res = await authedFetch("/api/gemini/live-token", {
@@ -197,8 +198,10 @@ export function useGeminiLive() {
 
     // 2) Open the Live socket and resolve ONLY once the session is actually
     //    ready (`setupComplete`). If the socket errors/closes (e.g. the token is
-    //    rejected) or never becomes ready in time, resolve `false` so the caller
-    //    can fall back. Once running, the SAME logic is reused to RECONNECT when
+    //    rejected) or never becomes ready in time, resolve `false`. Gemini Live is
+    //    the only interviewer path; on connect failure the caller surfaces a
+    //    retryable error (no silent degrade). Once running, the SAME logic is
+    //    reused to RECONNECT when
     //    the server resets the ~10-min connection — keyed off the resumption
     //    handle — so the interview continues past the session limit.
     return await new Promise<boolean>((resolve) => {

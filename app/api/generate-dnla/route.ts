@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   const uid = principal.uid;
 
   // 2. Rate limit (this route will be Gemini-backed once DNLA scoring is wired).
-  const limited = enforceRateLimit(req, {
+  const limited = await enforceRateLimit(req, {
     uid,
     limit: 20,
     windowMs: 60_000,

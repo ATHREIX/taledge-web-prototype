@@ -59,6 +59,31 @@ export type CandidateRecord = Student & {
   updatedAt: number;
 };
 
+/**
+ * A durable exam-aspirant record = the seed `ExamAspirant` shape PLUS the
+ * institute-scoping + real-result facets an assessment upsert carries. Mirrors
+ * how a CandidateRecord extends Student. Every added field is OPTIONAL so a
+ * plain seed `ExamAspirant` is a valid record and `listExamAspirants` keeps
+ * returning `ExamAspirant[]` unchanged.
+ */
+export type ExamAspirantRecord = ExamAspirant & {
+  /** Which institute owns this aspirant (institute exam-cohort scoping). Empty
+   *  for a self-serve aspirant not bound to an institute cohort. */
+  instituteId?: string;
+  /** The cohort/batch within the institute (e.g. "UPSC 2026"). */
+  cohort?: string;
+  /** Headline exam scores from the assessment — same shape as a candidate's fit
+   *  block (technical/behavioural/fit/successProbability). */
+  fit?: Student["fit"];
+  /** Durable full Fit Score report JSON (survives device switch / storage clear). */
+  fitReportJson?: string;
+  /** Epoch ms the fitReportJson was written. */
+  fitReportTs?: number;
+  /** "seed" = demo data; "interview" = upserted from a real assessment result. */
+  sourcedFrom?: "seed" | "interview";
+  updatedAt?: number;
+};
+
 export type Job = {
   id: string;
   recruiterId: string;
@@ -142,6 +167,19 @@ const COL = {
 
 const useFirestore = () => isAdminConfigured && !!adminDb;
 
+/**
+ * PROD vs DEMO error policy. When admin is configured, Firestore IS the backend,
+ * so a Firestore error must NOT fall through to the per-instance temp file: on
+ * Cloud Run that store is ephemeral + per-instance, so a silent fallback means
+ * lost writes and seed-only reads that diverge across the fleet. Rethrow so the
+ * caller surfaces a real, retryable error. In local/demo (no admin creds) the
+ * file store is the real backend, so just log and let the caller proceed to it.
+ */
+function onFirestoreError(scope: string, e: unknown): void {
+  logger.error(`[talent-store] ${scope} failed`, { err: String(e) });
+  if (isAdminConfigured) throw e instanceof Error ? e : new Error(String(e));
+}
+
 // DEMO/local fallback only. Production should configure firebase-admin.
 const DIR = path.join(os.tmpdir(), "taledge-talent");
 const FILE = path.join(DIR, "talent.json");
@@ -206,6 +244,31 @@ function seededExam(): Record<string, ExamAspirant> {
   const out: Record<string, ExamAspirant> = {};
   for (const a of seedExamAspirants) out[a.id] = a;
   return out;
+}
+
+/** A minimal base ExamAspirant for an aspirant that has NO seed persona (e.g. an
+ *  institute exam-cohort invitee). The upsert patch fills the real result fields;
+ *  the wellbeing trends/indices stay neutral until a tracking signal feeds them.
+ *  Analogous to seedCandidate's bare-record path in upsertCandidate. */
+function blankExamAspirant(id: string, name: string): ExamAspirant {
+  return {
+    id,
+    name: name || "Aspirant",
+    avatar: "",
+    exam: "",
+    attempt: "",
+    monthsPreparing: 0,
+    successPotential: 0,
+    motivation: 0,
+    consistency: 0,
+    resilience: 0,
+    stressIndex: 0,
+    risks: [],
+    consistencyTrend: [],
+    moodTrend: [],
+    studyHoursTrend: [],
+    institute: "",
+  };
 }
 
 /* --------------------------- file fallback ------------------------------ */
@@ -291,7 +354,7 @@ async function readCollection<T>(collection: string, seed: () => Record<string, 
       }
       return snap.docs.map((d) => toPlain(d.data()) as T);
     } catch (e) {
-      logger.error(`[talent-store] Firestore read ${collection} failed; file fallback`, { err: String(e) });
+      onFirestoreError(`read ${collection}`, e);
     }
   }
   // File fallback — pick the right slice off the seeded file.
@@ -321,7 +384,7 @@ async function queryByField<T>(
       const snap = await adminDb!.collection(collection).where(field as any, "==", value as any).get();
       return snap.docs.map((d) => toPlain(d.data()) as T);
     } catch (e) {
-      logger.error(`[talent-store] indexed query ${collection}.${field} failed; file fallback`, { err: String(e) });
+      onFirestoreError(`indexed query ${collection}.${field}`, e);
     }
   }
   const f = loadFile();
@@ -341,7 +404,7 @@ export async function getCandidate(id: string): Promise<CandidateRecord | null> 
       const snap = await adminDb!.collection(COL.candidates).doc(id).get();
       if (snap.exists) return toPlain(snap.data()) as CandidateRecord;
     } catch (e) {
-      logger.error("[talent-store] getCandidate failed; file fallback", { err: String(e) });
+      onFirestoreError("getCandidate", e);
     }
   }
   const f = loadFile();
@@ -373,7 +436,7 @@ export async function upsertCandidate(
       await ref.set(merged, { merge: true });
       return merged;
     } catch (e) {
-      logger.error("[talent-store] upsertCandidate failed; file fallback", { err: String(e) });
+      onFirestoreError("upsertCandidate", e);
     }
   }
   const f = loadFile();
@@ -416,6 +479,46 @@ export async function listExamAspirants(): Promise<ExamAspirant[]> {
   return readCollection<ExamAspirant>(COL.examAspirants, seededExam);
 }
 
+/**
+ * Upsert an exam (Track 2) aspirant's assessment result into the SAME
+ * examAspirants collection the institute exam-cohort view reads. Mirrors
+ * upsertCandidate exactly: same dual backend (Firestore | file), same
+ * onFirestoreError policy, same seed-or-prior merge — so a real exam aspirant's
+ * result actually lands in the store instead of being dropped. Merges the patch
+ * onto the existing (seed or prior) record; creates it from a blank base if
+ * absent. Returns the merged record.
+ */
+export async function upsertExamAspirant(
+  id: string,
+  patch: Partial<ExamAspirantRecord> & { fit?: Student["fit"] }
+): Promise<ExamAspirantRecord> {
+  const now = Date.now();
+  if (useFirestore()) {
+    try {
+      const ref = adminDb!.collection(COL.examAspirants).doc(id);
+      const snap = await ref.get();
+      const base = (snap.exists ? snap.data() : seededExam()[id]) as ExamAspirantRecord | undefined;
+      const merged: ExamAspirantRecord = {
+        ...(base ?? blankExamAspirant(id, patch.name ?? "")),
+        ...patch,
+        id,
+        sourcedFrom: "interview",
+        updatedAt: now,
+      };
+      await ref.set(merged, { merge: true });
+      return merged;
+    } catch (e) {
+      onFirestoreError("upsertExamAspirant", e);
+    }
+  }
+  const f = loadFile();
+  const base = f.examAspirants[id] ?? blankExamAspirant(id, patch.name ?? "");
+  const merged: ExamAspirantRecord = { ...base, ...patch, id, sourcedFrom: "interview", updatedAt: now };
+  f.examAspirants[id] = merged;
+  saveFile(f);
+  return merged;
+}
+
 /* ------------------------------- jobs ----------------------------------- */
 
 export async function listJobs(recruiterId?: string): Promise<Job[]> {
@@ -433,7 +536,7 @@ export async function createJob(job: Job): Promise<Job> {
       await adminDb!.collection(COL.jobs).doc(job.id).set(job);
       return job;
     } catch (e) {
-      logger.error("[talent-store] createJob failed; file fallback", { err: String(e) });
+      onFirestoreError("createJob", e);
     }
   }
   const f = loadFile();
@@ -451,7 +554,7 @@ export async function deleteJob(id: string, recruiterId: string): Promise<boolea
       await ref.delete();
       return true;
     } catch (e) {
-      logger.error("[talent-store] deleteJob failed; file fallback", { err: String(e) });
+      onFirestoreError("deleteJob", e);
     }
   }
   const f = loadFile();
@@ -470,7 +573,7 @@ export async function getShortlist(recruiterId: string): Promise<string[]> {
       const snap = await adminDb!.collection(COL.shortlists).doc(recruiterId).get();
       return snap.exists ? (snap.data() as Shortlist).candidateIds ?? [] : [];
     } catch (e) {
-      logger.error("[talent-store] getShortlist failed; file fallback", { err: String(e) });
+      onFirestoreError("getShortlist", e);
     }
   }
   const f = loadFile();
@@ -485,7 +588,7 @@ export async function setShortlist(recruiterId: string, candidateIds: string[]):
       await adminDb!.collection(COL.shortlists).doc(recruiterId).set(doc);
       return clean;
     } catch (e) {
-      logger.error("[talent-store] setShortlist failed; file fallback", { err: String(e) });
+      onFirestoreError("setShortlist", e);
     }
   }
   const f = loadFile();
@@ -520,7 +623,7 @@ export async function createShareLink(
       await adminDb!.collection(COL.shareLinks).doc(link.token).set(link);
       return link;
     } catch (e) {
-      logger.error("[talent-store] createShareLink failed; file fallback", { err: String(e) });
+      onFirestoreError("createShareLink", e);
     }
   }
   const f = loadFile();
@@ -538,7 +641,7 @@ export async function getShareLink(token: string): Promise<ShareLink | null> {
       const l = snap.data() as ShareLink;
       return l.expiresAt && l.expiresAt < Date.now() ? null : l;
     } catch (e) {
-      logger.error("[talent-store] getShareLink failed; file fallback", { err: String(e) });
+      onFirestoreError("getShareLink", e);
     }
   }
   const f = loadFile();
@@ -555,16 +658,14 @@ export async function getShareLink(token: string): Promise<ShareLink | null> {
  */
 export async function isInstituteAdmin(instituteId: string, uid: string, demo: boolean): Promise<boolean> {
   if (demo) return true; // demo mode is intentionally open
+  // FAIL CLOSED: admin authority is EXACT `adminUids` membership only. We must
+  // NOT fall back to resolveInstituteForView here — its pilot "which institute
+  // does this account view" default resolves ANY uid to the placement institute,
+  // which would make every logged-in user an admin of that tenant (cross-tenant
+  // IDOR: reading invite tokens/PII, writing cohorts/share-links/interventions).
+  // A real institute admin is granted access by seeding their uid into adminUids.
   const inst = await getInstituteRecord(instituteId);
-  if (inst && Array.isArray(inst.adminUids) && inst.adminUids.includes(uid)) return true;
-  // PILOT FALLBACK: an institute account not bound to any institute (e.g. a fresh
-  // signup) administers the institute it RESOLVES to — the same one its dashboard
-  // view falls back to (resolveInstituteForView). Without this, such an account
-  // could view the dashboard but every admin action (share link, add students,
-  // interventions) would 403. Strictly-bound institutes stay scoped: their admins
-  // resolve to their own institute, never someone else's.
-  const resolved = await resolveInstituteForView(uid);
-  return !!resolved && resolved.id === instituteId;
+  return !!inst && Array.isArray(inst.adminUids) && inst.adminUids.includes(uid);
 }
 
 /** SCALE: one institute's cohort via an indexed `instituteId ==` query (not a
@@ -590,7 +691,7 @@ export async function listRecruiterVisibleCandidates(recruiterId: string): Promi
       for (const d of [...pub.docs, ...own.docs]) merged.set(d.id, toPlain(d.data()) as CandidateRecord);
       return Array.from(merged.values());
     } catch (e) {
-      logger.error("[talent-store] listRecruiterVisibleCandidates failed; file fallback", { err: String(e) });
+      onFirestoreError("listRecruiterVisibleCandidates", e);
     }
   }
   const f = loadFile();
@@ -631,7 +732,7 @@ export async function createInvites(
       await batch.commit();
       return invites;
     } catch (e) {
-      logger.error("[talent-store] createInvites failed; file fallback", { err: String(e) });
+      onFirestoreError("createInvites", e);
     }
   }
   const f = loadFile();
@@ -682,7 +783,7 @@ export async function createInstituteInvites(
       await batch.commit();
       return invites;
     } catch (e) {
-      logger.error("[talent-store] createInstituteInvites failed; file fallback", { err: String(e) });
+      onFirestoreError("createInstituteInvites", e);
     }
   }
   const f = loadFile();
@@ -704,7 +805,7 @@ export async function getInvite(token: string): Promise<Invite | null> {
       const doc = await adminDb!.collection(COL.invites).doc(token).get();
       return doc.exists ? (doc.data() as Invite) : null;
     } catch (e) {
-      logger.error("[talent-store] getInvite failed; file fallback", { err: String(e) });
+      onFirestoreError("getInvite", e);
     }
   }
   return loadFile().recruiterInvites[token] ?? null;
@@ -727,7 +828,7 @@ export async function updateInviteStatus(token: string, status: Invite["status"]
       await ref.set({ status }, { merge: true });
       return;
     } catch (e) {
-      logger.error("[talent-store] updateInviteStatus failed; file fallback", { err: String(e) });
+      onFirestoreError("updateInviteStatus", e);
     }
   }
   const f = loadFile();
@@ -749,7 +850,7 @@ export async function listInterventions(instituteId: string): Promise<Interventi
 export async function createIntervention(i: Intervention): Promise<Intervention> {
   if (useFirestore()) {
     try { await adminDb!.collection(COL.interventions).doc(i.id).set(i); return i; }
-    catch (e) { logger.error("[talent-store] createIntervention failed; file fallback", { err: String(e) }); }
+    catch (e) { onFirestoreError("createIntervention", e); }
   }
   const f = loadFile();
   f.interventions[i.id] = i;
@@ -771,7 +872,7 @@ export async function updateInterventionStatus(
       const updated = { ...(snap.data() as Intervention), status, updatedAt: Date.now() };
       await ref.set(updated, { merge: true });
       return updated;
-    } catch (e) { logger.error("[talent-store] updateInterventionStatus failed; file fallback", { err: String(e) }); }
+    } catch (e) { onFirestoreError("updateInterventionStatus", e); }
   }
   const f = loadFile();
   const cur = f.interventions[id];

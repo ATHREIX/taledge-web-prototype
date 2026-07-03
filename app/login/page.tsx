@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -16,6 +16,8 @@ import {
 } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import { useAuth } from "@/components/AuthProvider";
+import { syncSessionCookie } from "@/lib/session-cookie";
 import { postAuthPath, type Role } from "@/lib/roles";
 import {
   EnterpriseAuthShell,
@@ -30,8 +32,26 @@ import {
   Arrow,
 } from "@/components/landing/enterprise/auth-kit";
 
+/** A same-origin ?next= is only honored if it does NOT point into a DIFFERENT
+ *  role's workspace (a candidate must not be routed to a recruiter deep-link).
+ *  Shared paths (/dashboard, /profile, /onboarding, /exam, /interview) and the
+ *  user's own role base are all allowed. */
+function nextAllowedForRole(next: string, role: Role): boolean {
+  const roleBases: Record<Role, string> = {
+    candidate: "/student",
+    recruiter: "/recruiter",
+    coach: "/coach",
+    institute: "/institute",
+  };
+  for (const [r, base] of Object.entries(roleBases)) {
+    if (r !== role && (next === base || next.startsWith(base + "/"))) return false;
+  }
+  return true;
+}
+
 export default function LoginPage() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -40,25 +60,55 @@ export default function LoginPage() {
   const [sso, setSso] = useState<"google" | "microsoft" | null>(null);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  // Guards the auto-redirect effect from racing an in-flight manual sign-in.
+  const navigating = useRef(false);
+  const [next, setNext] = useState<string | null>(null);
 
-  // Shared post-auth routing: resolve role, honor a same-origin ?next=, else hub.
-  const routeAfterAuth = async (cred: UserCredential) => {
+  // Capture a same-origin ?next= once, to thread through both the sign-in
+  // redirect and the "Get started" link (so an invite/deep-link survives auth).
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("next");
+    setNext(raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : null);
+  }, []);
+
+  // Resolve where a signed-in user of `uid` should land: a role-VALID ?next=,
+  // else the post-auth hub. next is only honored if it targets a path this role
+  // may actually use (prevents landing a candidate on a recruiter deep-link).
+  const resolveDest = async (uid: string): Promise<string> => {
     let role: Role = "candidate";
     try {
-      const snap = await getDoc(doc(db, "users", cred.user.uid));
+      const snap = await getDoc(doc(db, "users", uid));
       const r = snap.exists() ? (snap.data().role as Role) : null;
       if (r) role = r;
     } catch {
       /* role lookup is non-fatal */
     }
-    const nextParam =
-      typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("next") : null;
-    const dest =
-      nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
-        ? nextParam
-        : postAuthPath(role, cred.user.uid);
-    router.push(dest);
+    if (next && nextAllowedForRole(next, role)) return next;
+    return postAuthPath(role, uid);
   };
+
+  // Shared post-auth routing: sync the gate cookie SYNCHRONOUSLY before
+  // navigating (else router.push races the async onIdTokenChanged listener and
+  // the RSC fetch for the destination hits enforced-mode middleware with no
+  // cookie → bounced back to /login), then route by role.
+  const routeAfterAuth = async (cred: UserCredential) => {
+    navigating.current = true;
+    await syncSessionCookie(cred.user);
+    router.push(await resolveDest(cred.user.uid));
+  };
+
+  // Returning user who is ALREADY signed in (e.g. the 1h gate cookie expired and
+  // they hit /login directly): reuse the still-valid IndexedDB session instead of
+  // asking for credentials again. Re-mint the cookie, then replace to their hub.
+  useEffect(() => {
+    if (authLoading || !user || navigating.current) return;
+    navigating.current = true;
+    (async () => {
+      await syncSessionCookie(user);
+      router.replace(await resolveDest(user.uid));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user]);
 
   const friendly = (code: string, fallback: string) =>
     code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found"
@@ -239,7 +289,12 @@ export default function LoginPage() {
 
         <p className="mt-7 text-center text-[14px] text-slate-500">
           New to Taledge?{" "}
-          <Link href="/register" className="font-semibold text-[#0057FF] hover:underline">Get started</Link>
+          <Link
+            href={next ? `/register?next=${encodeURIComponent(next)}` : "/register"}
+            className="font-semibold text-[#0057FF] hover:underline"
+          >
+            Get started
+          </Link>
         </p>
       </div>
     </EnterpriseAuthShell>

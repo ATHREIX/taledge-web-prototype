@@ -20,6 +20,7 @@ import { Avatar } from "@/components/ui";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { auth } from "@/lib/firebase";
+import { clearSessionCookie } from "@/lib/session-cookie";
 import { cn } from "@/lib/utils";
 import { workspaceId, type Role } from "@/lib/roles";
 
@@ -111,8 +112,7 @@ export function Nav() {
     // this, the enforced-mode middleware gate could still see a stale token and
     // the next nav could render role-aware chrome for the just-logged-out user.
     try {
-      const secure = location.protocol === "https:" ? "; Secure" : "";
-      document.cookie = `firebaseIdToken=; path=/; max-age=0; SameSite=Lax${secure}`;
+      clearSessionCookie();
       localStorage.removeItem("taledge:role");
       localStorage.removeItem("taledge:roleUid");
     } catch {

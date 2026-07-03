@@ -13,9 +13,12 @@ export const runtime = "nodejs";
 const MAX_IMAGE_BASE64_LENGTH = 8_000_000; // ~6MB decoded
 
 /**
- * FAIL-CLOSED proctoring response. Used whenever we cannot positively confirm a
- * single face (missing key, validation gap that still needs a body shape, or any
- * thrown error). NEVER returns verified:true on these paths.
+ * INFRA-UNAVAILABLE proctoring response. Used ONLY when we never got a real
+ * verdict from the model: missing key, or a thrown/timed-out call / 429 / 5xx
+ * from Gemini. This is DISTINCT from a genuine "no face" verdict (the model
+ * answered and said there is no single face) — that path returns
+ * `unavailable:false` below. NEVER returns verified:true on these paths in
+ * enforced mode.
  */
 function verificationUnavailable() {
   // Production fails CLOSED. In demo/pilot mode, an infrastructure outage
@@ -25,7 +28,11 @@ function verificationUnavailable() {
   if (DEMO_MODE) {
     return NextResponse.json({ ok: true, verified: true, demo: true, reason: "demo_bypass" });
   }
-  return NextResponse.json({ ok: true, verified: false, reason: "verification_unavailable" });
+  // Enforced mode: fail closed, but flag this as an INFRA outage
+  // (`unavailable:true`) so the client can distinguish a transient Gemini failure
+  // from a real no-face verdict and offer a retry instead of hard-blocking every
+  // candidate on an outage.
+  return NextResponse.json({ ok: true, verified: false, unavailable: true, reason: "verification_unavailable" });
 }
 
 export async function POST(req: NextRequest) {
@@ -36,7 +43,7 @@ export async function POST(req: NextRequest) {
     const uid = principal.uid;
 
     // 2. Rate limit - this route calls the paid Gemini API.
-    const limited = enforceRateLimit(req, {
+    const limited = await enforceRateLimit(req, {
       uid,
       limit: 30,
       windowMs: 60_000,
@@ -187,7 +194,12 @@ The "verified" field MUST be a strict JSON boolean (true or false), never a stri
       await markFaceVerified();
       return NextResponse.json({ ok: true, verified: true });
     }
-    return NextResponse.json({ ok: true, verified: false, reason: reason || "No single clear face detected" });
+    // GENUINE reject: the model returned a real verdict and there is no single
+    // clear face (no face / multiple faces / other face). This is NOT an infra
+    // failure, so `unavailable:false` — the client asks the candidate to
+    // reposition rather than showing a service-unavailable retry. (faceVerified
+    // is intentionally NOT persisted on this path.)
+    return NextResponse.json({ ok: true, verified: false, unavailable: false, reason: reason || "No single clear face detected" });
   } catch (error: any) {
     // FAIL CLOSED on any error - never bypass proctoring with verified:true.
     logger.error("verify-face: verification error", {

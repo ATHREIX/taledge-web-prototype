@@ -139,6 +139,19 @@ export default function Onboarding() {
     const token = sp.get("invite");
     setHasInvite(!!token);
     if (!token) return;
+    // Persist the invite token into the coarse-gate cookie the Edge middleware
+    // reads, so this account-less candidate's downstream /student/candidate-inv-*
+    // + /exam navigations aren't bounced to /login (they carry no Firebase cookie).
+    // getPrincipal still validates the token per API request. Bounded lifetime
+    // covers one assessment session.
+    if (token.length <= 128) {
+      try {
+        const secure = location.protocol === "https:" ? "; Secure" : "";
+        document.cookie = `inviteToken=${encodeURIComponent(token)}; path=/; max-age=21600; SameSite=Lax${secure}`;
+      } catch {
+        /* cookie is best-effort; the ?invite= query still gates the first load */
+      }
+    }
     let cancelled = false;
     (async () => {
       try {

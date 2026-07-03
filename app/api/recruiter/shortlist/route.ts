@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
-  const limited = enforceRateLimit(req, { uid: principal.uid, limit: 60, windowMs: 60_000, scope: "recruiter-shortlist" });
+  const limited = await enforceRateLimit(req, { uid: principal.uid, limit: 60, windowMs: 60_000, scope: "recruiter-shortlist" });
   if (limited) return limited;
   const candidateIds = await getShortlist(principal.uid);
   return NextResponse.json({ ok: true, candidateIds });
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
-  const limited = enforceRateLimit(req, { uid: principal.uid, limit: 60, windowMs: 60_000, scope: "recruiter-shortlist-write" });
+  const limited = await enforceRateLimit(req, { uid: principal.uid, limit: 60, windowMs: 60_000, scope: "recruiter-shortlist-write" });
   if (limited) return limited;
   let body: any = {};
   try { body = await req.json(); } catch { return NextResponse.json({ ok: false, error: "Invalid body" }, { status: 400 }); }

@@ -16,7 +16,7 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
-  const limited = enforceRateLimit(req, { uid: principal.uid, limit: 60, windowMs: 60_000, scope: "recruiter-candidates" });
+  const limited = await enforceRateLimit(req, { uid: principal.uid, limit: 60, windowMs: 60_000, scope: "recruiter-candidates" });
   if (limited) return limited;
 
   try {

@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
   const uid = principal.uid;
 
   // Lightweight abuse guard on this billing-adjacent action endpoint.
-  const limited = enforceRateLimit(req, {
+  const limited = await enforceRateLimit(req, {
     uid,
     limit: 30,
     windowMs: 60000,

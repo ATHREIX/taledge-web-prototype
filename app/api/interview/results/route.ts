@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   if (!principal) return unauthorized();
   const uid = principal.uid;
 
-  const limited = enforceRateLimit(req, { uid, limit: 20, windowMs: 60000, scope: "interview-results" });
+  const limited = await enforceRateLimit(req, { uid, limit: 20, windowMs: 60000, scope: "interview-results" });
   if (limited) return limited;
 
   const apiKey = getGeminiApiKey();
