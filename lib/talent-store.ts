@@ -668,6 +668,23 @@ export async function isInstituteAdmin(instituteId: string, uid: string, demo: b
   return !!inst && Array.isArray(inst.adminUids) && inst.adminUids.includes(uid);
 }
 
+/**
+ * The stakeholder role stored at users/{uid}.role (server-side read), or null.
+ * Used to authorize the institute DASHBOARD PAGE: an institute-role account with
+ * no explicit adminUids binding may still view the pilot placement tenant (the
+ * documented unbound-institute fallback), while non-institute accounts cannot.
+ * Fail-closed: any read error returns null (→ access denied), never elevates.
+ */
+export async function getUserRole(uid: string): Promise<string | null> {
+  if (!useFirestore()) return null;
+  try {
+    const snap = await adminDb!.collection("users").doc(uid).get();
+    return snap.exists ? ((snap.data()?.role as string) ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** SCALE: one institute's cohort via an indexed `instituteId ==` query (not a
  *  full-collection scan), so it stays fast at 10k+ candidates. */
 export async function listCandidatesByInstitute(instituteId: string): Promise<CandidateRecord[]> {

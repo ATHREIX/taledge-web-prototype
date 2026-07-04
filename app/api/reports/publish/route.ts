@@ -110,7 +110,18 @@ export async function POST(req: NextRequest) {
           status: "Published",
         });
       } catch (e) {
-        logger.error("publish: talent-store mark-published failed (non-fatal)", { subjectId, err: String(e) });
+        logger.error("publish: talent-store mark-published failed", { subjectId, err: String(e) });
+        // In production this write IS the publish — if it fails the candidate is
+        // NOT visible to recruiters. Reporting ok:true here would tell them
+        // "you're now in the recruiter portal" while the record never updated
+        // (the exact recruiter/institute sync gap). Surface the failure so they
+        // can retry. Demo (file store) stays best-effort.
+        if (isProd) {
+          return NextResponse.json(
+            { ok: false, error: "Could not publish to recruiters right now. Please try again." },
+            { status: 502 }
+          );
+        }
       }
     }
 

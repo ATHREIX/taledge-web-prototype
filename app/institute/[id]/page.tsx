@@ -1,5 +1,8 @@
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import Link from "next/link";
+import { adminAuth, isAdminConfigured } from "@/lib/firebase-admin";
+import { AUTH_ENFORCED } from "@/lib/flags";
 import { Section } from "@/components/glass";
 import { Bar } from "@/components/score-ring";
 import { DashboardHeader, KPIGrid, EmptyState, type Kpi } from "@/components/dashboard";
@@ -9,7 +12,7 @@ import {
   type Institute,
   type Student,
 } from "@/lib/data";
-import { resolveInstituteForView, listCandidatesByInstitute, listExamAspirants, listInterventions } from "@/lib/talent-store";
+import { resolveInstituteForView, listCandidatesByInstitute, listExamAspirants, listInterventions, isInstituteAdmin, getUserRole } from "@/lib/talent-store";
 import { InterventionsPanel } from "./InterventionsPanel";
 import { FadeIn, SlideUp, StaggerContainer, StaggerItem } from "@/components/motion";
 import { MotionDiv } from "./ClientMotion";
@@ -107,6 +110,35 @@ export default async function InstitutePage({
   const inst = await resolveInstituteForView(id);
   if (!inst) notFound();
   const instituteId = inst.id;
+
+  // AUTHORIZATION (enforced mode). This server component renders a whole cohort's
+  // PII + fit scores + DNLA. Middleware only checks that SOME credential exists,
+  // so without this gate any signed-in user (a candidate, a recruiter, another
+  // institute's admin) could open /institute/<any-id> and read that tenant's
+  // cohort. Require the caller to admin THIS institute (exact adminUids) — or, for
+  // the documented pilot, to be an institute-role account viewing the default
+  // placement tenant. Anyone else gets a 404 (never the data).
+  if (AUTH_ENFORCED && isAdminConfigured && adminAuth) {
+    const token = (await cookies()).get("firebaseIdToken")?.value;
+    let callerUid: string | null = null;
+    if (token) {
+      try {
+        callerUid = (await adminAuth.verifyIdToken(token)).uid;
+      } catch {
+        /* invalid/expired token → unauthenticated */
+      }
+    }
+    let authorized = false;
+    if (callerUid) {
+      authorized = await isInstituteAdmin(instituteId, callerUid, false);
+      // Pilot fallback: an unbound institute-role account administers the default
+      // placement tenant (see resolveInstituteForView + institute-pilot-fallback).
+      if (!authorized && instituteId === "institute-placement") {
+        authorized = (await getUserRole(callerUid)) === "institute";
+      }
+    }
+    if (!authorized) notFound();
+  }
 
   const isExam = inst.kind === "exam";
   // Durable data from the talent store (seed today; live candidate results once
