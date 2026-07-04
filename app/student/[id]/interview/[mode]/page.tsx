@@ -3431,7 +3431,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       <div className="flex-1 flex flex-col w-full z-10 relative">
         {/* Header */}
         <header className="bg-white/80 backdrop-blur-2xl border-b border-ink-200/60 sticky top-0 z-50">
-          <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+          <div className="max-w-[1800px] mx-auto px-4 h-14 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div aria-hidden className="relative w-9 h-9 bg-gradient-to-br from-brand-600 to-accent-500 rounded-xl flex items-center justify-center shadow-panel">
                 <Brain className="w-4 h-4 text-white" />
@@ -3461,12 +3461,12 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           </div>
         </header>
 
-        <main className="flex-1 max-w-7xl mx-auto w-full p-3 md:p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <main className="flex-1 max-w-[1800px] mx-auto w-full p-3 md:p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Left Column: Camera + Proctoring Panel + Profile.
               Below lg it drops BELOW the chat (order-2) so the Q&A is the primary
               top region on small screens instead of being pushed off the fold.
               On lg the grid columns place it back on the left (order reset). */}
-          <div className="order-2 lg:order-none lg:col-span-4 flex flex-col md:grid md:grid-cols-2 lg:flex lg:flex-col gap-4">
+          <div className="order-2 lg:order-none lg:col-span-3 flex flex-col md:grid md:grid-cols-2 lg:flex lg:flex-col gap-4">
             {/* Camera Feed */}
             <Card variant="default" className="bg-white/50 p-1.5 relative group">
               <div className="absolute top-3 left-3 z-20 flex flex-col gap-1.5">
@@ -3565,7 +3565,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
 
           {/* Right Column: Chat Interface. order-1 lifts it above the camera/proctor
               stack below lg so the interview Q&A stays the primary top region. */}
-          <div className="order-1 lg:order-none lg:col-span-8 flex flex-col h-[72vh] min-h-[520px] md:h-[76vh] lg:h-[calc(100vh-8rem)] bg-white/40 backdrop-blur-3xl rounded-xl2 shadow-panel border border-ink-200/60 overflow-hidden relative">
+          <div className="order-1 lg:order-none lg:col-span-9 flex flex-col h-[72vh] min-h-[520px] md:h-[76vh] lg:h-[calc(100vh-7rem)] bg-white/40 backdrop-blur-3xl rounded-xl2 shadow-panel border border-ink-200/60 overflow-hidden relative">
             {/* Messages - min-h-0 is REQUIRED: without it this flex-1 child keeps
                 its default min-height:auto, refuses to shrink below its content,
                 and the list overflows the panel (pushing the input area off-screen)

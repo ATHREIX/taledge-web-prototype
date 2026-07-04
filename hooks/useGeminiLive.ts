@@ -27,6 +27,10 @@ export type LiveMessage = { role: "ai" | "user"; text: string };
  * - Streams the AI's native-audio out (24kHz PCM) and the candidate's mic in, and
  *   accumulates BOTH sides' transcriptions into `messages` for scoring.
  */
+// Max auto-reconnect attempts after a mid-interview drop before we give up and
+// surface an error (each retry backs off up to 4s).
+const MAX_RECONNECT_ATTEMPTS = 6;
+
 export function useGeminiLive() {
   const [isConnected, setIsConnected] = useState(false);
   const [aiSpeaking, setAiSpeaking] = useState(false);
@@ -47,6 +51,13 @@ export function useGeminiLive() {
   const sessionHandleRef = useRef<string | null>(null);
   const intentionalCloseRef = useRef(false); // true only when disconnect() is called
   const reconnectingRef = useRef(false);
+  // Bounded auto-reconnect after a mid-interview drop (the ~10-min Live socket
+  // cap, a GoAway, or a transient close). Reset to 0 on a clean setupComplete.
+  const reconnectAttemptsRef = useRef(0);
+  // Mirror `messages` so a HANDLE-LESS reconnect can re-seed the conversation into
+  // a fresh session — keeps context across the connection cap even when no
+  // resumption handle was captured (also prevents the ~10-min silent freeze).
+  const messagesRef = useRef<LiveMessage[]>([]);
   const connCtxRef = useRef<{ apiKey: string; model: string; voice?: string; systemInstruction?: string; captureMic: boolean } | null>(null);
   // Half-duplex turn-taking: while the interviewer "has the floor" (generating
   // or its audio is still playing) we MUTE the candidate's mic so they can't
@@ -75,6 +86,8 @@ export function useGeminiLive() {
   // Accumulators for the in-flight turn's streamed transcription text.
   const aiTurnRef = useRef("");
   const userTurnRef = useRef("");
+  // Keep a ref copy of the transcript for reconnect re-seeding (see openSocket).
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   /** Schedule one 24kHz PCM chunk back-to-back and (re)arm the end-of-speech timer. */
   const playAudioChunk = useCallback((pcm: Int16Array) => {
@@ -195,6 +208,10 @@ export function useGeminiLive() {
     }
 
     connCtxRef.current = { apiKey, model, voice, systemInstruction, captureMic };
+    // Fresh interview → clear any prior teardown flag and zero the reconnect
+    // backoff, so a previous session can't suppress this one's auto-reconnect.
+    intentionalCloseRef.current = false;
+    reconnectAttemptsRef.current = 0;
 
     // 2) Open the Live socket and resolve ONLY once the session is actually
     //    ready (`setupComplete`). If the socket errors/closes (e.g. the token is
@@ -277,6 +294,24 @@ export function useGeminiLive() {
                 },
               })
             );
+          } else if (!sessionHandleRef.current && messagesRef.current.length) {
+            // Reconnected with NO resumption handle (none was captured before the
+            // drop). Server-side context is gone, so RE-SEED the recent transcript
+            // into the fresh session and nudge the model to continue — otherwise it
+            // has no idea an interview is in progress and the round freezes silently.
+            const turns = messagesRef.current.slice(-24).map((m) => ({
+              role: m.role === "ai" ? "model" : "user",
+              parts: [{ text: m.text }],
+            }));
+            turns.push({
+              role: "user",
+              parts: [
+                {
+                  text: "[DIRECTOR: The live connection dropped and reconnected. Silently CONTINUE the same interview from the conversation above — ask your next single question, building on the candidate's last answer. Do NOT greet again, do NOT restart, and do NOT mention the reconnection.]",
+                },
+              ],
+            });
+            ws.send(JSON.stringify({ clientContent: { turns, turnComplete: true } }));
           }
         };
 
@@ -297,6 +332,7 @@ export function useGeminiLive() {
           if (payload.setupComplete) {
             setIsConnected(true);
             reconnectingRef.current = false;
+            reconnectAttemptsRef.current = 0; // healthy connection → reset backoff
             if (!isReconnect) settle(true);
             if (c.captureMic) {
               startMicrophone().catch(() => setError("Microphone access is required for the live interview."));
@@ -371,12 +407,22 @@ export function useGeminiLive() {
           // A close before the FIRST setupComplete = a failed connect (e.g. rejected
           // token) → surface as failure so the caller can fall back.
           if (!isReconnect && !settled) { settle(false); return; }
-          // Otherwise this is the ~10-min connection limit closing us MID-INTERVIEW.
-          // Reconnect with the resumption handle to continue the same session.
-          if (sessionHandleRef.current && !reconnectingRef.current) {
-            reconnectingRef.current = true;
-            setTimeout(() => { if (!intentionalCloseRef.current) openSocket(true); }, 400);
+          // Otherwise this is a MID-INTERVIEW close — the ~10-min Live connection
+          // cap, a GoAway, or a transient drop. ALWAYS attempt to resume: do NOT
+          // gate on having a resumption handle (a handle-less session used to just
+          // freeze here, silently, with no error). openSocket(true) resumes with
+          // the handle if present, else re-seeds the transcript (see onopen).
+          // Bounded retries with backoff; on final failure surface an error so the
+          // page's retry card renders instead of the interview hanging forever.
+          reconnectAttemptsRef.current += 1;
+          if (reconnectAttemptsRef.current > MAX_RECONNECT_ATTEMPTS) {
+            reconnectingRef.current = false;
+            setError("The live interview lost its connection and couldn't reconnect. Please retry.");
+            return;
           }
+          reconnectingRef.current = true;
+          const delay = Math.min(400 * reconnectAttemptsRef.current, 4000);
+          setTimeout(() => { if (!intentionalCloseRef.current) openSocket(true); }, delay);
         };
       };
 
