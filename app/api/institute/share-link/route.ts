@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getPrincipal, unauthorized, forbidden } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
-import { createShareLink, getInstituteRecord, isInstituteAdmin, listCandidatesByInstitute } from "@/lib/talent-store";
+import { createShareLink, getInstituteRecord, canAdministerInstitute, listCandidatesByInstitute } from "@/lib/talent-store";
 import { sendRecruiterShareEmail } from "@/lib/email";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
   // OWNERSHIP: only an admin of THIS institute may mint a recruiter link to its
   // cohort. Open in demo; fail-closed once auth is enforced.
-  if (!(await isInstituteAdmin(instituteId, principal.uid, principal.demo))) {
+  if (!(await canAdministerInstitute(instituteId, principal.uid, principal.demo))) {
     return forbidden("You are not an admin of this institute");
   }
 

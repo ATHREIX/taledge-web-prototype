@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getPrincipal, unauthorized, forbidden } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
-import { getInstituteRecord, listInterventions, createIntervention, updateInterventionStatus, isInstituteAdmin, type Intervention } from "@/lib/talent-store";
+import { getInstituteRecord, listInterventions, createIntervention, updateInterventionStatus, canAdministerInstitute, type Intervention } from "@/lib/talent-store";
 
 export const runtime = "nodejs";
 
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   if (limited) return limited;
   const instituteId = new URL(req.url).searchParams.get("instituteId") || "";
   if (!instituteId) return NextResponse.json({ ok: false, error: "instituteId required" }, { status: 400 });
-  if (!(await isInstituteAdmin(instituteId, principal.uid, principal.demo))) return forbidden("You are not an admin of this institute");
+  if (!(await canAdministerInstitute(instituteId, principal.uid, principal.demo))) return forbidden("You are not an admin of this institute");
   return NextResponse.json({ ok: true, interventions: await listInterventions(instituteId) });
 }
 
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   const title = cap(body.title, 160);
   if (!instituteId || !title) return NextResponse.json({ ok: false, error: "instituteId and title are required." }, { status: 400 });
   if (!(await getInstituteRecord(instituteId))) return NextResponse.json({ ok: false, error: "Unknown institute" }, { status: 404 });
-  if (!(await isInstituteAdmin(instituteId, principal.uid, principal.demo))) return forbidden("You are not an admin of this institute");
+  if (!(await canAdministerInstitute(instituteId, principal.uid, principal.demo))) return forbidden("You are not an admin of this institute");
 
   const intervention: Intervention = {
     id: `iv-${instituteId}-${Date.now()}-${Math.floor(performance.now()) % 1000}`,
@@ -65,7 +65,7 @@ export async function PATCH(req: NextRequest) {
   if (!id || !instituteId || !["Planned", "In progress", "Completed"].includes(status)) {
     return NextResponse.json({ ok: false, error: "id, instituteId and a valid status are required." }, { status: 400 });
   }
-  if (!(await isInstituteAdmin(instituteId, principal.uid, principal.demo))) return forbidden("You are not an admin of this institute");
+  if (!(await canAdministerInstitute(instituteId, principal.uid, principal.demo))) return forbidden("You are not an admin of this institute");
   const updated = await updateInterventionStatus(id, instituteId, status);
   return NextResponse.json({ ok: !!updated, intervention: updated }, { status: updated ? 200 : 404 });
 }
