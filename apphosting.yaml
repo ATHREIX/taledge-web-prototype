@@ -104,11 +104,16 @@ env:
     availability: [RUNTIME]
 
   # ---- Optional secrets. Uncomment after creating the secret in Secret Manager. ----
-  # DNLA partner API key (Cloud Secret Manager). SECURITY: rotate at DNLA — the
-  # value was shared in plaintext during setup. Server-only (never client).
-  - variable: DNLA_API_KEY
-    secret: DNLA_API_KEY
-    availability: [RUNTIME]
+  # DNLA partner API key. HELD DEACTIVATED: the secret exists in Cloud Secret
+  # Manager and the client wiring is live, but DNLA's /partner-api/tan/create
+  # returns HTTP 500 for this key from every context (dev + prod egress) — the
+  # partner account/ESK price-model is not activated on DNLA's side yet. Enabling
+  # this here makes isDnlaConfigured() true → candidates get a live "Start
+  # assessment" button that errors. Re-enable ONLY once a tan/create call returns
+  # 200 (or at least a clean 403), then also rotate the key (leaked in plaintext).
+  # - variable: DNLA_API_KEY
+  #   secret: DNLA_API_KEY
+  #   availability: [RUNTIME]
   # DNLA_WEBHOOK_SECRET: create the secret first, THEN uncomment. Until it exists
   # the completion webhook fails closed (rejects all callbacks → results never land).
   # - variable: DNLA_WEBHOOK_SECRET
