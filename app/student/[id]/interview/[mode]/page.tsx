@@ -1651,9 +1651,14 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   }, [liveActive, hasStarted, done]);
 
   useEffect(() => {
-    if (pinToBottomRef.current) {
-      chatBottomRef.current?.scrollIntoView({ block: "end" });
-    }
+    if (!pinToBottomRef.current) return;
+    // Scroll the chat CONTAINER itself (not scrollIntoView on the sentinel) -
+    // scrollIntoView walks up to the nearest scrollable ancestor and, on a long
+    // answer, yanks the whole page. Setting scrollTop on the messages container
+    // keeps the scroll contained to the chat, so a large answer stays pinned to
+    // the bottom without the page jumping.
+    const scroller = chatBottomRef.current?.parentElement;
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
   }, [messages, live.partialAi, live.partialUser, liveCaption, isProcessing, liveActive]);
 
   const stripMarkdown = (text: string) => text.replace(/\*/g, "");
@@ -3560,7 +3565,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
 
           {/* Right Column: Chat Interface. order-1 lifts it above the camera/proctor
               stack below lg so the interview Q&A stays the primary top region. */}
-          <div className="order-1 lg:order-none lg:col-span-8 flex flex-col h-[550px] md:h-[600px] lg:h-[calc(100vh-10rem)] bg-white/40 backdrop-blur-3xl rounded-xl2 shadow-panel border border-ink-200/60 overflow-hidden relative">
+          <div className="order-1 lg:order-none lg:col-span-8 flex flex-col h-[72vh] min-h-[520px] md:h-[76vh] lg:h-[calc(100vh-8rem)] bg-white/40 backdrop-blur-3xl rounded-xl2 shadow-panel border border-ink-200/60 overflow-hidden relative">
             {/* Messages - min-h-0 is REQUIRED: without it this flex-1 child keeps
                 its default min-height:auto, refuses to shrink below its content,
                 and the list overflows the panel (pushing the input area off-screen)
@@ -3725,38 +3730,10 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                     )}
                   </div>
 
-                  {/* LIVE TRANSCRIPT - your words appear here in real time as you
-                      speak (Gemini's streaming input transcription), so you can see
-                      exactly what's being captured before it's sent. */}
-                  {!aiHasFloor && !isCodingMode && (() => {
-                    const fromBrowser = !!liveCaption; // word-by-word (instant) source
-                    const liveWords = liveCaption || (`${draft} ${interimDraft}`).trim() || live.partialUser;
-                    return (
-                      <div
-                        className={`rounded-xl border px-4 py-2.5 transition-colors ${liveWords ? "border-emerald-200 bg-emerald-50/70" : "border-ink-200/60 bg-ink-50/50"}`}
-                        aria-live="polite"
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-emerald-700">
-                            <span className="inline-flex gap-0.5" aria-hidden>
-                              <span className="w-1 h-1 rounded-full bg-emerald-500 animate-bounce" style={{ animationDelay: "0ms" }} />
-                              <span className="w-1 h-1 rounded-full bg-emerald-500 animate-bounce" style={{ animationDelay: "150ms" }} />
-                              <span className="w-1 h-1 rounded-full bg-emerald-500 animate-bounce" style={{ animationDelay: "300ms" }} />
-                            </span>
-                            Live transcript
-                          </div>
-                          {/* Source indicator: instant word-by-word vs the slower
-                              Gemini fallback - confirms which path is running. */}
-                          <span className={`text-[8px] font-bold uppercase tracking-wider ${fromBrowser ? "text-emerald-600" : "text-amber-600"}`}>
-                            {fromBrowser ? "● live · word-by-word" : "● syncing"}
-                          </span>
-                        </div>
-                        <p className={`text-[13px] leading-snug ${liveWords ? "text-ink-800 italic" : "text-ink-400"}`}>
-                          {liveWords || "Start speaking - your words will appear here…"}
-                        </p>
-                      </div>
-                    );
-                  })()}
+                  {/* The candidate's live words already appear as a chat caption
+                      bubble in the conversation above (the "You · speaking…" bubble),
+                      so the separate Live-transcript box was removed - it duplicated
+                      that text and pushed the answer input down / blocked the view. */}
 
                   {live.error && (
                     <p className="text-[11px] font-semibold text-rose-600 text-center" role="alert">{live.error}</p>
@@ -3802,8 +3779,8 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                           if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendLiveText(); }
                         }}
                         placeholder={aiHasFloor ? "Wait for the interviewer to finish…" : "Speak in English or type your response..."}
-                        className="flex-1 bg-transparent px-2 py-2 resize-none text-sm focus:outline-none text-ink-800 placeholder-ink-400 disabled:cursor-not-allowed"
-                        rows={2}
+                        className="flex-1 bg-transparent px-2 py-2 resize-none text-sm focus:outline-none text-ink-800 placeholder-ink-400 disabled:cursor-not-allowed max-h-40 overflow-y-auto"
+                        rows={3}
                       />
                     </div>
                   )}
@@ -3915,8 +3892,8 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                                setDraft(e.target.value);
                             }}
                             placeholder="Speak naturally or type your response..."
-                            className="flex-1 bg-transparent px-2 py-2 resize-none text-sm focus:outline-none text-ink-800 placeholder-ink-400"
-                            rows={2}
+                            className="flex-1 bg-transparent px-2 py-2 resize-none text-sm focus:outline-none text-ink-800 placeholder-ink-400 max-h-40 overflow-y-auto"
+                            rows={3}
                           />
                         </div>
                       )}
