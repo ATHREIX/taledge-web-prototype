@@ -552,9 +552,15 @@ Strictly valid JSON. No prose before or after.`;
     // caller's own uid. Never let a public call overwrite a seeded persona
     // (candidate-002…) or another user's record from a body-supplied studentId.
     const sid = body.studentId;
+    // In enforced mode the ONLY writable id is the caller's own uid. An invited
+    // (account-less) candidate authenticates via their invite token, so their
+    // principal.uid IS their candidate-inv-* workspace — `sid === uid` already
+    // covers their legitimate write. The candidate-inv- prefix is therefore only
+    // permissive in DEMO (no real accounts); leaving it unconditional let ANY
+    // authenticated principal overwrite another invitee's record by guessing the
+    // id (cross-workspace IDOR). Scope it under demo.
     const writable =
-      (principal.demo && sid === "candidate-001") ||
-      sid.startsWith("candidate-inv-") ||
+      (principal.demo && (sid === "candidate-001" || sid.startsWith("candidate-inv-"))) ||
       (!principal.demo && sid === uid);
     if (!writable) {
       logger.warn("fit-score: refused upsert to a non-owned/seed id", { uid, studentId: sid });
@@ -640,7 +646,9 @@ Strictly valid JSON. No prose before or after.`;
               successProbability: generated.success_probability as number,
             },
             status,
-            verified: true,
+            // "Verified" means the flow completed under a REAL signed-in account,
+            // not an account-less invite-token candidate (per CandidateRecord.verified).
+            verified: !principal.invite,
           };
           if (body.resumeSummary) patch.resumeSummary = String(body.resumeSummary).slice(0, 2000);
           if (resumeSkills.length) patch.skills = resumeSkills;
