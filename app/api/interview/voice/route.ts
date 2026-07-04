@@ -173,7 +173,7 @@ ADAPT to the real candidate — the schedule is secondary. ${lastRating === null
     - Sales/Marketing → pipeline, objection handling, campaigns, numbers/quota, channels.
     - Finance/Consulting → analysis, modelling, frameworks, structured reasoning, estimation.
     - Operations/HR/Support/other → process design, judgement calls, conflict, prioritisation.
-    For any role, stress-test real depth and decision-making; do not accept surface-level answers.
+    For any role, stress-test real depth and decision-making; do not accept surface-level answers. For technical/software/data/ML roles specifically, interrogate the SPECIFIC technologies and projects the candidate lists — go past the label to the mechanism (how it works under the hood, trade-offs, failure modes, WHY they chose it over alternatives). Reject buzzwords; demand the concrete thing underneath.
     You MUST ground your questions in their specific resume context (their projects, work, skills) and how it maps to the target role. If a Job Description is included in the Resume context, prioritise probing the candidate against that JD's requirements.
     ${dnlaInstruction}
     Review their Resume Context and DNLA Report provided below.
@@ -182,7 +182,7 @@ ADAPT to the real candidate — the schedule is secondary. ${lastRating === null
     Then, formulate your next question. Make sure it explicitly probes a project, skill, experience, or goal listed in their Resume Context, framed in the language of THEIR field (not generic tech jargon). Ask about real scenarios, trade-offs, and decisions relevant to the target role.
     ${noRepeatInstruction}
     ${codingInstruction}
-    Apply cognitive load by combining concepts. Do NOT be overly friendly. CRITICAL: Ask EXACTLY ONE short question. Do NOT ask multi-part questions or combine multiple questions into one.
+    When an answer is fluent and correct, do NOT move on — compound it with a concrete stressor (scale spike, failure/edge case, race condition, hostile input) and make them reason about it live, escalating until they hit the edge of what they know. Demand mechanism over memorisation. Do NOT be overly friendly. CRITICAL: Ask EXACTLY ONE short question. Do NOT ask multi-part questions or combine multiple questions into one.
     ${concludeRule} Keep responses under 50 words.`
     : `You are a behavioural interviewer and HR director with 15 years of experience assessing candidates. You are sharp and perceptive — you listen closely, follow up on what the candidate actually said, and adapt your depth to how they respond, exactly like a seasoned human interviewer. ${multilingualInstruction}
     Your goal is to map their response to advanced psychometric DNLA markers (Achievement Dynamics, Interpersonal Skills, Execution, Stress & Resilience).
@@ -317,8 +317,13 @@ export async function POST(req: NextRequest) {
     if (!sessionId) {
       return NextResponse.json({ error: "sessionId required" }, { status: 400 });
     }
+    // A very long answer must degrade gracefully, not fail the turn — rejecting it
+    // with a 400 reads to the candidate as "the AI ignored my long answer". Keep
+    // the head and tail (where the substance usually sits) and drop the middle so
+    // the interviewer still has the answer's context.
     if (transcript.length > MAX_TRANSCRIPT_LEN) {
-      return NextResponse.json({ error: "Answer text is too long" }, { status: 400 });
+      const keep = Math.floor(MAX_TRANSCRIPT_LEN / 2) - 40;
+      transcript = transcript.slice(0, keep) + "\n…[long answer truncated]…\n" + transcript.slice(-keep);
     }
 
     // 4. Load + ownership check.
