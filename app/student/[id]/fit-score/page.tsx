@@ -18,6 +18,7 @@ import {
   Breadcrumbs,
 } from "@/components/ui";
 import { authedFetch } from "@/lib/api-client";
+import { useDnlaLive } from "@/hooks/useDnlaLive";
 import { containerVariants, itemVariants } from "@/lib/motion";
 
 type Msg = { role: "assistant" | "user"; content: string };
@@ -124,6 +125,10 @@ function FitScorePageInner() {
   const isExam = !!pathname && pathname.startsWith("/exam");
   const flowBase = isExam ? "/exam" : "/student";
   const track: "placement" | "exam" = isExam ? "exam" : "placement";
+
+  // Live DNLA result (owner-scoped). When present, the Fit Score is computed on
+  // the candidate's REAL psychometric profile instead of the demo seed.
+  const dnlaLive = useDnlaLive(id);
 
   const emptyReport: GenReport = emptyReportDefaults;
 
@@ -251,6 +256,29 @@ function FitScorePageInner() {
     setGenError("");
     const { technical, behavioural, final } = readTranscripts();
     const profile = readWorkspaceProfile();
+    // Prefer the candidate's LIVE DNLA result; fall back to the demo seed only
+    // for the demo persona. Live scores are 0–100, so convert to the 1–7 scale
+    // the generator's rubric/prompt expects.
+    const liveDnla = dnlaLive.phase === "complete" && dnlaLive.data ? dnlaLive.data : null;
+    const demoSeed = DEMO && id === "candidate-001";
+    const dnlaItems = liveDnla
+      ? liveDnla.dnla.map((d) => ({
+          competency: d.competency,
+          group: d.group,
+          score: Math.round((d.score / 100) * 7 * 10) / 10,
+          benchmark: Math.round((d.benchmark / 100) * 7 * 10) / 10,
+          insight: d.insight,
+        }))
+      : demoSeed
+        ? s.dnla || []
+        : [];
+    const dnlaStrengths = liveDnla ? liveDnla.strengths : demoSeed ? s.strengths || [] : [];
+    const dnlaDevelopmentAreas = liveDnla
+      ? liveDnla.developmentAreas
+      : demoSeed
+        ? s.developmentAreas || []
+        : [];
+    const dnlaRisks = liveDnla ? liveDnla.risks : demoSeed ? s.risks || [] : [];
     try {
       const r = await authedFetch("/api/generate-fit-score", {
         method: "POST",
@@ -273,15 +301,14 @@ function FitScorePageInner() {
           technicalQA: technical,
           behaviouralQA: behavioural,
           finalQA: final,
-          // DNLA provider isn't wired yet. Use the seeded psychometric profile
-          // ONLY for the demo persona (candidate-001) - never borrow it for a real
-          // or invited candidate (that would leak one person's DNLA to everyone and
-          // contaminate their score). Real candidates show "DNLA pending" until the
-          // live /api/dnla provider is set.
-          dnla: DEMO && id === "candidate-001" ? (s.dnla || []) : [],
-          dnlaStrengths: DEMO && id === "candidate-001" ? (s.strengths || []) : [],
-          dnlaDevelopmentAreas: DEMO && id === "candidate-001" ? (s.developmentAreas || []) : [],
-          dnlaRisks: DEMO && id === "candidate-001" ? (s.risks || []) : [],
+          // Live DNLA result when the candidate has completed it (see above);
+          // otherwise the demo seed for the demo persona only, never borrowed for
+          // a real/invited candidate (that would leak one person's DNLA to
+          // everyone and contaminate their score).
+          dnla: dnlaItems,
+          dnlaStrengths,
+          dnlaDevelopmentAreas,
+          dnlaRisks,
         }),
       });
       const data = await r.json();
@@ -306,7 +333,7 @@ function FitScorePageInner() {
       setStatus("error");
       setGenError(e?.message || "Network error while generating.");
     }
-  }, [id, s, track, readTranscripts, readWorkspaceProfile]);
+  }, [id, s, track, readTranscripts, readWorkspaceProfile, dnlaLive.phase, dnlaLive.data]);
 
   useEffect(() => {
     setStatus("checking");
