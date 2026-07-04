@@ -685,6 +685,27 @@ export async function getUserRole(uid: string): Promise<string | null> {
   }
 }
 
+/**
+ * May this uid administer this institute — the single authorization used by BOTH
+ * the dashboard page (read) AND the write actions (cohort, share links,
+ * interventions), so a pilot account can't view the dashboard yet 403 on every
+ * button. Grants access on: exact `adminUids` membership, OR the documented pilot
+ * fallback (an institute-ROLE account administers the default placement tenant
+ * when it has no explicit adminUids binding yet). Fail-closed for everyone else;
+ * a non-institute account (candidate/recruiter) is always denied. See
+ * [[institute-pilot-fallback]].
+ */
+export async function canAdministerInstitute(
+  instituteId: string,
+  uid: string,
+  demo: boolean
+): Promise<boolean> {
+  if (demo) return true;
+  if (await isInstituteAdmin(instituteId, uid, false)) return true;
+  if (instituteId === "institute-placement" && (await getUserRole(uid)) === "institute") return true;
+  return false;
+}
+
 /** SCALE: one institute's cohort via an indexed `instituteId ==` query (not a
  *  full-collection scan), so it stays fast at 10k+ candidates. */
 export async function listCandidatesByInstitute(instituteId: string): Promise<CandidateRecord[]> {

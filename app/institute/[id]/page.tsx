@@ -12,7 +12,7 @@ import {
   type Institute,
   type Student,
 } from "@/lib/data";
-import { resolveInstituteForView, listCandidatesByInstitute, listExamAspirants, listInterventions, isInstituteAdmin, getUserRole } from "@/lib/talent-store";
+import { resolveInstituteForView, listCandidatesByInstitute, listExamAspirants, listInterventions, canAdministerInstitute } from "@/lib/talent-store";
 import { InterventionsPanel } from "./InterventionsPanel";
 import { FadeIn, SlideUp, StaggerContainer, StaggerItem } from "@/components/motion";
 import { MotionDiv } from "./ClientMotion";
@@ -128,15 +128,10 @@ export default async function InstitutePage({
         /* invalid/expired token → unauthenticated */
       }
     }
-    let authorized = false;
-    if (callerUid) {
-      authorized = await isInstituteAdmin(instituteId, callerUid, false);
-      // Pilot fallback: an unbound institute-role account administers the default
-      // placement tenant (see resolveInstituteForView + institute-pilot-fallback).
-      if (!authorized && instituteId === "institute-placement") {
-        authorized = (await getUserRole(callerUid)) === "institute";
-      }
-    }
+    // Same authorization the write actions use, so a pilot account can't view the
+    // dashboard yet 403 on every button (exact adminUids, or an institute-role
+    // account on the pilot placement tenant).
+    const authorized = callerUid ? await canAdministerInstitute(instituteId, callerUid, false) : false;
     if (!authorized) notFound();
   }
 

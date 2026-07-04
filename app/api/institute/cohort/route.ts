@@ -9,7 +9,7 @@ import {
   listInstituteInvites,
   listCandidatesByInstitute,
   getInstituteRecord,
-  isInstituteAdmin,
+  canAdministerInstitute,
 } from "@/lib/talent-store";
 import { isEmailConfigured, sendInviteEmails } from "@/lib/email";
 
@@ -34,7 +34,7 @@ function isShortString(v: unknown, max = MAX_FIELD_LEN): v is string {
 async function ownsOrForbidden(instituteId: string, uid: string, demo: boolean) {
   const inst = await getInstituteRecord(instituteId);
   if (!inst) return { error: NextResponse.json({ ok: false, error: "Unknown institute" }, { status: 404 }) };
-  if (!(await isInstituteAdmin(instituteId, uid, demo))) {
+  if (!(await canAdministerInstitute(instituteId, uid, demo))) {
     return { error: forbidden("You are not an admin of this institute") };
   }
   return { inst };

@@ -39,10 +39,14 @@ const PROTECTED_PAGE_PREFIXES = [
 //    validates the token itself (invite/[token]/route.ts) — the token IS the credential.
 //  - /api/dnla/webhook: a server-to-server provider callback that carries no user
 //    credential; the route's own signature/secret check is the gate.
+//  - /api/shared: a recruiter opening an institute's scoped share link — the
+//    unguessable, expiring token IS the credential (the route validates it and
+//    only returns consented candidates), so it must work without a Taledge login.
 const API_AUTH_EXEMPT = [
   "/api/gemini/live-token",
   "/api/invite",
   "/api/dnla/webhook",
+  "/api/shared",
 ];
 
 // Public browser pages that self-gate in their own client code and must NOT be
