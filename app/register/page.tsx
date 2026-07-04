@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import { useAuth } from "@/components/AuthProvider";
 import { syncSessionCookie } from "@/lib/session-cookie";
 import { Logo } from "@/components/logo";
 import { postAuthPath, type Role } from "@/lib/roles";
@@ -224,15 +225,38 @@ function StepHeading({ kicker, title, sub }: { kicker: string; title: string; su
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [step, setStep] = useState(0);
   const [dir, setDir] = useState(1);
   // Same-origin ?next= threaded through to the "Sign in" cross-link so a
   // deep-link/invite survives if the user switches to logging in instead.
   const [next, setNext] = useState<string | null>(null);
+  // SSO setup mode: a Google/Microsoft user who signed in with no users/{uid}
+  // doc is sent here (by /login) with ?setup=1 to pick their stakeholder role.
+  // They're already authenticated, so we skip the credentials step (step 0) and
+  // the final step writes their profile doc instead of creating an account.
+  const [isSetup, setIsSetup] = useState(false);
   useEffect(() => {
-    const raw = new URLSearchParams(window.location.search).get("next");
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("next");
     setNext(raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : null);
+    if (params.get("setup") === "1") {
+      setIsSetup(true);
+      setStep((s) => (s === 0 ? 1 : s)); // skip credentials for an authed SSO user
+    }
   }, []);
+  // Guard + prefill for setup mode: bounce to /login if the session is missing,
+  // and seed the name from the SSO profile so they don't retype it.
+  useEffect(() => {
+    if (!isSetup) return;
+    if (!authLoading && !user) {
+      router.replace("/login");
+      return;
+    }
+    if (user?.displayName) setName((n) => n || user.displayName || "");
+    if (user?.email) setEmail((e) => e || user.email || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSetup, authLoading, user]);
 
   // account
   const [name, setName] = useState("");
@@ -266,8 +290,16 @@ export default function RegisterPage() {
     orgName.trim().length > 1 && !!industry && !!teamSize && !!hiringVolume,
     prefs.length > 0,
   ];
-  // Candidates have no organization, so step 2 is skipped for them.
-  const flow = isCandidate ? [0, 1, 3] : [0, 1, 2, 3];
+  // Candidates have no organization, so step 2 is skipped for them. In SSO setup
+  // the credentials step (0) is dropped - the user is already authenticated.
+  const flow = isSetup
+    ? isCandidate
+      ? [1, 3]
+      : [1, 2, 3]
+    : isCandidate
+      ? [0, 1, 3]
+      : [0, 1, 2, 3];
+  const firstStep = flow[0];
   const total = flow.length;
   const pos = Math.max(0, flow.indexOf(step)) + 1;
   const nextOf = (s: number) => (s === 1 && isCandidate ? 3 : s + 1);
@@ -317,30 +349,61 @@ export default function RegisterPage() {
     setLoading(true);
     const cleanEmail = email.trim();
     try {
-      const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-      const uid = cred.user.uid;
       const role: Role = selectedRole?.role ?? "recruiter";
+      // SSO setup: the user is already authenticated (Google/Microsoft). Persist
+      // their chosen role/profile onto the existing account rather than creating
+      // a new email/password one.
+      let uid: string;
+      if (isSetup) {
+        const current = auth.currentUser;
+        if (!current) {
+          setError("Your session expired. Please sign in again.");
+          router.replace("/login");
+          return;
+        }
+        uid = current.uid;
+        if (name && current.displayName !== name) {
+          try {
+            await updateProfile(current, { displayName: name });
+          } catch {
+            /* best-effort */
+          }
+        }
+      } else {
+        const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+        uid = cred.user.uid;
+        try {
+          await updateProfile(cred.user, { displayName: name });
+        } catch {
+          /* best-effort */
+        }
+      }
       try {
-        await updateProfile(cred.user, { displayName: name });
-        await setDoc(doc(db, "users", uid), {
-          uid,
-          email: cleanEmail,
-          name,
-          role,
-          published: false,
-          organization: {
-            name: orgName,
-            persona: platformRole,
-            // Store the three selections under the persona's own field keys
-            // (e.g. cohortSize/annualPlacements for a university), not the
-            // recruiter-centric industry/teamSize/hiringVolume names.
-            [cfg2.fields[0].key]: industry,
-            [cfg2.fields[1].key]: teamSize,
-            [cfg2.fields[2].key]: hiringVolume,
+        await setDoc(
+          doc(db, "users", uid),
+          {
+            uid,
+            email: isSetup ? auth.currentUser?.email ?? cleanEmail : cleanEmail,
+            name,
+            role,
+            published: false,
+            organization: {
+              name: orgName,
+              persona: platformRole,
+              // Store the three selections under the persona's own field keys
+              // (e.g. cohortSize/annualPlacements for a university), not the
+              // recruiter-centric industry/teamSize/hiringVolume names.
+              [cfg2.fields[0].key]: industry,
+              [cfg2.fields[1].key]: teamSize,
+              [cfg2.fields[2].key]: hiringVolume,
+            },
+            assessmentPreferences: prefs,
+            createdAt: new Date().toISOString(),
           },
-          assessmentPreferences: prefs,
-          createdAt: new Date().toISOString(),
-        });
+          // Merge in setup so we don't clobber any fields an existing partial doc
+          // already holds; a fresh email sign-up writes the full doc.
+          isSetup ? { merge: true } : {}
+        );
       } catch {
         /* profile persistence is best-effort in demo */
       }
@@ -356,11 +419,11 @@ export default function RegisterPage() {
           ? "Password must be at least 6 characters."
           : err?.message || "Could not create your account."
       );
-      // Return to the credentials step (email/password live there) so the user
-      // can fix them — but do NOT call go(), which runs setError("") and would
-      // wipe the message we just set, leaving a silent bounce with no reason.
+      // Return to the first step so the user can fix their input — but do NOT
+      // call go(), which runs setError("") and would wipe the message we just
+      // set, leaving a silent bounce with no reason shown.
       setDir(-1);
-      setStep(0);
+      setStep(firstStep);
     } finally {
       setLoading(false);
     }
@@ -399,11 +462,14 @@ export default function RegisterPage() {
         <header className="flex items-center justify-between px-5 py-5 sm:px-8">
           <Link href="/" aria-label="Taledge home" className="inline-flex lg:hidden"><Logo /></Link>
           <span aria-hidden className="hidden lg:block" />
-          {!isSuccess && (
+          {!isSuccess && !isSetup && (
             <p className="text-[14px] text-ink-500">
               Already have an account?{" "}
               <Link href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"} className="font-semibold text-brand-600 hover:underline">Sign in</Link>
             </p>
+          )}
+          {!isSuccess && isSetup && (
+            <p className="text-[14px] text-ink-500">Finish setting up your workspace</p>
           )}
         </header>
 
@@ -612,7 +678,7 @@ export default function RegisterPage() {
             <button
               type="button"
               onClick={() => go(prevOf(step))}
-              disabled={step === 0 || loading}
+              disabled={step === firstStep || loading}
               className="inline-flex items-center gap-1.5 rounded-lg px-4 py-3 text-[14px] font-semibold text-ink-500 transition-colors hover:text-ink-900 disabled:invisible"
             >
               <Arrow className="rotate-180" /> Back

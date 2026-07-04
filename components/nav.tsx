@@ -21,6 +21,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { auth } from "@/lib/firebase";
 import { clearSessionCookie } from "@/lib/session-cookie";
+import { clearWorkspaceData } from "@/lib/workspace-data";
 import { cn } from "@/lib/utils";
 import { workspaceId, type Role } from "@/lib/roles";
 
@@ -160,8 +161,10 @@ export function Nav() {
     // the next nav could render role-aware chrome for the just-logged-out user.
     try {
       clearSessionCookie();
-      localStorage.removeItem("taledge:role");
-      localStorage.removeItem("taledge:roleUid");
+      // Purge this account's workspace data (résumé, transcripts, reports,
+      // fit-scores, cached role) so the next account on this browser doesn't
+      // inherit it - synchronously, before we navigate.
+      clearWorkspaceData();
     } catch {
       /* best-effort */
     }

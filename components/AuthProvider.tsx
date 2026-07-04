@@ -7,6 +7,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { Role } from '@/lib/roles';
 import { writeSessionCookie, clearSessionCookie } from '@/lib/session-cookie';
+import { clearWorkspaceData } from '@/lib/workspace-data';
 
 // The gate cookie the Edge middleware reads lives in lib/session-cookie so the
 // login/register flows can write it SYNCHRONOUSLY before navigating (avoiding
@@ -64,10 +65,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // it so the role-aware nav is instant next time.
       if (!user) {
         setRole(null);
-        try {
-          localStorage.removeItem('taledge:role');
-          localStorage.removeItem('taledge:roleUid');
-        } catch { /* no-op */ }
+        // Sign-out: purge this account's workspace data (résumé, transcripts,
+        // reports, fit-scores, cached role) so the next account on this browser
+        // starts clean instead of inheriting the previous user's journey.
+        clearWorkspaceData();
       } else {
         // The cached role is only valid for the SAME uid. If a different user
         // just signed in (Firebase fires onIdTokenChanged directly with the new
@@ -77,8 +78,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const cachedUid = localStorage.getItem('taledge:roleUid');
           if (cachedUid && cachedUid !== user.uid) {
+            // A DIFFERENT account just signed in on this browser (no intervening
+            // null event). Purge the previous user's workspace data so their
+            // résumé/interviews/reports don't show as this user's own.
             setRole(null);
-            localStorage.removeItem('taledge:role');
+            clearWorkspaceData();
           }
           localStorage.setItem('taledge:roleUid', user.uid);
         } catch { /* no-op */ }

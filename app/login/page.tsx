@@ -75,13 +75,20 @@ export default function LoginPage() {
   // else the post-auth hub. next is only honored if it targets a path this role
   // may actually use (prevents landing a candidate on a recruiter deep-link).
   const resolveDest = async (uid: string): Promise<string> => {
-    let role: Role = "candidate";
+    let role: Role | null = null;
     try {
       const snap = await getDoc(doc(db, "users", uid));
-      const r = snap.exists() ? (snap.data().role as Role) : null;
-      if (r) role = r;
+      role = snap.exists() ? ((snap.data().role as Role) ?? null) : null;
     } catch {
       /* role lookup is non-fatal */
+    }
+    // A brand-new SSO user (Google/Microsoft) has no users/{uid} doc yet -
+    // email/password sign-up writes one via the register wizard, but SSO does
+    // not. Route them to pick their stakeholder role instead of silently
+    // defaulting to a candidate workspace. Preserve a same-origin ?next= through
+    // setup so an invite/deep-link still resolves once they've chosen a role.
+    if (!role) {
+      return next ? `/register?setup=1&next=${encodeURIComponent(next)}` : "/register?setup=1";
     }
     if (next && nextAllowedForRole(next, role)) return next;
     return postAuthPath(role, uid);
