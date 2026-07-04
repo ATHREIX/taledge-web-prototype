@@ -251,7 +251,13 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  // Domain must be a real hostname (letters/digits/hyphen/dot + a ≥2-letter TLD).
+  // The looser [^\s@]+ accepted things Firebase then rejects as auth/invalid-email
+  // (e.g. an underscore in the domain: test@recruiter_1.com), which sent the user
+  // all the way through the wizard only to fail on the final createUser call.
+  const emailValid = /^[^\s@]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$/.test(
+    email.trim()
+  );
   const isCandidate = platformRole === "candidate";
   // Step order: 0 Welcome · 1 Platform · 2 Organization · 3 Assessments.
   const stepValid = [
@@ -309,15 +315,16 @@ export default function RegisterPage() {
   const createAccount = async () => {
     setError("");
     setLoading(true);
+    const cleanEmail = email.trim();
     try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
       const uid = cred.user.uid;
       const role: Role = selectedRole?.role ?? "recruiter";
       try {
         await updateProfile(cred.user, { displayName: name });
         await setDoc(doc(db, "users", uid), {
           uid,
-          email,
+          email: cleanEmail,
           name,
           role,
           published: false,
@@ -349,7 +356,11 @@ export default function RegisterPage() {
           ? "Password must be at least 6 characters."
           : err?.message || "Could not create your account."
       );
-      go(0); // send them back to fix credentials
+      // Return to the credentials step (email/password live there) so the user
+      // can fix them — but do NOT call go(), which runs setError("") and would
+      // wipe the message we just set, leaving a silent bounce with no reason.
+      setDir(-1);
+      setStep(0);
     } finally {
       setLoading(false);
     }
