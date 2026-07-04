@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateGeminiJson, getGeminiApiKey } from "@/lib/gemini";
-import { getPrincipal, unauthorized, forbidden } from "@/lib/server-auth";
+import { getPrincipal, unauthorized, forbidden, principalHasRole } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { isProd } from "@/lib/flags";
-import { upsertCandidate, upsertExamAspirant, getCandidate, getInvite, getInstituteRecord, updateInviteStatus, isInstituteAdmin } from "@/lib/talent-store";
+import { upsertCandidate, upsertExamAspirant, getCandidate, getInvite, getInstituteRecord, updateInviteStatus, isInstituteAdmin, canAdministerInstitute } from "@/lib/talent-store";
 
 // Hard caps to keep payloads bounded and prevent prompt-bloat / cost abuse.
 const MAX_TRANSCRIPT_MESSAGES = 200;
@@ -754,17 +754,29 @@ export async function GET(req: NextRequest) {
     // authenticated account (not demo, and NOT an account-less invite-token
     // holder) viewing a consented candidate. That drops the invite-holder class
     // the report was never meant for; see the changelog for the residual gap.
+    // A RECRUITER (real recruiter-role account, not any authenticated user) may
+    // read a candidate who consented to recruiter visibility OR their own invitee.
+    // This replaces the old "any non-demo, non-invite account can read any
+    // published report" branch (an IDOR: a candidate/coach could read the pool's
+    // full reports) now that a server-side role check exists.
+    const isRecruiterView =
+      !principal.demo &&
+      !principal.invite &&
+      (await principalHasRole(principal, "recruiter")) &&
+      (!!(rec as any)?.publishedToRecruiters || (rec as any)?.recruiterId === principal.uid);
     const readable =
       principal.demo ||
+      // Owner — a real account (sid === uid) OR an invite principal whose uid IS
+      // their candidate-inv-* id. (The old unconditional `startsWith` let ANY
+      // principal read ANY invitee's report by guessing the id — closed here.)
       sid === principal.uid ||
-      sid.startsWith("candidate-inv-") ||
-      (!principal.demo && !principal.invite && !!(rec as any)?.publishedToRecruiters) ||
-      // An institute admin may read a Fit Score report for a student in their own
-      // institute (the "Drill down" action). Checked last so the cheap conditions
-      // short-circuit first.
+      isRecruiterView ||
+      // An institute admin may read a Fit Score report for a student in an institute
+      // they administer (the "Drill down" action). Checked last so the cheap
+      // conditions short-circuit first.
       (!principal.demo &&
         !!(rec as any)?.instituteId &&
-        (await isInstituteAdmin((rec as any).instituteId, principal.uid, principal.demo)));
+        (await canAdministerInstitute((rec as any).instituteId, principal.uid, principal.demo)));
     if (!readable) return forbidden();
     const name = (rec as any)?.name ?? null;
     // Headline summary from the candidate's aggregate scores. A seed/demo (or any

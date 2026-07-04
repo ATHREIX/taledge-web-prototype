@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPrincipal, unauthorized } from "@/lib/server-auth";
+import { getPrincipal, unauthorized, forbidden, principalHasRole } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { isProd } from "@/lib/flags";
@@ -15,6 +15,7 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
+  if (!(await principalHasRole(principal, "recruiter"))) return forbidden("Recruiter access required.");
   const invites = await listInvites(principal.uid);
   return NextResponse.json({
     ok: true,
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
   // 1. Authenticate. The principal is the authorization subject - never the body.
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
+  if (!(await principalHasRole(principal, "recruiter"))) return forbidden("Recruiter access required.");
   const uid = principal.uid;
 
   // Lightweight abuse guard on this billing-adjacent action endpoint.

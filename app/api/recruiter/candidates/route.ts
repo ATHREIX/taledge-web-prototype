@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getPrincipal, unauthorized } from "@/lib/server-auth";
+import { getPrincipal, unauthorized, forbidden, principalHasRole } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { listRecruiterVisibleCandidates, toRecruiterRow } from "@/lib/talent-store";
 
@@ -16,6 +16,7 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
+  if (!(await principalHasRole(principal, "recruiter"))) return forbidden("Recruiter access required.");
   const limited = await enforceRateLimit(req, { uid: principal.uid, limit: 60, windowMs: 60_000, scope: "recruiter-candidates" });
   if (limited) return limited;
 

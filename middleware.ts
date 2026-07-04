@@ -47,6 +47,10 @@ const API_AUTH_EXEMPT = [
   "/api/invite",
   "/api/dnla/webhook",
   "/api/shared",
+  // Trivial liveness probe (no work, no paid service). The pre-flight system
+  // check calls it to time the network — often BEFORE the session cookie is set —
+  // and uptime monitors need it reachable without a login.
+  "/api/health",
 ];
 
 // Public browser pages that self-gate in their own client code and must NOT be
