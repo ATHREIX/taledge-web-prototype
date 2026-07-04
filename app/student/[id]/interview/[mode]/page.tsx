@@ -298,10 +298,12 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   //   technical → dnla → final → fit-score. (behavioural stays a standalone
   //   round that goes straight to the report.)
   const NEXT_STEP: Record<string, { href: string; label: string }> = {
-    // DNLA interview round is skipped until the real DNLA provider API is wired;
-    // the technical round flows straight into the final combined interview. (The
-    // `dnla` route still works if visited directly, but the funnel bypasses it.)
-    technical: { href: `${flowBase}/${id}/interview/final`, label: "Continue to final interview" },
+    // Guided funnel: technical → dnla → final. The DNLA round is a Gemini-backed
+    // behavioural interview (see app/api/interview/start/route.ts mode="dnla"); it
+    // does NOT depend on the external DNLA provider API, so the funnel routes
+    // through it today. (The licensed DNLA questionnaire at /[id]/dnla is a
+    // separate provider-gated step.)
+    technical: { href: `${flowBase}/${id}/interview/dnla`, label: "Continue to DNLA interview" },
     dnla: { href: `${flowBase}/${id}/interview/final`, label: "Continue to final interview" },
     // Terminal of the guided funnel = the canonical Fit Score page. It runs the
     // scoring + recruiter-binding (invite token) generate, and is reachable for
