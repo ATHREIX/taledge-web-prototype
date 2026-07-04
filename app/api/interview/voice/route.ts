@@ -256,6 +256,16 @@ ${outputFormat}`;
       const stripped = raw.replace(/^\s*RATING:\s*\d+(?:\.\d+)?\s*\r?\n?/i, "").trim();
       if (stripped) question = stripped;
     }
+    // SAFETY NET for the one-question-per-turn rule: the model occasionally stacks
+    // two questions in a single turn. If the reply contains more than one "?",
+    // keep everything through the FIRST question and drop the rest. A [CONCLUDE]
+    // closing (no question mark) is left untouched.
+    if (!question.includes("[CONCLUDE]")) {
+      const qMarks = (question.match(/\?/g) || []).length;
+      if (qMarks > 1) {
+        question = question.slice(0, question.indexOf("?") + 1).trim();
+      }
+    }
     return { question, rating, isDone: false };
   } catch (e) {
     logger.error("[voice] Gemini question error", { error: String((e as any)?.message || e) });
