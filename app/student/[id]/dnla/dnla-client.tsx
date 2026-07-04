@@ -324,6 +324,14 @@ export default function DnlaClient({ student }: { student: Student }) {
       done: journey.ai,
     },
     {
+      key: "dnla",
+      title: "DNLA behavioural interview",
+      desc: "A behavioural round targeting your DNLA competency axes - achievement drive, interpersonal skills, execution and resilience under pressure.",
+      href: `${flowBase}/${id}/interview/dnla`,
+      cta: journey.dnla ? "Retake DNLA interview" : "Start DNLA interview",
+      done: journey.dnla,
+    },
+    {
       key: "final",
       title: "Combined final interview",
       desc: "A final round that builds on your AI interview.",
