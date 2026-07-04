@@ -103,11 +103,14 @@ env:
     secret: GEMINI_API_KEY
     availability: [RUNTIME]
 
-  # ---- Optional secrets. Uncomment after creating the secret if you use them.
-  # DNLA_API_KEY must be ROTATED — the old value leaked in .env.local.example. ----
-  # - variable: DNLA_API_KEY
-  #   secret: DNLA_API_KEY
-  #   availability: [RUNTIME]
+  # ---- Optional secrets. Uncomment after creating the secret in Secret Manager. ----
+  # DNLA partner API key (Cloud Secret Manager). SECURITY: rotate at DNLA — the
+  # value was shared in plaintext during setup. Server-only (never client).
+  - variable: DNLA_API_KEY
+    secret: DNLA_API_KEY
+    availability: [RUNTIME]
+  # DNLA_WEBHOOK_SECRET: create the secret first, THEN uncomment. Until it exists
+  # the completion webhook fails closed (rejects all callbacks → results never land).
   # - variable: DNLA_WEBHOOK_SECRET
   #   secret: DNLA_WEBHOOK_SECRET
   #   availability: [RUNTIME]
