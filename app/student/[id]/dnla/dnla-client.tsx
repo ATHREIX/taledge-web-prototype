@@ -9,6 +9,7 @@ import {
   Card,
   CardHeader,
   CardBody,
+  Button,
   ButtonLink,
   Badge,
   Stat,
@@ -19,13 +20,7 @@ import {
 } from "@/components/ui";
 import { Bar } from "@/components/score-ring";
 import { cn } from "@/lib/utils";
-
-const GROUPS = [
-  "Achievement Dynamics",
-  "Interpersonal Skills",
-  "Execution",
-  "Stress & Resilience",
-] as const;
+import { useDnlaLive, type DnlaLive } from "@/hooks/useDnlaLive";
 
 type Tone = "neutral" | "brand" | "success" | "warn" | "danger";
 
@@ -139,11 +134,125 @@ function CompetencyRadar({ items }: { items: DnlaScore[] }) {
   );
 }
 
+function formatDate(iso: string | null): string {
+  if (!iso) return "";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  return new Date(t).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+/**
+ * Live DNLA control: starts the partner questionnaire, deep-links the candidate
+ * to it, and reflects the pending/error/not-configured state. Hidden entirely
+ * once results are in (`complete`) or while the first status poll is loading.
+ */
+function DnlaLivePanel({
+  live,
+  onStart,
+  onOpen,
+}: {
+  live: DnlaLive;
+  onStart: () => void;
+  onOpen: () => void;
+}) {
+  const { phase, error, starting, startUrl } = live;
+  if (phase === "loading" || phase === "complete") return null;
+
+  if (phase === "pending") {
+    return (
+      <Card className="mb-6 border-brand-200/70 bg-brand-50/40">
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-4">
+            <span aria-hidden className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-600 text-white">
+              <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" strokeOpacity="0.3" />
+                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+            </span>
+            <div>
+              <Heading as="h2" className="text-lg sm:text-xl">Assessment in progress</Heading>
+              <p className="mt-1 max-w-xl text-sm leading-6 text-ink-600">
+                Complete the DNLA questionnaire in the tab that opened. Your results
+                appear here automatically once you finish - no need to refresh.
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {startUrl && (
+              <Button variant="ghost" size="sm" onClick={onOpen}>
+                Open questionnaire
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => void live.refresh()}>
+              Check now
+            </Button>
+          </div>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  if (phase === "error") {
+    return (
+      <Card className="mb-6 border-rose-200 bg-rose-50/50">
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <Eyebrow className="text-rose-600">Assessment error</Eyebrow>
+            <Heading as="h2" className="mt-1 text-lg sm:text-xl">Could not start DNLA</Heading>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-ink-600">
+              {error || "Something went wrong. Please try again."}
+            </p>
+          </div>
+          <Button variant="primary" size="sm" onClick={onStart} disabled={starting}>
+            {starting ? "Starting…" : "Try again"}
+          </Button>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  // "none" or "not-configured": offer to start (not-configured is surfaced after
+  // a click, so we still show the CTA and the provider-pending note below).
+  return (
+    <Card className="mb-6 border-brand-200/70 bg-brand-50/40">
+      <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <Eyebrow className="text-brand-500">DNLA behavioural assessment</Eyebrow>
+          <Heading as="h2" className="mt-1 text-lg sm:text-xl">
+            {phase === "not-configured" ? "Assessment not available yet" : "Start your DNLA assessment"}
+          </Heading>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-ink-600">
+            {phase === "not-configured"
+              ? "The DNLA provider isn't configured on this deployment yet. Sample scores are shown below in the meantime."
+              : "DNLA is a licensed psychometric assessment (Germany). Starting opens the questionnaire in a new tab; your competency profile is scored and shown here when you finish."}
+          </p>
+        </div>
+        {phase !== "not-configured" && (
+          <Button
+            variant="primary"
+            size="lg"
+            className="w-full shrink-0 sm:w-auto"
+            onClick={onStart}
+            disabled={starting}
+          >
+            {starting ? "Starting…" : "Start assessment"}
+          </Button>
+        )}
+      </CardHeader>
+    </Card>
+  );
+}
+
 export default function DnlaClient({ student }: { student: Student }) {
   const params = useParams();
   const pathname = usePathname();
   const id = String(params.id);
   const s = student;
+  const live = useDnlaLive(id);
 
   // Shared by both tracks; keep navigation within the current namespace
   // (/exam for competitive-exam aspirants, /student for placement candidates).
@@ -241,18 +350,79 @@ export default function DnlaClient({ student }: { student: Student }) {
   ];
   const activeIndex = stages.findIndex((st) => !st.done);
 
-  const dnla = s.dnla ?? [];
+  // ── Live vs sample data source ────────────────────────────────────────────
+  // When the partner result is in, render the candidate's REAL profile; the
+  // normalized scores are 0–100, so map them onto the 1–7 scale this view uses.
+  // Otherwise fall back to the seeded sample (demo / provider-not-configured).
+  const isLiveComplete = live.phase === "complete" && !!live.data;
+  const liveItems: DnlaScore[] = isLiveComplete
+    ? live.data!.dnla.map((d) => ({
+        competency: d.competency,
+        group: d.group as DnlaScore["group"],
+        score: Math.round((d.score / 100) * 7 * 10) / 10,
+        benchmark: Math.round((d.benchmark / 100) * 7 * 10) / 10,
+        insight: d.insight,
+      }))
+    : [];
+
+  // Sample profile is shown for the demo/loading/none/not-configured phases;
+  // pending & error show only the status panel (no misleading numbers).
+  const showSample =
+    live.phase === "loading" ||
+    live.phase === "none" ||
+    live.phase === "not-configured";
+  const dnla: DnlaScore[] = isLiveComplete ? liveItems : showSample ? s.dnla ?? [] : [];
   const hasData = dnla.length > 0;
 
-  // Group rollups.
-  const groupStats = GROUPS.map((group) => {
-    const items = dnla.filter((d) => d.group === group);
-    const average = avg(items.map((d) => d.score));
-    return { group, items, average };
-  }).filter((g) => g.items.length > 0);
+  // Group rollups — derived from the data itself so it works for both the sample
+  // groups and the live DNLA axis labels (which differ).
+  const groupNames = Array.from(new Set(dnla.map((d) => d.group)));
+  const groupStats = groupNames
+    .map((group) => {
+      const items = dnla.filter((d) => d.group === group);
+      const average = avg(items.map((d) => d.score));
+      return { group, items, average };
+    })
+    .filter((g) => g.items.length > 0);
 
   const overallAvg = avg(dnla.map((d) => d.score)); // 1-7
-  const behaviouralIndex = hasData ? Math.round((overallAvg / 7) * 100) : 0;
+  const behaviouralIndex = isLiveComplete
+    ? Math.round(live.data!.baseline)
+    : hasData
+      ? Math.round((overallAvg / 7) * 100)
+      : 0;
+
+  // Whether to render the profile block (headline + radar + detail). Pending and
+  // error render only the status panel above.
+  const renderProfile = isLiveComplete || showSample;
+
+  // Start the real DNLA questionnaire. Reserve the popup inside the click gesture
+  // (before the await) so it isn't blocked, then point it at the returned URL.
+  const handleStart = async () => {
+    const parts = (s.name || "").trim().split(/\s+/).filter(Boolean);
+    const firstname = parts[0] || undefined;
+    const lastname = parts.length > 1 ? parts.slice(1).join(" ") : undefined;
+    const popup = window.open("about:blank", "dnla-assessment");
+    const url = await live.start({ firstname, lastname });
+    if (url) {
+      if (popup) {
+        try {
+          popup.opener = null;
+        } catch {
+          /* cross-origin guard */
+        }
+        popup.location.replace(url);
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+    } else if (popup) {
+      popup.close();
+    }
+  };
+
+  const openQuestionnaire = () => {
+    if (live.startUrl) window.open(live.startUrl, "_blank", "noopener,noreferrer");
+  };
 
   const sortedGroups = [...groupStats].sort((a, b) => b.average - a.average);
   const strongestGroup = sortedGroups[0];
@@ -273,7 +443,19 @@ export default function DnlaClient({ student }: { student: Student }) {
         description={`Six guided stages - résumé analysis, the AI interview, the DNLA interview, a combined final round, a separate report for each interview, and a comparison report. ${s.name}'s DNLA behavioural competency profile is shown below the journey.`}
         actions={
           <div className="flex items-center gap-3">
-            <Badge tone="warn">Sample DNLA data · provider import pending</Badge>
+            {live.phase === "complete" ? (
+              <Badge tone="success">
+                Live DNLA{live.data?.finishedAt ? ` · ${formatDate(live.data.finishedAt)}` : ""}
+              </Badge>
+            ) : live.phase === "pending" ? (
+              <Badge tone="brand">Assessment in progress</Badge>
+            ) : live.phase === "error" ? (
+              <Badge tone="danger">Assessment error</Badge>
+            ) : live.phase === "loading" ? (
+              <Badge tone="neutral">Checking status…</Badge>
+            ) : (
+              <Badge tone="warn">Sample data · provider pending</Badge>
+            )}
             <ButtonLink href={`${flowBase}/${id}`} variant="ghost">
               Back to workspace
             </ButtonLink>
@@ -337,15 +519,20 @@ export default function DnlaClient({ student }: { student: Student }) {
         </div>
       </section>
 
+      {/* ── Live DNLA status / start control ──────────────────────────────── */}
+      <DnlaLivePanel live={live} onStart={handleStart} onOpen={openQuestionnaire} />
+
+      {renderProfile && (
+      <>
       <div className="mb-5 border-t border-ink-200/60 pt-6">
         <Eyebrow className="text-brand-500">DNLA behavioural competency profile</Eyebrow>
         <Heading as="h2" className="mt-1 text-lg sm:text-xl">
-          Sample psychometric scores
+          {isLiveComplete ? "Your psychometric profile" : "Sample psychometric scores"}
         </Heading>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-500">
-          These behavioural competency scores are administered by the DNLA partner
-          (Germany). The values shown are sample / dummy data for the pilot and will
-          be replaced by the licensed provider import.
+          {isLiveComplete
+            ? "These behavioural competency scores were administered and scored by the DNLA partner (Germany) from your completed questionnaire, mapped onto the four TalEdge competency axes."
+            : "These behavioural competency scores are administered by the DNLA partner (Germany). The values shown are sample / dummy data for the pilot and will be replaced by your live result once you complete the assessment."}
         </p>
       </div>
 
@@ -530,6 +717,8 @@ export default function DnlaClient({ student }: { student: Student }) {
           </section>
         </>
       )}
+      </>
+      )}
 
       {/* CTA: jump to the next stage in the assessment journey above. */}
       <Card className="mb-5 border-brand-200/70 bg-brand-50/40">
@@ -557,10 +746,9 @@ export default function DnlaClient({ student }: { student: Student }) {
 
       {/* Disclaimer */}
       <p className="text-xs leading-5 text-ink-400">
-        Sample data. DNLA is a licensed external psychometric provider in Germany; its
-        questionnaire and scoring are not hosted in TalEdge. The competency scores
-        above are placeholder values for the pilot and will be replaced by the official
-        provider import.
+        {isLiveComplete
+          ? "DNLA is a licensed external psychometric provider in Germany; its questionnaire and scoring are hosted by DNLA, not TalEdge. The scores above were computed by DNLA from your completed assessment and mapped onto the TalEdge competency axes."
+          : "Sample data. DNLA is a licensed external psychometric provider in Germany; its questionnaire and scoring are not hosted in TalEdge. The competency scores above are placeholder values for the pilot and will be replaced by your live result once the assessment is completed."}
       </p>
     </PageShell>
   );
