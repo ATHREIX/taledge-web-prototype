@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { adminAuth, isAdminConfigured } from "@/lib/firebase-admin";
 import { AUTH_ENFORCED } from "@/lib/flags";
-import { getInvite } from "@/lib/talent-store";
+import { getInvite, getUserRole } from "@/lib/talent-store";
 
 export type Principal = {
   /** Stable user id. In enforced mode this is the verified Firebase uid. */
@@ -84,6 +84,19 @@ export async function getPrincipal(req: NextRequest | Request): Promise<Principa
 
   // Demo mode: stable, clearly-marked non-authoritative principal.
   return { uid: "demo-user", demo: true };
+}
+
+/**
+ * Does this principal hold the given stakeholder role (users/{uid}.role)?
+ * Demo mode returns true (the open demo has no real accounts). An account-less
+ * invite-token principal is NEVER a recruiter/institute/coach — it's a candidate
+ * credential — so it returns false. Used to gate role-specific APIs
+ * (e.g. /api/recruiter/* must be a recruiter, not any authenticated user).
+ */
+export async function principalHasRole(principal: Principal, role: string): Promise<boolean> {
+  if (principal.demo) return true;
+  if (principal.invite) return false;
+  return (await getUserRole(principal.uid)) === role;
 }
 
 /** Standard 401 response. */

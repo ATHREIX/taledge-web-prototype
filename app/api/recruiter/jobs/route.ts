@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getPrincipal, unauthorized } from "@/lib/server-auth";
+import { getPrincipal, unauthorized, forbidden, principalHasRole } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { listJobs, createJob, deleteJob, type Job } from "@/lib/talent-store";
 
@@ -12,6 +12,7 @@ const cap = (s: unknown, n: number) => (typeof s === "string" ? s.slice(0, n).tr
 export async function GET(req: NextRequest) {
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
+  if (!(await principalHasRole(principal, "recruiter"))) return forbidden("Recruiter access required.");
   const limited = await enforceRateLimit(req, { uid: principal.uid, limit: 60, windowMs: 60_000, scope: "recruiter-jobs" });
   if (limited) return limited;
   const jobs = await listJobs(principal.uid);
@@ -22,6 +23,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
+  if (!(await principalHasRole(principal, "recruiter"))) return forbidden("Recruiter access required.");
   const limited = await enforceRateLimit(req, { uid: principal.uid, limit: 20, windowMs: 60_000, scope: "recruiter-jobs-write" });
   if (limited) return limited;
 
@@ -60,6 +62,7 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
+  if (!(await principalHasRole(principal, "recruiter"))) return forbidden("Recruiter access required.");
   const limited = await enforceRateLimit(req, { uid: principal.uid, limit: 30, windowMs: 60_000, scope: "recruiter-jobs-write" });
   if (limited) return limited;
   const id = new URL(req.url).searchParams.get("id") || "";

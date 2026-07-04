@@ -140,7 +140,15 @@ export default async function InstitutePage({
   // they complete the interview flow). A placement institute sees its own cohort;
   // the exam institute sees its aspirant base.
   const candidates = !isExam ? await listCandidatesByInstitute(instituteId) : [];
-  const aspirants = isExam ? await listExamAspirants() : [];
+  // SCOPE to THIS institute — listExamAspirants() returns the whole collection, so
+  // rendering/exporting it unfiltered leaked every institute's aspirants (the
+  // "Export cohort CSV" cross-tenant PII leak). Match the same key the exam
+  // analytics use (institute display name) plus a stored instituteId when present.
+  const aspirants = isExam
+    ? (await listExamAspirants()).filter(
+        (a) => a.institute === inst.name || (a as { instituteId?: string }).instituteId === instituteId
+      )
+    : [];
   const placementAnalytics = !isExam ? buildPlacementAnalytics(inst, candidates) : null;
   const examAnalytics = isExam ? buildExamAnalytics(inst, aspirants) : null;
   const interventions = await listInterventions(instituteId);
