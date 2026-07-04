@@ -62,7 +62,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, x: 24, scale: 0.98 }}
                 transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                role="status"
+                role={t.tone === "error" ? "alert" : "status"}
+                aria-live={t.tone === "error" ? "assertive" : "polite"}
                 onClick={() => dismiss(t.id)}
                 className={cn(
                   "pointer-events-auto flex cursor-pointer items-start gap-3 rounded-xl border bg-white px-4 py-3 shadow-[0_16px_44px_-18px_rgba(16,24,40,0.3)]",

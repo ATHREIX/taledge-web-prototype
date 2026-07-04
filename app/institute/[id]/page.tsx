@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Section } from "@/components/glass";
-import { ScoreRing, Bar } from "@/components/score-ring";
+import { Bar } from "@/components/score-ring";
+import { DashboardHeader, KPIGrid, EmptyState, type Kpi } from "@/components/dashboard";
 import {
   getInstitute,
   type ExamAspirant,
@@ -148,33 +149,27 @@ export default async function InstitutePage({
 
   return (
     <PageShell>
-      <Card variant="frosted" className="rounded-xl3 p-6 sm:p-8">
-        <FadeIn delay={0.1} className="flex flex-wrap items-end justify-between gap-6">
-          <div className="max-w-3xl">
-            <Badge tone="brand" className="uppercase tracking-widest">
-              <IconInstitute /> {isExam ? "Competitive Exam Institute" : "Placement Institute"}
-            </Badge>
-            {/* Institute name is the headline; the "Command Center" descriptor is a
-                smaller subtitle - rendering both at Display size ballooned the hero
-                to four oversized gradient lines. */}
-            <h1 className="h-headline text-gradient-brand mt-5 text-3xl leading-[1.1] sm:text-4xl lg:text-5xl">
-              {inst.name}
-            </h1>
-            <p className="mt-3 text-lg font-bold tracking-tight text-ink-700 sm:text-xl">
-              {isExam ? "Aspirant Success Command Center" : "Placement Readiness Command Center"}
-            </p>
-            <p className="mt-4 max-w-2xl text-sm text-ink-500 sm:text-base">
-              Production view for <span className="font-semibold text-ink-900">{isExam ? inst.cohort : (placementAnalytics?.cohortSize ?? inst.cohort)}</span> learners across{" "}
-              <span className="font-semibold text-ink-900">{inst.batches.length}</span> active groups. Current priority:
-              {" "}
+      {/* Unified compact dashboard header - matches the other three dashboards.
+          Institute name is the h1; the "Command Center" descriptor + cohort
+          summary live in the smaller description (previously an oversized
+          four-line gradient hero). */}
+      <FadeIn delay={0.1}>
+        <DashboardHeader
+          eyebrow={isExam ? "Competitive Exam Institute" : "Placement Institute"}
+          title={inst.name}
+          description={
+            <>
+              {isExam ? "Aspirant Success Command Center" : "Placement Readiness Command Center"} — production view for{" "}
+              <span className="font-semibold text-ink-900">{isExam ? inst.cohort : (placementAnalytics?.cohortSize ?? inst.cohort)}</span> learners across{" "}
+              <span className="font-semibold text-ink-900">{inst.batches.length}</span> active groups. Current priority:{" "}
               <span className="font-semibold text-ink-900">{inst.topGap}</span>.
-            </p>
-          </div>
-          <HeaderActions isExam={isExam} cohort={placementAnalytics?.cohortSize ?? inst.cohort} instituteId={inst.id} cohortRows={cohortRows} />
-        </FadeIn>
-      </Card>
+            </>
+          }
+          actions={<HeaderActions isExam={isExam} cohort={placementAnalytics?.cohortSize ?? inst.cohort} instituteId={inst.id} cohortRows={cohortRows} />}
+        />
+      </FadeIn>
 
-      <div className="mt-8 sm:mt-12">
+      <div>
         {!isExam && placementAnalytics && (
           <PlacementKpis inst={inst} analytics={placementAnalytics} />
         )}
@@ -234,9 +229,11 @@ export default async function InstitutePage({
               ))}
             </StaggerContainer>
           ) : (
-            <Card variant="flat" className="p-6 text-sm text-ink-500">
-              No cohort signals to review right now. New signals appear here as assessments are processed.
-            </Card>
+            <EmptyState
+              icon={<IconSparkles />}
+              title="No cohort signals to review"
+              description="New signals appear here as assessments are processed."
+            />
           )}
         </Section>
 
@@ -262,23 +259,39 @@ function PlacementKpis({
   inst: Institute;
   analytics: PlacementAnalytics;
 }) {
+  const items: Kpi[] = [
+    {
+      label: "Batch readiness",
+      value: `${analytics.readinessPct}%`,
+      hint: `${analytics.readyCount}/${analytics.cohortSize} interview-ready · fit 70+`,
+      tone: analytics.readinessPct >= 70 ? "success" : analytics.readinessPct >= 50 ? "warn" : "danger",
+      icon: <IconTarget />,
+    },
+    {
+      label: "Average Fit Score",
+      value: `${inst.avgFit}`,
+      trend: "+3 vs last cycle",
+      tone: "brand",
+      icon: <IconSparkles />,
+    },
+    {
+      label: "Intervention load",
+      value: `${analytics.interventionLoad}`,
+      hint: "Groups below readiness threshold",
+      tone: "warn",
+      icon: <IconCalendar />,
+    },
+    {
+      label: "Recruiter-visible pool",
+      value: `${analytics.recruitableCount}`,
+      hint: "Eligible for shared access",
+      tone: "neutral",
+      icon: <IconUsers />,
+    },
+  ];
   return (
     <SlideUp delay={0.2}>
-      <Card variant="frosted" hover className="rounded-xl3 p-6 sm:p-8">
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="flex items-center gap-4">
-            <ScoreRing value={analytics.readinessPct} size={92} stroke={10} tone="dark" label="Ready" />
-            <Stat
-              label="Batch readiness"
-              value={`${analytics.readyCount}/${analytics.cohortSize}`}
-              sub="Fit threshold: 70+"
-            />
-          </div>
-          <KPI label="Average Fit Score" value={`${inst.avgFit}`} delta="+3 vs last cycle" />
-          <KPI label="Intervention load" value={`${analytics.interventionLoad}`} sub="Groups below readiness threshold" tone="warn" />
-          <KPI label="Recruiter-visible pool" value={`${analytics.recruitableCount}`} sub="Eligible for shared access" />
-        </div>
-      </Card>
+      <KPIGrid items={items} />
     </SlideUp>
   );
 }
@@ -290,29 +303,39 @@ function ExamKpis({
   inst: Institute;
   analytics: ExamAnalytics;
 }) {
+  const items: Kpi[] = [
+    {
+      label: "On track",
+      value: `${analytics.onTrackPct}%`,
+      hint: `Avg success potential ${inst.avgFit}`,
+      tone: analytics.onTrackPct >= 70 ? "success" : analytics.onTrackPct >= 50 ? "warn" : "danger",
+      icon: <IconTarget />,
+    },
+    {
+      label: "High-stress cases",
+      value: `${analytics.highStressCount}`,
+      hint: "Require counsellor review",
+      tone: "danger",
+      icon: <IconShield />,
+    },
+    {
+      label: "Avg consistency",
+      value: `${analytics.avgConsistency}%`,
+      trend: deltaLabel(analytics.consistencyDelta),
+      tone: analytics.consistencyDelta < 0 ? "warn" : "neutral",
+      icon: <IconLine />,
+    },
+    {
+      label: "Avg stress index",
+      value: `${analytics.avgStress}`,
+      hint: "Lower is better",
+      tone: analytics.avgStress > 60 ? "danger" : "neutral",
+      icon: <IconHeatmap />,
+    },
+  ];
   return (
     <SlideUp delay={0.2}>
-      <Card variant="frosted" hover className="rounded-xl3 p-6 sm:p-8">
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="flex items-center gap-4">
-            <ScoreRing
-              value={analytics.onTrackPct}
-              size={92}
-              stroke={10}
-              tone={analytics.onTrackPct >= 70 ? "success" : analytics.onTrackPct >= 50 ? "warn" : "danger"}
-              label="On track"
-            />
-            <Stat
-              label="Success trajectory"
-              value={`${inst.avgFit}`}
-              sub="Average success potential"
-            />
-          </div>
-          <KPI label="High-stress cases" value={`${analytics.highStressCount}`} sub="Require counsellor review" tone="danger" />
-          <KPI label="Avg consistency" value={`${analytics.avgConsistency}%`} sub={deltaLabel(analytics.consistencyDelta)} tone={analytics.consistencyDelta < 0 ? "warn" : "default"} />
-          <KPI label="Avg stress index" value={`${analytics.avgStress}`} sub="Lower is better" tone={analytics.avgStress > 60 ? "danger" : "default"} />
-        </div>
-      </Card>
+      <KPIGrid items={items} />
     </SlideUp>
   );
 }
@@ -342,40 +365,73 @@ function PlacementDashboard({
         </SlideUp>
         <SlideUp delay={0.5}>
           {analytics.batchRows?.length ? (
-            <Card variant="frosted" hover className="rounded-xl3 overflow-x-auto">
-              <div className="min-w-[980px]">
-                <div className="grid grid-cols-12 border-b border-ink-200 px-5 py-4 text-[11px] font-bold uppercase tracking-widest text-ink-500">
-                  <div className="col-span-3">Group</div>
-                  <div className="col-span-1 text-right">Size</div>
-                  <div className="col-span-2">Technical</div>
-                  <div className="col-span-2">Behavioural</div>
-                  <div className="col-span-1 text-right">Fit</div>
-                  <div className="col-span-1 text-right">Ready</div>
-                  <div className="col-span-2 text-right">Next action</div>
-                </div>
+            <>
+              {/* Below md: stacked cards (the 12-col grid is unreadable on phones) */}
+              <div className="space-y-3 md:hidden">
                 {analytics.batchRows.map((batch) => (
-                  <div
-                    key={batch.name}
-                    className="grid grid-cols-12 items-center border-b border-ink-200 px-5 py-4 text-sm transition-colors last:border-0 hover:bg-ink-50/60"
-                  >
-                    <div className="col-span-3 min-w-0">
-                      <div className="truncate font-semibold text-ink-900">{batch.group}</div>
-                      <div className="text-[11px] text-ink-500">{batch.year} - top gap: {batch.topGap}</div>
+                  <Card key={batch.name} variant="frosted" className="rounded-xl2 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold text-ink-900">{batch.group}</div>
+                        <div className="text-[11px] text-ink-500">{batch.year} - top gap: {batch.topGap}</div>
+                      </div>
+                      <Badge tone={toneBadge(batch.tone)}>{batch.readinessIndex}%</Badge>
                     </div>
-                    <div className="col-span-1 text-right tabular-nums text-ink-700">{batch.size}</div>
-                    <div className="col-span-2"><Bar value={batch.avgTech} tone={scoreTone(batch.avgTech)} showVal /></div>
-                    <div className="col-span-2"><Bar value={batch.avgBehav} tone={scoreTone(batch.avgBehav)} showVal /></div>
-                    <div className="col-span-1 text-right text-2xl font-black tracking-tight text-ink-900 ">{batch.avgFit}</div>
-                    <div className="col-span-1 text-right"><Badge tone={toneBadge(batch.tone)}>{batch.readinessIndex}%</Badge></div>
-                    <div className="col-span-2 text-right text-xs font-medium text-ink-600">{batch.action}</div>
-                  </div>
+                    <div className="mt-3 space-y-2">
+                      <div>
+                        <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-ink-500">Technical</div>
+                        <Bar value={batch.avgTech} tone={scoreTone(batch.avgTech)} showVal />
+                      </div>
+                      <div>
+                        <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-ink-500">Behavioural</div>
+                        <Bar value={batch.avgBehav} tone={scoreTone(batch.avgBehav)} showVal />
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 text-xs text-ink-600">
+                      <span>Size {batch.size} · Fit <span className="font-black text-ink-900">{batch.avgFit}</span></span>
+                      <span className="font-medium">{batch.action}</span>
+                    </div>
+                  </Card>
                 ))}
               </div>
-            </Card>
+              {/* md+: full table, scrolls horizontally inside the card */}
+              <Card variant="frosted" hover className="hidden overflow-x-auto rounded-xl3 md:block">
+                <div className="min-w-[980px]">
+                  <div className="grid grid-cols-12 border-b border-ink-200 px-5 py-4 text-[11px] font-bold uppercase tracking-widest text-ink-500">
+                    <div className="col-span-3">Group</div>
+                    <div className="col-span-1 text-right">Size</div>
+                    <div className="col-span-2">Technical</div>
+                    <div className="col-span-2">Behavioural</div>
+                    <div className="col-span-1 text-right">Fit</div>
+                    <div className="col-span-1 text-right">Ready</div>
+                    <div className="col-span-2 text-right">Next action</div>
+                  </div>
+                  {analytics.batchRows.map((batch) => (
+                    <div
+                      key={batch.name}
+                      className="grid grid-cols-12 items-center border-b border-ink-200 px-5 py-4 text-sm transition-colors last:border-0 hover:bg-ink-50/60"
+                    >
+                      <div className="col-span-3 min-w-0">
+                        <div className="truncate font-semibold text-ink-900">{batch.group}</div>
+                        <div className="text-[11px] text-ink-500">{batch.year} - top gap: {batch.topGap}</div>
+                      </div>
+                      <div className="col-span-1 text-right tabular-nums text-ink-700">{batch.size}</div>
+                      <div className="col-span-2"><Bar value={batch.avgTech} tone={scoreTone(batch.avgTech)} showVal /></div>
+                      <div className="col-span-2"><Bar value={batch.avgBehav} tone={scoreTone(batch.avgBehav)} showVal /></div>
+                      <div className="col-span-1 text-right text-2xl font-black tracking-tight text-ink-900 ">{batch.avgFit}</div>
+                      <div className="col-span-1 text-right"><Badge tone={toneBadge(batch.tone)}>{batch.readinessIndex}%</Badge></div>
+                      <div className="col-span-2 text-right text-xs font-medium text-ink-600">{batch.action}</div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </>
           ) : (
-            <Card variant="flat" className="p-6 text-sm text-ink-500">
-              No batches configured for this cohort yet.
-            </Card>
+            <EmptyState
+              icon={<IconGrid />}
+              title="No batches configured"
+              description="Batch readiness appears here once cohort batches are set up."
+            />
           )}
         </SlideUp>
       </Section>
@@ -394,36 +450,82 @@ function PlacementDashboard({
         </SlideUp>
         <SlideUp delay={0.6}>
           {analytics.heatmapRows?.length && analytics.heatmapCompetencies?.length ? (
-            <Card variant="frosted" hover className="rounded-xl3 overflow-x-auto p-5 sm:p-6">
-              <div className="min-w-[1080px]">
-                <div
-                  role="img"
-                  aria-label={`Competency heatmap across ${analytics.heatmapCompetencies.length} competencies for ${analytics.heatmapRows.length} students; darker red cells indicate competencies needing intervention.`}
-                  className="grid gap-1 text-[10px] uppercase tracking-wider text-ink-500"
-                  style={{ gridTemplateColumns: `180px repeat(${analytics.heatmapCompetencies.length}, minmax(72px, 1fr)) 64px` }}
-                >
-                  <div className="px-2 py-1.5 font-semibold">Student</div>
-                  {analytics.heatmapCompetencies.map((competency) => (
-                    <div key={competency} className="px-2 py-1.5 font-semibold">
-                      {shortCompetency(competency)}
+            <>
+              {/* Below md: one card per student with competency chips (the wide grid
+                  is impossible to read on a phone) */}
+              <div className="space-y-3 md:hidden">
+                {analytics.heatmapRows.map((row) => (
+                  <Card key={row.id} variant="frosted" className="rounded-xl2 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-ink-900">{row.name}</div>
+                        <div className="truncate text-[11px] text-ink-500">{row.context}</div>
+                      </div>
+                      <span
+                        className="grid h-8 min-w-[2.5rem] place-items-center rounded px-2 text-xs font-bold tabular-nums text-white"
+                        style={{ background: heatColor(row.average) }}
+                      >
+                        {row.average.toFixed(1)}
+                      </span>
                     </div>
-                  ))}
-                  <div className="px-2 py-1.5 text-right font-semibold">Avg</div>
-                  {analytics.heatmapRows.map((row) => (
-                    <HeatmapRow key={row.id} row={row} competencies={analytics.heatmapCompetencies} />
-                  ))}
-                </div>
-                <div className="mt-5 flex flex-wrap items-center gap-4 text-xs text-ink-500">
+                    <div className="mt-3 grid grid-cols-2 gap-1.5">
+                      {analytics.heatmapCompetencies.map((competency) => {
+                        const score = row.scores.find((item) => item.competency === competency)?.score || 0;
+                        return (
+                          <div
+                            key={competency}
+                            className="flex items-center justify-between gap-2 rounded px-2 py-1 text-[11px]"
+                            style={{ background: heatColor(score) }}
+                            title={`${competency}: ${score.toFixed(1)}`}
+                          >
+                            <span className="truncate text-white/90">{shortCompetency(competency)}</span>
+                            <span className="font-bold tabular-nums text-white">{score.toFixed(1)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Card>
+                ))}
+                <div className="flex flex-wrap items-center gap-4 text-xs text-ink-500">
                   <Legend color="#be123c" label="Needs intervention" />
                   <Legend color="#b45309" label="Developing" />
                   <Legend color="#047857" label="Ready range" />
                 </div>
               </div>
-            </Card>
+              {/* md+: full heatmap, scrolls horizontally inside the card */}
+              <Card variant="frosted" hover className="hidden overflow-x-auto rounded-xl3 p-5 sm:p-6 md:block">
+                <div className="min-w-[1080px]">
+                  <div
+                    role="img"
+                    aria-label={`Competency heatmap across ${analytics.heatmapCompetencies.length} competencies for ${analytics.heatmapRows.length} students; darker red cells indicate competencies needing intervention.`}
+                    className="grid gap-1 text-[10px] uppercase tracking-wider text-ink-500"
+                    style={{ gridTemplateColumns: `180px repeat(${analytics.heatmapCompetencies.length}, minmax(72px, 1fr)) 64px` }}
+                  >
+                    <div className="px-2 py-1.5 font-semibold">Student</div>
+                    {analytics.heatmapCompetencies.map((competency) => (
+                      <div key={competency} className="px-2 py-1.5 font-semibold">
+                        {shortCompetency(competency)}
+                      </div>
+                    ))}
+                    <div className="px-2 py-1.5 text-right font-semibold">Avg</div>
+                    {analytics.heatmapRows.map((row) => (
+                      <HeatmapRow key={row.id} row={row} competencies={analytics.heatmapCompetencies} />
+                    ))}
+                  </div>
+                  <div className="mt-5 flex flex-wrap items-center gap-4 text-xs text-ink-500">
+                    <Legend color="#be123c" label="Needs intervention" />
+                    <Legend color="#b45309" label="Developing" />
+                    <Legend color="#047857" label="Ready range" />
+                  </div>
+                </div>
+              </Card>
+            </>
           ) : (
-            <Card variant="flat" className="p-6 text-sm text-ink-500">
-              No assessment records available to build the competency heatmap yet.
-            </Card>
+            <EmptyState
+              icon={<IconHeatmap />}
+              title="No assessment records yet"
+              description="The competency heatmap builds from student assessment records as they complete."
+            />
           )}
         </SlideUp>
       </Section>
@@ -614,33 +716,54 @@ function ExamDashboard({
         </SlideUp>
         <SlideUp delay={0.6}>
           {inst.batches?.length ? (
-            <Card variant="frosted" hover className="rounded-xl3 overflow-x-auto">
-              <div className="min-w-[860px]">
-                <div className="grid grid-cols-12 border-b border-ink-200 px-5 py-4 text-[11px] font-bold uppercase tracking-widest text-ink-500">
-                  <div className="col-span-4">Group</div>
-                  <div className="col-span-1 text-right">Size</div>
-                  <div className="col-span-3">Resilience / Behaviour</div>
-                  <div className="col-span-2 text-right">Potential</div>
-                  <div className="col-span-2 text-right">Top gap</div>
-                </div>
+            <>
+              {/* Below md: stacked cards */}
+              <div className="space-y-3 md:hidden">
                 {inst.batches.map((batch) => (
-                  <div
-                    key={batch.name}
-                    className="grid grid-cols-12 items-center border-b border-ink-200 px-5 py-4 text-sm transition-colors last:border-0 hover:bg-ink-50/60"
-                  >
-                    <div className="col-span-4 font-semibold text-ink-900">{batch.name}</div>
-                    <div className="col-span-1 text-right tabular-nums text-ink-700">{batch.size}</div>
-                    <div className="col-span-3"><Bar value={batch.avgBehav} tone={scoreTone(batch.avgBehav)} showVal /></div>
-                    <div className="col-span-2 text-right text-2xl font-black tracking-tight text-ink-900 ">{batch.avgFit}</div>
-                    <div className="col-span-2 text-right text-xs text-ink-600">{batch.topGap}</div>
-                  </div>
+                  <Card key={batch.name} variant="frosted" className="rounded-xl2 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 font-semibold text-ink-900">{batch.name}</div>
+                      <span className="text-2xl font-black tracking-tight text-ink-900">{batch.avgFit}</span>
+                    </div>
+                    <div className="mt-3">
+                      <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-ink-500">Resilience / Behaviour</div>
+                      <Bar value={batch.avgBehav} tone={scoreTone(batch.avgBehav)} showVal />
+                    </div>
+                    <div className="mt-3 text-xs text-ink-600">Size {batch.size} · Top gap: {batch.topGap}</div>
+                  </Card>
                 ))}
               </div>
-            </Card>
+              {/* md+: full table, scrolls horizontally inside the card */}
+              <Card variant="frosted" hover className="hidden overflow-x-auto rounded-xl3 md:block">
+                <div className="min-w-[860px]">
+                  <div className="grid grid-cols-12 border-b border-ink-200 px-5 py-4 text-[11px] font-bold uppercase tracking-widest text-ink-500">
+                    <div className="col-span-4">Group</div>
+                    <div className="col-span-1 text-right">Size</div>
+                    <div className="col-span-3">Resilience / Behaviour</div>
+                    <div className="col-span-2 text-right">Potential</div>
+                    <div className="col-span-2 text-right">Top gap</div>
+                  </div>
+                  {inst.batches.map((batch) => (
+                    <div
+                      key={batch.name}
+                      className="grid grid-cols-12 items-center border-b border-ink-200 px-5 py-4 text-sm transition-colors last:border-0 hover:bg-ink-50/60"
+                    >
+                      <div className="col-span-4 font-semibold text-ink-900">{batch.name}</div>
+                      <div className="col-span-1 text-right tabular-nums text-ink-700">{batch.size}</div>
+                      <div className="col-span-3"><Bar value={batch.avgBehav} tone={scoreTone(batch.avgBehav)} showVal /></div>
+                      <div className="col-span-2 text-right text-2xl font-black tracking-tight text-ink-900 ">{batch.avgFit}</div>
+                      <div className="col-span-2 text-right text-xs text-ink-600">{batch.topGap}</div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </>
           ) : (
-            <Card variant="flat" className="p-6 text-sm text-ink-500">
-              No exam batches configured for this cohort yet.
-            </Card>
+            <EmptyState
+              icon={<IconGrid />}
+              title="No exam batches configured"
+              description="Group performance appears here once exam batches are set up."
+            />
           )}
         </SlideUp>
       </Section>
@@ -719,77 +842,73 @@ function ExamDashboard({
         </SlideUp>
         <SlideUp delay={0.9}>
           {analytics.progressRows?.length ? (
-            <Card variant="frosted" hover className="rounded-xl3 overflow-x-auto">
-              <div className="min-w-[980px]">
-                <div className="grid grid-cols-12 border-b border-ink-200 px-5 py-4 text-[11px] font-bold uppercase tracking-widest text-ink-500">
-                  <div className="col-span-3">Aspirant</div>
-                  <div className="col-span-1 text-right">Potential</div>
-                  <div className="col-span-2">Consistency</div>
-                  <div className="col-span-1 text-right">Stress</div>
-                  <div className="col-span-2 text-right">12-week move</div>
-                  <div className="col-span-1 text-right">Hours</div>
-                  <div className="col-span-2 text-right">Next action</div>
-                </div>
+            <>
+              {/* Below md: stacked cards */}
+              <div className="space-y-3 md:hidden">
                 {analytics.progressRows.map((row) => (
-                  <div
-                    key={row.id}
-                    className="grid grid-cols-12 items-center border-b border-ink-200 px-5 py-4 text-sm transition-colors last:border-0 hover:bg-ink-50/60"
-                  >
-                    <div className="col-span-3 min-w-0">
-                      <div className="truncate font-semibold text-ink-900">{row.name}</div>
-                      <div className="truncate text-[11px] text-ink-500">{row.context}</div>
+                  <Card key={row.id} variant="frosted" className="rounded-xl2 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold text-ink-900">{row.name}</div>
+                        <div className="truncate text-[11px] text-ink-500">{row.context}</div>
+                      </div>
+                      <span className="text-2xl font-black tracking-tight text-ink-900">{row.successPotential}</span>
                     </div>
-                    <div className="col-span-1 text-right text-2xl font-black tracking-tight text-ink-900 ">{row.successPotential}</div>
-                    <div className="col-span-2"><Bar value={row.consistency} tone={scoreTone(row.consistency)} showVal /></div>
-                    <div className="col-span-1 text-right"><Badge tone={row.stressIndex >= 65 ? "danger" : row.stressIndex >= 50 ? "warn" : "success"}>{row.stressIndex}</Badge></div>
-                    <div className="col-span-2 text-right"><Badge tone={row.trendDelta < 0 ? "warn" : "success"}>{deltaLabel(row.trendDelta)}</Badge></div>
-                    <div className="col-span-1 text-right tabular-nums text-ink-700">{row.studyHours}h</div>
-                    <div className="col-span-2 text-right text-xs font-medium text-ink-600">{row.action}</div>
-                  </div>
+                    <div className="mt-3">
+                      <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-ink-500">Consistency</div>
+                      <Bar value={row.consistency} tone={scoreTone(row.consistency)} showVal />
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <Badge tone={row.stressIndex >= 65 ? "danger" : row.stressIndex >= 50 ? "warn" : "success"}>Stress {row.stressIndex}</Badge>
+                      <Badge tone={row.trendDelta < 0 ? "warn" : "success"}>{deltaLabel(row.trendDelta)} · 12wk</Badge>
+                      <span className="text-xs tabular-nums text-ink-700">{row.studyHours}h</span>
+                    </div>
+                    <div className="mt-2 text-xs font-medium text-ink-600">{row.action}</div>
+                  </Card>
                 ))}
               </div>
-            </Card>
+              {/* md+: full table, scrolls horizontally inside the card */}
+              <Card variant="frosted" hover className="hidden overflow-x-auto rounded-xl3 md:block">
+                <div className="min-w-[980px]">
+                  <div className="grid grid-cols-12 border-b border-ink-200 px-5 py-4 text-[11px] font-bold uppercase tracking-widest text-ink-500">
+                    <div className="col-span-3">Aspirant</div>
+                    <div className="col-span-1 text-right">Potential</div>
+                    <div className="col-span-2">Consistency</div>
+                    <div className="col-span-1 text-right">Stress</div>
+                    <div className="col-span-2 text-right">12-week move</div>
+                    <div className="col-span-1 text-right">Hours</div>
+                    <div className="col-span-2 text-right">Next action</div>
+                  </div>
+                  {analytics.progressRows.map((row) => (
+                    <div
+                      key={row.id}
+                      className="grid grid-cols-12 items-center border-b border-ink-200 px-5 py-4 text-sm transition-colors last:border-0 hover:bg-ink-50/60"
+                    >
+                      <div className="col-span-3 min-w-0">
+                        <div className="truncate font-semibold text-ink-900">{row.name}</div>
+                        <div className="truncate text-[11px] text-ink-500">{row.context}</div>
+                      </div>
+                      <div className="col-span-1 text-right text-2xl font-black tracking-tight text-ink-900 ">{row.successPotential}</div>
+                      <div className="col-span-2"><Bar value={row.consistency} tone={scoreTone(row.consistency)} showVal /></div>
+                      <div className="col-span-1 text-right"><Badge tone={row.stressIndex >= 65 ? "danger" : row.stressIndex >= 50 ? "warn" : "success"}>{row.stressIndex}</Badge></div>
+                      <div className="col-span-2 text-right"><Badge tone={row.trendDelta < 0 ? "warn" : "success"}>{deltaLabel(row.trendDelta)}</Badge></div>
+                      <div className="col-span-1 text-right tabular-nums text-ink-700">{row.studyHours}h</div>
+                      <div className="col-span-2 text-right text-xs font-medium text-ink-600">{row.action}</div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </>
           ) : (
-            <Card variant="flat" className="p-6 text-sm text-ink-500">
-              No aspirant trajectories to display yet.
-            </Card>
+            <EmptyState
+              icon={<IconLine />}
+              title="No aspirant trajectories yet"
+              description="Progress tracking appears here as aspirants complete assessments."
+            />
           )}
         </SlideUp>
       </Section>
     </>
-  );
-}
-
-function KPI({
-  label,
-  value,
-  delta,
-  sub,
-  tone = "default",
-}: {
-  label: string;
-  value: string;
-  delta?: string;
-  sub?: string;
-  tone?: "default" | "danger" | "warn";
-}) {
-  return (
-    <Card variant="flat" hover className="p-5 sm:p-6">
-      <Stat
-        label={label}
-        value={value}
-        tone={tone === "danger" ? "danger" : tone === "warn" ? "warn" : "neutral"}
-        sub={
-          (delta || sub) ? (
-            <>
-              {delta && <span className="font-medium text-emerald-600">{delta}</span>}
-              {delta && sub && " "}
-              {sub}
-            </>
-          ) : undefined
-        }
-      />
-    </Card>
   );
 }
 

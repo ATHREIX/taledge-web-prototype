@@ -1,3 +1,11 @@
+/**
+ * Logo identity colors. The tri-color mark and the orange "edge" wordmark are
+ * fixed brand identity — deliberately NOT the product's indigo UI brand — so
+ * they live here as named constants instead of magic hex values scattered inline.
+ */
+const EDGE_ACCENT = "#f57f00";
+const EDGE_ACCENT_LIGHT = "#ffb14d";
+
 export function Logo({
   className = "",
   inverted = false,
@@ -22,8 +30,8 @@ export function Logo({
             <stop offset="100%" stopColor="#1b3fbf" />
           </linearGradient>
           <linearGradient id="tg2" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#ffb14d" />
-            <stop offset="100%" stopColor="#f57f00" />
+            <stop offset="0%" stopColor={EDGE_ACCENT_LIGHT} />
+            <stop offset="100%" stopColor={EDGE_ACCENT} />
           </linearGradient>
           <linearGradient id="tg3" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor="#84efc1" />
@@ -35,7 +43,7 @@ export function Logo({
         <path d="M22 30 L28 16 L34 30 Z" fill="url(#tg3)" opacity="0.9" />
       </svg>
       <span className={`text-xl font-semibold tracking-tight ${inverted ? "text-white" : "text-ink-900"}`}>
-        tal<span className="text-[#f57f00]">edge</span>
+        tal<span style={{ color: EDGE_ACCENT }}>edge</span>
       </span>
     </div>
   );

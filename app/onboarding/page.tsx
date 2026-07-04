@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -518,7 +517,11 @@ export default function Onboarding() {
       y: -20,
       scale: 0.95,
       filter: "blur(10px)",
-      position: "absolute",
+      // No position:absolute here: the enter/exit steps share one CSS grid cell
+      // ([grid-area:1/1] on each step + `grid` on the wrapper), so the in-flow
+      // step always defines the container height. Pulling the exiting step out of
+      // flow (absolute) was what collapsed the wrapper to 0px between steps →
+      // blank flash + page jump.
       transition: { duration: 0.3, ease: "easeIn" }
     }
   };
@@ -603,7 +606,7 @@ export default function Onboarding() {
 
       {/* Main Content Area */}
       <div className="w-full">
-        <div className="relative mx-auto w-full max-w-5xl">
+        <div className="relative grid mx-auto w-full max-w-5xl">
           <AnimatePresence mode="wait">
             {step === 0 && (
               <motion.div
@@ -612,7 +615,7 @@ export default function Onboarding() {
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                className="w-full"
+                className="w-full [grid-area:1/1]"
               >
                 <Card variant="frosted" className="rounded-xl3 p-5 sm:p-7 lg:p-9 relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-600 to-accent-500 opacity-80" />
@@ -858,7 +861,7 @@ export default function Onboarding() {
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                className="w-full"
+                className="w-full [grid-area:1/1]"
               >
                 <Card variant="frosted" className="rounded-xl3 p-5 sm:p-7 lg:p-9 relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-accent-500 to-brand-600 opacity-80" />
@@ -946,7 +949,7 @@ export default function Onboarding() {
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                className="w-full"
+                className="w-full [grid-area:1/1]"
               >
                 <Card variant="frosted" className="rounded-xl3 p-5 sm:p-7 lg:p-9 relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-600 to-accent-500 opacity-80" />
@@ -1201,7 +1204,7 @@ export default function Onboarding() {
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                className="w-full"
+                className="w-full [grid-area:1/1]"
               >
                 <Card variant="frosted" className="rounded-xl3 p-6 sm:p-10 lg:p-16 relative overflow-hidden text-center">
                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 to-brand-600 opacity-80" />
@@ -1249,9 +1252,19 @@ export default function Onboarding() {
                         <ArrowRightIcon className="w-5 h-5 transition-transform group-hover:translate-x-1" aria-hidden="true" />
                       </Button>
                     </motion.div>
-                    <Link href={`/student/${candidateId}`} className="w-full sm:w-auto text-ink-500 hover:text-ink-900 font-medium transition-colors py-4">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        // Skipping still entered a profile/résumé — persist it
+                        // (awaited, like Begin) before navigating so the Firestore
+                        // write isn't abandoned on unmount and the dashboard has data.
+                        await persistDemoProfile();
+                        router.push(`/student/${candidateId}`);
+                      }}
+                      className="w-full sm:w-auto text-ink-500 hover:text-ink-900 font-medium transition-colors py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 rounded-md"
+                    >
                       Skip to dashboard
-                    </Link>
+                    </button>
                   </div>
                 </Card>
               </motion.div>

@@ -6,24 +6,25 @@ import { recruiterPool } from "@/lib/data";
 import { authedFetch } from "@/lib/api-client";
 import { downloadCsv } from "@/lib/csv";
 import Link from "next/link";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { FadeIn, SlideUp, StaggerContainer, StaggerItem } from "@/components/motion";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/components/AuthProvider";
+import { containerVariants } from "@/lib/motion";
 import {
   PageShell,
-  PageHeader,
   Card,
-  CardBody,
   Button,
   ButtonLink,
   Badge,
   Heading,
-  Eyebrow,
-  Stat,
+  Input,
+  Textarea,
+  Select,
   useToast,
   Drawer,
 } from "@/components/ui";
+import { DashboardHeader, KPIGrid, EmptyState } from "@/components/dashboard";
 
 type Segment = "all" | "freshers" | "oneToThree";
 type JobType = "all" | "job" | "internship";
@@ -538,32 +539,35 @@ export default function Recruiter() {
 
   return (
     <PageShell width="wide" className="pb-32">
-      {/* Header Section */}
-      <PageHeader
-        className="mb-12"
-        eyebrow="Recruiter Console"
-        title="Hiring Intelligence"
-        description="Command center for jobs, internships, candidate pools, and deep analytics. Manage role fit and success probability effortlessly."
-        actions={
-          <>
-            <Button type="button" variant="ghost" className="group" onClick={() => { setShowUpload(true); setUploadResult(null); }}>
-              <IconUpload className="w-4 h-4 transition-transform group-hover:-translate-y-0.5" /> Upload candidates
-            </Button>
-            <Button type="button" variant="primary" className="group bg-ink-900 hover:bg-ink-800" onClick={() => setShowPostJob(true)}>
-              Post job / internship
-              <IconArrow className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-            </Button>
-          </>
-        }
-      />
+      <motion.div initial="hidden" animate="visible" variants={containerVariants}>
+        {/* Header Section - shared dashboard header (matches student/coach) */}
+        <DashboardHeader
+          eyebrow="Recruiter Console"
+          title="Hiring Intelligence"
+          description="Command center for jobs, internships, candidate pools, and deep analytics. Manage role fit and success probability effortlessly."
+          actions={
+            <>
+              <Button type="button" variant="ghost" className="group" onClick={() => { setShowUpload(true); setUploadResult(null); }}>
+                <IconUpload className="w-4 h-4 transition-transform group-hover:-translate-y-0.5" /> Upload candidates
+              </Button>
+              <Button type="button" variant="primary" className="group" onClick={() => setShowPostJob(true)}>
+                Post job / internship
+                <IconArrow className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+              </Button>
+            </>
+          }
+        />
 
-      {/* KPIs */}
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4 mb-16">
-        <KpiCard label="Active postings" value={`${jobCards.length}`} hint={jobCards.length ? "Live job & internship postings" : "Post a job to start matching"} icon={<IconPost className="w-6 h-6" />} delay={0.1} />
-        <KpiCard label="Shortlist-ready" value={`${shortlisted.length}`} hint="Fit >= 72 and success >= 70%" icon={<IconTarget className="w-6 h-6" />} delay={0.2} />
-        <KpiCard label="Avg Fit Score" value={`${avgFit}`} hint={`Avg success ${avgSuccess}%`} icon={<IconGauge className="w-6 h-6" />} delay={0.3} />
-        <KpiCard label="DNLA imports" value={`${dnlaAvailable}/${enrichedPool.length}`} hint="Available after provider import" icon={<IconShield className="w-6 h-6" />} delay={0.4} />
-      </div>
+        {/* KPIs - shared KPIGrid/KPICard */}
+        <KPIGrid
+          items={[
+            { label: "Active postings", value: `${jobCards.length}`, hint: jobCards.length ? "Live job & internship postings" : "Post a job to start matching", tone: "brand", icon: <IconPost className="w-4 h-4" /> },
+            { label: "Shortlist-ready", value: `${shortlisted.length}`, hint: "Fit >= 72 and success >= 70%", tone: "success", icon: <IconTarget className="w-4 h-4" /> },
+            { label: "Avg Fit Score", value: `${avgFit}`, hint: `Avg success ${avgSuccess}%`, tone: "brand", icon: <IconGauge className="w-4 h-4" /> },
+            { label: "DNLA imports", value: `${dnlaAvailable}/${enrichedPool.length}`, hint: "Available after provider import", tone: "neutral", icon: <IconShield className="w-4 h-4" /> },
+          ]}
+        />
+      </motion.div>
 
       {/* Jobs Section */}
       <motion.div
@@ -577,15 +581,12 @@ export default function Recruiter() {
           </Heading>
         </div>
         {jobCards.length === 0 ? (
-          <Card variant="frosted" className="p-10 text-center">
-            <CardBody className="p-0">
-              <Eyebrow className="justify-center">No active postings</Eyebrow>
-              <p className="mt-2 text-sm text-ink-500">Post a job or internship to start matching candidates against your hiring demand.</p>
-              <div className="mt-4 flex justify-center">
-                <Button type="button" variant="primary" className="bg-ink-900 hover:bg-ink-800" onClick={() => setShowPostJob(true)}>Post your first role</Button>
-              </div>
-            </CardBody>
-          </Card>
+          <EmptyState
+            icon={<IconPost className="w-6 h-6" />}
+            title="No active postings"
+            description="Post a job or internship to start matching candidates against your hiring demand."
+            action={<Button type="button" variant="primary" onClick={() => setShowPostJob(true)}>Post your first role</Button>}
+          />
         ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {jobCards.map((job, idx) => (
@@ -615,7 +616,7 @@ export default function Recruiter() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button type="button" variant="ghost" size="md" className="flex-1" onClick={() => removeJob(job.id)}>Close</Button>
-                  <Button type="button" variant="primary" size="md" className="flex-1 bg-ink-900 hover:bg-ink-800" onClick={() => toast("Candidate invites are sent after the paid upload step.", "info")}>Invite</Button>
+                  <Button type="button" variant="primary" size="md" className="flex-1" onClick={() => toast("Candidate invites are sent after the paid upload step.", "info")}>Invite</Button>
                 </div>
               </Card>
             </motion.div>
@@ -745,8 +746,8 @@ export default function Recruiter() {
 
         <Card variant="default" className="rounded-xl2 overflow-hidden">
           <div className="overflow-x-auto">
-            <div className="min-w-[1080px]">
-              <div className="grid grid-cols-12 bg-ink-50/50 px-6 py-3 text-xs font-bold uppercase tracking-wider text-ink-500 border-b border-ink-200/50">
+            <div className="md:min-w-[1080px]">
+              <div className="hidden md:grid grid-cols-12 bg-ink-50/50 px-6 py-3 text-xs font-bold uppercase tracking-wider text-ink-500 border-b border-ink-200/50">
                 <div className="col-span-3 flex items-center gap-3">
                   <input
                     type="checkbox"
@@ -785,9 +786,9 @@ export default function Recruiter() {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.95 }}
-                      transition={{ delay: idx * 0.05 }}
+                      transition={{ delay: Math.min(idx, 8) * 0.03 }}
                       key={r.poolId}
-                      className={`grid grid-cols-12 items-center px-6 ${rowPad} text-sm transition-colors group ${selected.has(r.poolId) ? "bg-brand-50/50" : "hover:bg-ink-50/60"}`}
+                      className={`flex flex-col gap-3 md:grid md:grid-cols-12 md:items-center md:gap-0 px-6 ${rowPad} text-sm transition-colors group ${selected.has(r.poolId) ? "bg-brand-50/50" : "hover:bg-ink-50/60"}`}
                     >
                       <div className="col-span-3 flex min-w-0 items-center gap-3">
                         <input
@@ -821,24 +822,29 @@ export default function Recruiter() {
                         </div>
                       </div>
                       <div className="col-span-2 pr-4">
+                        <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-ink-400 md:hidden">Opening / Segment</span>
                         <div className="font-bold text-ink-900 truncate">{r.role}</div>
                         <div className="mt-1 text-xs font-medium text-ink-500 truncate">{postingTitle(r.activeJobId ?? "all")}</div>
                       </div>
-                      <div className="col-span-1">
+                      <div className="col-span-1 flex items-center justify-between md:block">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-ink-400 md:hidden">Fit</span>
                         <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl2 bg-white text-xl font-black text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200">
                           {r.fit}
                         </div>
                       </div>
                       <div className="col-span-2 space-y-2.5 pr-6">
+                        <span className="block text-[10px] font-bold uppercase tracking-wider text-ink-400 md:hidden">Interview</span>
                         <ScoreBarLine label="Tech" value={r.tech} />
                         <ScoreBarLine label="Behav" value={r.behav} />
                       </div>
-                      <div className="col-span-1">
+                      <div className="col-span-1 flex items-center justify-between md:block">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-ink-400 md:hidden">Success</span>
                         <span className={`inline-flex items-center justify-center rounded-xl px-3 py-1.5 text-xs font-bold ${r.success >= 75 ? 'bg-emerald-100 text-emerald-700' : r.success >= 65 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>
                           {r.success}%
                         </span>
                       </div>
                       <div className="col-span-2 pr-4">
+                        <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-ink-400 md:hidden">DNLA / Role Fit</span>
                         <div className="flex flex-wrap gap-1.5 mb-1.5">
                           <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${(r.dnla ?? 'Pending') === 'Available' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                             DNLA {r.dnla ?? 'Pending'}
@@ -890,10 +896,10 @@ export default function Recruiter() {
       {/* Sticky bulk-action bar (appears when rows are selected) */}
       {selected.size > 0 && (
         <div className="fixed inset-x-0 bottom-5 z-40 flex justify-center px-4">
-          <div className="flex items-center gap-2 rounded-full border border-ink-200 bg-white px-3 py-2 shadow-[0_16px_44px_-18px_rgba(16,24,40,0.35)]">
+          <div className="flex max-w-full flex-wrap items-center justify-center gap-2 rounded-3xl border border-ink-200 bg-white px-3 py-2 shadow-[0_16px_44px_-18px_rgba(16,24,40,0.35)]">
             <span className="px-2 text-sm font-bold text-ink-900">{selected.size} selected</span>
-            <span className="h-5 w-px bg-ink-200" />
-            <Button type="button" variant="primary" size="sm" className="bg-ink-900 hover:bg-ink-800" onClick={shortlistSelected}>
+            <span className="hidden h-5 w-px bg-ink-200 sm:block" />
+            <Button type="button" variant="primary" size="sm" onClick={shortlistSelected}>
               <IconTarget className="w-4 h-4" /> Shortlist
             </Button>
             <Button type="button" variant="ghost" size="sm" onClick={() => exportRows(rows.filter((r) => selected.has(r.poolId)), "taledge-selected.csv")}>
@@ -910,19 +916,13 @@ export default function Recruiter() {
       )}
 
       {/* ── Post a role modal (PRD §4.5) ── */}
-      {showPostJob && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Post a role"
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-ink-900/50 backdrop-blur-sm p-4"
-          onClick={() => { if (!postingJob) setShowPostJob(false); }}
-        >
-          <div className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+      <Modal open={showPostJob} onClose={() => { if (!postingJob) setShowPostJob(false); }} label="Post a role">
             <Card variant="frosted" className="p-6">
               <div className="mb-4 flex items-center justify-between">
                 <Heading as="h3" className="text-xl">Post a role</Heading>
-                <button type="button" aria-label="Close" onClick={() => setShowPostJob(false)} className="text-lg text-ink-400 hover:text-ink-900">✕</button>
+                <button type="button" aria-label="Close" onClick={() => setShowPostJob(false)} className="grid h-8 w-8 place-items-center rounded-md text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-900">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M18 6 6 18M6 6l12 12" /></svg>
+                </button>
               </div>
               <div className="space-y-3">
                 <div className="flex gap-2">
@@ -937,65 +937,58 @@ export default function Recruiter() {
                     </button>
                   ))}
                 </div>
-                <input
+                <Input
+                  aria-label="Role title"
                   value={jobForm.title}
                   onChange={(e) => setJobForm((f) => ({ ...f, title: e.target.value }))}
                   placeholder="Role title (e.g. Backend Engineer)"
-                  className="w-full rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all"
                 />
                 <div className="grid grid-cols-2 gap-3">
-                  <input
+                  <Input
+                    aria-label="Location"
                     value={jobForm.location}
                     onChange={(e) => setJobForm((f) => ({ ...f, location: e.target.value }))}
                     placeholder="Location"
-                    className="w-full rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all"
                   />
-                  <input
+                  <Input
+                    aria-label={jobForm.type === "internship" ? "Stipend" : "CTC range"}
                     value={jobForm.ctc}
                     onChange={(e) => setJobForm((f) => ({ ...f, ctc: e.target.value }))}
                     placeholder={jobForm.type === "internship" ? "Stipend" : "CTC range"}
-                    className="w-full rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all"
                   />
                 </div>
-                <input
+                <Input
+                  aria-label="Key skills"
                   value={jobForm.skills}
                   onChange={(e) => setJobForm((f) => ({ ...f, skills: e.target.value }))}
                   placeholder="Key skills (comma separated)"
-                  className="w-full rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all"
                 />
-                <textarea
+                <Textarea
+                  aria-label="Description"
                   value={jobForm.description}
                   onChange={(e) => setJobForm((f) => ({ ...f, description: e.target.value }))}
                   placeholder="Short description (optional)"
                   rows={3}
-                  className="w-full resize-none rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all"
+                  className="resize-none"
                 />
                 <div className="flex justify-end gap-2 pt-1">
                   <Button type="button" variant="ghost" onClick={() => setShowPostJob(false)} disabled={postingJob}>Cancel</Button>
-                  <Button type="button" variant="primary" className="bg-ink-900 hover:bg-ink-800" onClick={submitJob} disabled={postingJob}>
+                  <Button type="button" variant="primary" onClick={submitJob} disabled={postingJob}>
                     {postingJob ? "Posting…" : "Publish posting"}
                   </Button>
                 </div>
               </div>
             </Card>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* ── Off-campus upload → quotation → pay → invite (PRD §4.5) ── */}
-      {showUpload && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Upload off-campus candidates"
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-ink-900/50 backdrop-blur-sm p-4"
-          onClick={() => { if (!uploading) setShowUpload(false); }}
-        >
-          <div className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+      <Modal open={showUpload} onClose={() => { if (!uploading) setShowUpload(false); }} label="Upload off-campus candidates">
             <Card variant="frosted" className="p-6">
               <div className="mb-4 flex items-center justify-between">
                 <Heading as="h3" className="text-xl">Off-campus candidate list</Heading>
-                <button type="button" aria-label="Close" onClick={() => setShowUpload(false)} className="text-lg text-ink-400 hover:text-ink-900">✕</button>
+                <button type="button" aria-label="Close" onClick={() => setShowUpload(false)} className="grid h-8 w-8 place-items-center rounded-md text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-900">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M18 6 6 18M6 6l12 12" /></svg>
+                </button>
               </div>
               {uploadResult ? (
                 <div className="py-2">
@@ -1040,7 +1033,7 @@ export default function Recruiter() {
                       variant="ghost"
                       onClick={() => navigator.clipboard?.writeText(uploadResult.invites.map((i) => `${i.name}: ${i.link}`).join("\n")).then(() => toast("All links copied.", "success")).catch(() => {})}
                     >Copy all</Button>
-                    <Button type="button" variant="primary" className="bg-ink-900 hover:bg-ink-800" onClick={() => setShowUpload(false)}>Done</Button>
+                    <Button type="button" variant="primary" onClick={() => setShowUpload(false)}>Done</Button>
                   </div>
                 </div>
               ) : jobCards.length === 0 ? (
@@ -1050,32 +1043,32 @@ export default function Recruiter() {
                   <p className="mx-auto mt-1 max-w-xs text-xs text-ink-500">Off-campus invites attach to a job or internship. Create one, then come back to upload your candidate list.</p>
                   <div className="mt-5 flex justify-center gap-2">
                     <Button type="button" variant="ghost" onClick={() => setShowUpload(false)}>Cancel</Button>
-                    <Button type="button" variant="primary" className="bg-ink-900 hover:bg-ink-800" onClick={() => { setShowUpload(false); setShowPostJob(true); }}>Post a role</Button>
+                    <Button type="button" variant="primary" onClick={() => { setShowUpload(false); setShowPostJob(true); }}>Post a role</Button>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-3">
                   <div>
                     <label htmlFor="upload-role" className="text-[10px] font-bold uppercase tracking-wider text-ink-500">Role (invites attach to a posting)</label>
-                    <select
+                    <Select
                       id="upload-role"
                       value={uploadJobId}
                       onChange={(e) => setUploadJobId(e.target.value)}
-                      className="mt-1 w-full rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all"
+                      className="mt-1"
                     >
                       <option value="">Select a posted role…</option>
                       {jobCards.map((j) => <option key={j.id} value={j.id}>{j.title}</option>)}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label htmlFor="upload-list" className="text-[10px] font-bold uppercase tracking-wider text-ink-500">Candidates · one per line: Name, email</label>
-                    <textarea
+                    <Textarea
                       id="upload-list"
                       value={uploadText}
                       onChange={(e) => setUploadText(e.target.value)}
                       rows={5}
                       placeholder={"Aarav Mehta, aarav@example.com\nDiya Sharma, diya@example.com"}
-                      className="mt-1 w-full resize-none rounded-xl2 border-0 bg-white px-4 py-2.5 text-sm font-medium text-ink-900 shadow-sm ring-1 ring-inset ring-ink-200 focus:ring-2 focus:ring-brand-600 transition-all"
+                      className="mt-1 resize-none"
                     />
                   </div>
                   <div className="flex items-center justify-between rounded-xl2 bg-ink-50/70 p-3 ring-1 ring-inset ring-ink-200/60">
@@ -1089,7 +1082,7 @@ export default function Recruiter() {
                   </div>
                   <div className="flex justify-end gap-2 pt-1">
                     <Button type="button" variant="ghost" onClick={() => setShowUpload(false)} disabled={uploading}>Cancel</Button>
-                    <Button type="button" variant="primary" className="bg-ink-900 hover:bg-ink-800" onClick={sendInvites} disabled={uploading || parsedUploads.length === 0 || !uploadJobId}>
+                    <Button type="button" variant="primary" onClick={sendInvites} disabled={uploading || parsedUploads.length === 0 || !uploadJobId}>
                       {uploading
                         ? "Processing…"
                         : `${paymentsEnabled ? "Pay & send" : "Send"} ${parsedUploads.length || ""} invite${parsedUploads.length === 1 ? "" : "s"}`}
@@ -1118,9 +1111,7 @@ export default function Recruiter() {
                 </div>
               )}
             </Card>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* Candidate quick-view drawer */}
       <Drawer
@@ -1283,21 +1274,71 @@ export default function Recruiter() {
   );
 }
 
-function KpiCard({ label, value, hint, icon, delay = 0 }: { label: string; value: string; hint: string; icon: ReactNode; delay?: number }) {
+/**
+ * Accessible modal shell: overlay + Escape close (respecting a busy guard via the
+ * caller's onClose), body-scroll lock, focus-move-in, focus-trap, and focus-restore
+ * (mirrors the Drawer pattern). Backdrop scrolls and the panel caps at 90dvh so
+ * actions never clip on short screens.
+ */
+function Modal({ open, onClose, label, children }: { open: boolean; onClose: () => void; label: string; children: ReactNode }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Keep the latest onClose without re-running the effect on every render (which
+  // would steal focus back into the modal while the user is typing).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (!open) return;
+    const prevFocus = document.activeElement as HTMLElement | null;
+    const node = panelRef.current;
+    const focusable = () =>
+      node
+        ? Array.from(
+            node.querySelectorAll<HTMLElement>(
+              'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])'
+            )
+          ).filter((el) => el.offsetParent !== null)
+        : [];
+    (focusable()[0] ?? node)?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { onCloseRef.current(); return; }
+      if (e.key === "Tab") {
+        const f = focusable();
+        if (f.length === 0) return;
+        const first = f[0];
+        const last = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+      prevFocus?.focus?.();
+    };
+  }, [open]);
+
+  if (!open) return null;
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay, duration: 0.5, ease: "easeOut" }} whileHover={{ y: -5, scale: 1.02 }}
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
+      className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto bg-ink-900/50 backdrop-blur-sm p-4"
+      onClick={onClose}
     >
-      <Card variant="frosted" className="relative overflow-hidden p-6">
-        <div className="flex items-start justify-between gap-3 mb-6">
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl2 bg-gradient-to-br from-brand-600 to-accent-500 text-white shadow-panel">
-            {icon}
-          </div>
-          <Badge tone="success">Live</Badge>
-        </div>
-        <Stat label={label} value={value} sub={hint} />
-      </Card>
-    </motion.div>
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        className="w-full max-w-lg max-h-[90dvh] overflow-y-auto outline-none"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -1382,7 +1423,7 @@ function BottomCard({ icon, title, desc, action, secAction, secondaryBtn, childr
           <Button
             type="button"
             variant={secondaryBtn ? "ghost" : "primary"}
-            className={secondaryBtn ? "flex-1" : "flex-1 bg-ink-900 hover:bg-ink-800"}
+            className="flex-1"
             onClick={onAction}
           >
             {action}

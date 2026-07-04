@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { Loader2, ArrowLeft } from "lucide-react";
 import { ButtonLink, Card, Heading, PageShell, Tooltip, CountUp } from "@/components/ui";
@@ -85,20 +85,23 @@ export function KPIGrid({ items, columns = 4 }: { items: Kpi[]; columns?: 3 | 4 
 
 export function KPICard({ label, value, hint, tone = "neutral", icon, trend }: Kpi) {
   const t = toneClasses[tone];
+  const hintId = useId();
   return (
     <Card variant="default" className="h-full rounded-xl2 p-5 transition-colors hover:border-brand-200">
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1.5">
-          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-ink-400">{label}</span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-ink-500">{label}</span>
           {hint && (
             <Tooltip label={hint}>
               <button
                 type="button"
                 aria-label={`About ${label}`}
+                aria-describedby={hintId}
                 className="grid h-3.5 w-3.5 place-items-center rounded-full bg-ink-100 text-[8px] font-bold leading-none text-ink-500 transition-colors hover:bg-ink-200 hover:text-ink-700"
               >
                 i
               </button>
+              <span id={hintId} className="sr-only">{hint}</span>
             </Tooltip>
           )}
         </span>

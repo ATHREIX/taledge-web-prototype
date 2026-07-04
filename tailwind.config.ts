@@ -54,16 +54,11 @@ const config: Config = {
         display: ["var(--font-sans)", "system-ui", "sans-serif"],
         mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
-      // Canonical type scale (line-height + weight baked in) so headings stop
-      // hand-rolling text-3xl/4xl/5xl combos. Additive — defaults still work.
-      fontSize: {
-        display: ["3.5rem", { lineHeight: "1.05", fontWeight: "800", letterSpacing: "-0.02em" }],
-        h1: ["2.5rem", { lineHeight: "1.1", fontWeight: "800", letterSpacing: "-0.02em" }],
-        h2: ["2rem", { lineHeight: "1.15", fontWeight: "700", letterSpacing: "-0.01em" }],
-        h3: ["1.5rem", { lineHeight: "1.2", fontWeight: "700", letterSpacing: "-0.01em" }],
-        body: ["1rem", { lineHeight: "1.6" }],
-        caption: ["0.8125rem", { lineHeight: "1.4" }],
-      },
+      // Canonical type scale lives in the typography primitives, NOT in
+      // fontSize tokens: components/ui/typography.tsx (Display, Heading, Eyebrow,
+      // Label) and components/ui/page-shell.tsx (PageHeader) are the ONE
+      // responsive heading scale. Ad-hoc single-size text-display/h1/h2/h3/body/
+      // caption tokens were unused and removed to avoid a competing scale.
       animation: {
         marquee: "marquee 30s linear infinite",
         "marquee-slow": "marquee 50s linear infinite",
@@ -97,11 +92,9 @@ const config: Config = {
         "grid-pattern": "32px 32px",
       },
       boxShadow: {
-        'premium': '0 4px 24px -6px rgba(0, 0, 0, 0.08), 0 0 1px rgba(0,0,0,0.2)',
-        'premium-hover': '0 12px 32px -8px rgba(0, 0, 0, 0.12), 0 0 1px rgba(0,0,0,0.2)',
-        'float': '0 20px 40px -12px rgba(0, 0, 0, 0.15)',
         // Canonical panel/card elevation. Use shadow-panel everywhere instead
-        // of one-off shadow-[0_8px_30px_...] values.
+        // of one-off shadow-[0_8px_30px_...] values. (Legacy shadow-premium/
+        // shadow-premium-hover/shadow-float were unused and removed.)
         'panel': '0 1px 2px rgba(16,24,40,0.04), 0 8px 24px -12px rgba(16,24,40,0.12)',
         'panel-hover': '0 2px 4px rgba(16,24,40,0.05), 0 16px 40px -16px rgba(16,24,40,0.18)',
       },

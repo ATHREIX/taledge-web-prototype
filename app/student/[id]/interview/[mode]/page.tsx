@@ -4,7 +4,7 @@ import { use, useEffect, useRef, useState, useCallback } from "react";
 import { useRouter, notFound, usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, MicOff, Send, Camera, AlertTriangle, ShieldAlert, FileText, Loader2, Eye, Smartphone, Users, MonitorOff, Clipboard, Brain, Check, X, ArrowRight, Clock, RefreshCw, ScanFace, Lock, BadgeCheck, ChevronRight } from "lucide-react";
-import { Card, Button, Badge, Eyebrow, Heading } from "@/components/ui";
+import { Card, Button, ButtonLink, Badge, Eyebrow, Heading } from "@/components/ui";
 import { authedFetch } from "@/lib/api-client";
 import { getStudent } from "@/lib/data";
 import { useGeminiLive } from "@/hooks/useGeminiLive";
@@ -200,6 +200,67 @@ type ProctoringStatus = {
   /** True when a second/external display (HDMI, etc.) is attached. */
   externalDisplay: boolean;
 };
+
+// ── Accessible modal focus management ────────────────────────────────────────
+// The dialogs in this page set aria-modal, but the browser does NOT trap focus for
+// aria-modal alone. Attach the returned ref to a dialog's outer container: while
+// `active`, it moves focus to the marked primary action (or the first focusable
+// element), keeps Tab / Shift+Tab cycling inside the dialog, and restores focus to
+// wherever the user was when the dialog closes. Behaviour-only; no logic changes.
+function useDialogFocus<T extends HTMLElement>(active: boolean) {
+  const ref = useRef<T | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    const node = ref.current;
+    if (!node) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+
+    const getFocusable = () =>
+      Array.from(
+        node.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+
+    // Prefer an explicitly-marked, enabled primary action; else the first focusable.
+    const primary = node.querySelector<HTMLElement>('[data-autofocus]:not([disabled])');
+    const initial = primary ?? getFocusable()[0] ?? null;
+    // Defer past the dialog's enter animation so the target is mounted/visible.
+    const raf = requestAnimationFrame(() => initial?.focus());
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const focusable = getFocusable();
+      if (focusable.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const activeEl = document.activeElement as HTMLElement | null;
+      if (e.shiftKey) {
+        if (activeEl === first || !node.contains(activeEl)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (activeEl === last || !node.contains(activeEl)) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    node.addEventListener("keydown", onKeyDown);
+    return () => {
+      cancelAnimationFrame(raf);
+      node.removeEventListener("keydown", onKeyDown);
+      // Restore focus to where the user was before the dialog opened.
+      if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+        previouslyFocused.focus();
+      }
+    };
+  }, [active]);
+  return ref;
+}
 
 export default function InterviewPage({ params }: { params: Promise<{ id: string; mode: string }> }) {
   const { id, mode } = use(params);
@@ -2731,7 +2792,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const StatusDot = ({ ok, label }: { ok: boolean; label: string }) => (
     <div className="flex items-center gap-1.5">
       <span className={`w-1.5 h-1.5 rounded-full ${ok ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]' : 'bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.8)] animate-pulse'}`} />
-      <span className={`text-[9px] font-bold uppercase tracking-wider ${ok ? 'text-emerald-700' : 'text-rose-600'}`}>{label}</span>
+      <span className={`text-[11px] font-bold uppercase tracking-wider ${ok ? 'text-emerald-700' : 'text-rose-600'}`}>{label}</span>
     </div>
   );
 
@@ -2780,6 +2841,25 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     ? "Center your face in the oval"
     : "Capture & Verify";
 
+  // ── Focus traps for the setup / blocking modal dialogs (accessibility) ──────
+  // Each ref is attached to a dialog's outer container; the hook only acts while
+  // that dialog's render condition is true.
+  const cameraErrorDialogRef = useDialogFocus<HTMLDivElement>(!!cameraError && !blocked);
+  const resumeDialogRef = useDialogFocus<HTMLDivElement>(!hasStarted && setupStep === "resume" && !blocked);
+  const rulesDialogRef = useDialogFocus<HTMLDivElement>(!hasStarted && setupStep === "rules" && !blocked);
+  const syscheckDialogRef = useDialogFocus<HTMLDivElement>(!hasStarted && setupStep === "systemcheck" && !blocked);
+  const verifyDialogRef = useDialogFocus<HTMLDivElement>(!hasStarted && setupStep === "verify" && !blocked);
+  const blockedDialogRef = useDialogFocus<HTMLDivElement>(blocked);
+
+  // ── Header connection status: 3 explicit states (was 'Live' / 'Connecting…') ─
+  // Thinking… while the model is generating; Live once a session is idle/ready;
+  // Connecting… before a session exists. Derives display only — no behaviour change.
+  const connStatus: { tone: "success" | "warn"; label: string; pulse: boolean } = isProcessing
+    ? { tone: "warn", label: "Thinking…", pulse: true }
+    : sessionId
+    ? { tone: "success", label: "Live", pulse: true }
+    : { tone: "warn", label: "Connecting…", pulse: false };
+
   return (
     <div className="min-h-screen bg-canvas flex flex-col font-sans relative z-0 select-none"
       onCopy={e => e.preventDefault()}
@@ -2796,6 +2876,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       {/* ===== CAMERA FAILURE OVERLAY (blocking) ===== */}
       {cameraError && !blocked && (
         <div
+          ref={cameraErrorDialogRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby="camera-error-title"
@@ -2809,7 +2890,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
               <Heading as="h2" id="camera-error-title" className="text-2xl text-ink-900 mb-3">Camera Unavailable</Heading>
               <p className="text-ink-600 mb-6 text-sm" aria-live="assertive">{cameraError}</p>
               <div className="flex flex-col sm:flex-row gap-2 justify-center">
-                <Button type="button" onClick={() => window.location.reload()} size="lg">
+                <Button type="button" data-autofocus onClick={() => window.location.reload()} size="lg">
                   Retry Camera Access
                 </Button>
                 <Button type="button" variant="ghost" onClick={() => router.push(`${flowBase}/${id}`)} size="lg">
@@ -2824,6 +2905,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       {/* ===== PRE-START RULES OVERLAY ===== */}
       {!hasStarted && setupStep === "resume" && !blocked && (
         <div
+          ref={resumeDialogRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby="resume-dialog-title"
@@ -2839,12 +2921,12 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 Your {modeLabel} interview is tailored to your résumé - your skills, projects and target role. Upload it now for the most relevant questions.
               </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-                <a href="/onboarding" className="btn-primary rounded-full">
+                <ButtonLink href="/onboarding" size="lg" data-autofocus>
                   <FileText className="h-4 w-4" /> Upload résumé
-                </a>
-                <button type="button" onClick={() => setSetupStep("rules")} className="btn-ghost rounded-full">
+                </ButtonLink>
+                <Button type="button" variant="ghost" size="lg" onClick={() => setSetupStep("rules")}>
                   Continue without résumé
-                </button>
+                </Button>
               </div>
             </Card>
           </motion.div>
@@ -2853,6 +2935,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
 
       {!hasStarted && setupStep === "rules" && !blocked && (
         <div
+          ref={rulesDialogRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby="rules-dialog-title"
@@ -2937,7 +3020,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
               </div>
             )}
 
-            <Button type="button" onClick={() => setSetupStep("systemcheck")} disabled={!proctoringReady} size="lg" className="w-full">
+            <Button type="button" data-autofocus onClick={() => setSetupStep("systemcheck")} disabled={!proctoringReady} size="lg" className="w-full">
               {proctoringReady ? "Continue to System Check" : <><Loader2 className="w-4 h-4 animate-spin" /> Initializing AI Proctoring Engine...</>}
             </Button>
             </Card>
@@ -2948,6 +3031,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       {/* ===== PRE-FLIGHT SYSTEM CHECK ===== */}
       {!hasStarted && setupStep === "systemcheck" && !blocked && (
         <div
+          ref={syscheckDialogRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby="syscheck-title"
@@ -3023,6 +3107,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 </Button>
                 <Button
                   type="button"
+                  data-autofocus
                   size="lg"
                   onClick={handleGoToVerify}
                   disabled={!(sysChecks.camera === "pass" && sysChecks.mic === "pass" && sysChecks.browser !== "fail")}
@@ -3040,6 +3125,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       {/* ===== FACE ID VERIFICATION OVERLAY ===== */}
       {!hasStarted && setupStep === "verify" && !blocked && (
         <div
+          ref={verifyDialogRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby="verify-dialog-title"
@@ -3050,7 +3136,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             initial={{ opacity: 0, y: 14, scale: 0.985 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.22, ease: "easeOut" }}
-            className="flex max-h-[94dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-[0_12px_48px_rgba(24,24,27,0.4)] ring-1 ring-black/5"
+            className="flex max-h-[94dvh] w-full max-w-lg flex-col overflow-hidden rounded-xl2 bg-white shadow-[0_12px_48px_rgba(24,24,27,0.4)] ring-1 ring-black/5"
           >
             {/* ── Brand header (Salesforce layout, TalEdge colors) ────────── */}
             <div className="relative shrink-0 bg-gradient-to-br from-brand-700 via-brand-600 to-accent-500 px-6 pt-5 pb-4 text-white">
@@ -3198,24 +3284,28 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                       </p>
                     </div>
                   )}
-                  <button
+                  <Button
                     type="button"
+                    data-autofocus
+                    size="lg"
                     onClick={handleStartInterview}
-                    className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 ${verificationResult.unavailable ? "bg-amber-600 hover:bg-amber-700 focus-visible:ring-amber-500/40" : "bg-emerald-600 hover:bg-emerald-700 focus-visible:ring-emerald-500/40"}`}
+                    className={`w-full ${verificationResult.unavailable ? "bg-amber-600 hover:bg-amber-700 focus-visible:ring-amber-500/40" : "bg-emerald-600 hover:bg-emerald-700 focus-visible:ring-emerald-500/40"}`}
                   >
                     {verificationResult.unavailable ? (
                       <><ShieldAlert className="h-4 w-4" aria-hidden /> Proceed — verification unavailable <ArrowRight className="h-4 w-4" aria-hidden /></>
                     ) : (
                       <><BadgeCheck className="h-4 w-4" aria-hidden /> Identity verified - Start interview <ArrowRight className="h-4 w-4" aria-hidden /></>
                     )}
-                  </button>
+                  </Button>
                 </>
               ) : (
-                <button
+                <Button
                   type="button"
+                  data-autofocus
+                  size="lg"
                   onClick={handleCaptureAndVerify}
                   disabled={verificationResult.status === "verifying" || vBlockCapture}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 disabled:cursor-not-allowed disabled:bg-ink-300 disabled:shadow-none"
+                  className="w-full disabled:cursor-not-allowed"
                 >
                   {verificationResult.status === "verifying" ? (
                     <><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Verifying…</>
@@ -3224,7 +3314,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                   ) : (
                     <><ScanFace className="h-4 w-4" aria-hidden /> Capture &amp; verify</>
                   )}
-                </button>
+                </Button>
               )}
               <p className="mt-3 flex items-center justify-center gap-1.5 text-[11px] font-medium text-ink-400">
                 <Lock className="h-3 w-3" aria-hidden /> Your camera image is used only to confirm your identity for this assessment.
@@ -3237,6 +3327,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       {/* ===== BLOCKED OVERLAY ===== */}
       {blocked && (
         <div
+          ref={blockedDialogRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby="blocked-dialog-title"
@@ -3261,7 +3352,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
               </div>
             )}
             <p className="text-xs text-ink-400 mb-4">Taking you to your results…</p>
-            <Button type="button" variant="danger" onClick={() => router.push(terminationHref)} size="lg" className="px-8 py-3">
+            <Button type="button" data-autofocus variant="danger" onClick={() => router.push(terminationHref)} size="lg" className="px-8 py-3">
               View results
             </Button>
             </Card>
@@ -3352,9 +3443,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 </span>
                 PROCTORED · {warnings}/3
               </Badge>
-              <Badge tone={!isProcessing && sessionId ? "success" : "warn"}>
-                <span className={`h-1.5 w-1.5 rounded-full ${!isProcessing && sessionId ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                {!isProcessing && sessionId ? "Live" : "Connecting..."}
+              <Badge tone={connStatus.tone}>
+                <span className={`h-1.5 w-1.5 rounded-full ${connStatus.tone === "success" ? "bg-emerald-500" : "bg-amber-500"} ${connStatus.pulse ? "animate-pulse" : ""}`} />
+                {connStatus.label}
               </Badge>
               <Badge tone="neutral" className="font-mono">
                 {m}:{s}
@@ -3364,17 +3455,20 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
         </header>
 
         <main className="flex-1 max-w-7xl mx-auto w-full p-3 md:p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
-          {/* Left Column: Camera + Proctoring Panel + Profile */}
-          <div className="lg:col-span-4 flex flex-col md:grid md:grid-cols-2 lg:flex lg:flex-col gap-4">
+          {/* Left Column: Camera + Proctoring Panel + Profile.
+              Below lg it drops BELOW the chat (order-2) so the Q&A is the primary
+              top region on small screens instead of being pushed off the fold.
+              On lg the grid columns place it back on the left (order reset). */}
+          <div className="order-2 lg:order-none lg:col-span-4 flex flex-col md:grid md:grid-cols-2 lg:flex lg:flex-col gap-4">
             {/* Camera Feed */}
             <Card variant="default" className="bg-white/50 p-1.5 relative group">
               <div className="absolute top-3 left-3 z-20 flex flex-col gap-1.5">
-                <div className="px-2.5 py-1 bg-black/70 backdrop-blur-xl rounded-lg text-[9px] font-bold text-white flex items-center gap-1.5 uppercase tracking-wider">
+                <div className="px-2.5 py-1 bg-black/70 backdrop-blur-xl rounded-lg text-[11px] font-bold text-white flex items-center gap-1.5 uppercase tracking-wider">
                   <span className={`w-1.5 h-1.5 rounded-full ${webcamEnabled ? 'bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.8)]' : 'bg-rose-500'}`} />
                   <Camera aria-hidden className="w-2.5 h-2.5" />
                   {webcamEnabled ? "LIVE" : "OFF"}
                 </div>
-                <div className="px-2.5 py-1 bg-brand-50/80 backdrop-blur-xl rounded-lg text-[9px] font-bold text-brand-700 flex items-center gap-1.5 uppercase tracking-wider border border-brand-200/50">
+                <div className="px-2.5 py-1 bg-brand-50/80 backdrop-blur-xl rounded-lg text-[11px] font-bold text-brand-700 flex items-center gap-1.5 uppercase tracking-wider border border-brand-200/50">
                   {proctoringReady ? (
                     <><Eye aria-hidden className="w-2.5 h-2.5 text-emerald-600" /> AI Vision</>
                   ) : (
@@ -3385,7 +3479,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
               {/* Person count indicator */}
               {hasStarted && proctoringStatus.personCount > 0 && (
                 <div className="absolute top-3 right-3 z-20">
-                  <div className={`px-2.5 py-1 rounded-lg text-[9px] font-bold flex items-center gap-1.5 uppercase tracking-wider ${proctoringStatus.personCount === 1 ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-600 border border-rose-500/30 animate-pulse'}`}>
+                  <div className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 uppercase tracking-wider ${proctoringStatus.personCount === 1 ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-600 border border-rose-500/30 animate-pulse'}`}>
                     <Users aria-hidden className="w-2.5 h-2.5" />
                     {proctoringStatus.personCount} {proctoringStatus.personCount === 1 ? 'Person' : 'People'}
                   </div>
@@ -3462,8 +3556,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             </Card>
           </div>
 
-          {/* Right Column: Chat Interface */}
-          <div className="lg:col-span-8 flex flex-col h-[550px] md:h-[600px] lg:h-[calc(100vh-10rem)] bg-white/40 backdrop-blur-3xl rounded-xl2 shadow-panel border border-ink-200/60 overflow-hidden relative">
+          {/* Right Column: Chat Interface. order-1 lifts it above the camera/proctor
+              stack below lg so the interview Q&A stays the primary top region. */}
+          <div className="order-1 lg:order-none lg:col-span-8 flex flex-col h-[550px] md:h-[600px] lg:h-[calc(100vh-10rem)] bg-white/40 backdrop-blur-3xl rounded-xl2 shadow-panel border border-ink-200/60 overflow-hidden relative">
             {/* Messages - min-h-0 is REQUIRED: without it this flex-1 child keeps
                 its default min-height:auto, refuses to shrink below its content,
                 and the list overflows the panel (pushing the input area off-screen)
@@ -3741,6 +3836,14 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                 </div>
                   );
                 })()
+              ) : connectError ? (
+                // The live interviewer failed to connect and the retry card is shown
+                // in the transcript above. Suppress the full answer-input UI here so
+                // it is not a dead, confusing control while there is no session.
+                <div className="flex items-center justify-center gap-2 py-2 text-center text-[13px] font-medium text-ink-400">
+                  <AlertTriangle aria-hidden className="h-4 w-4 shrink-0 text-rose-400" />
+                  Answer input is unavailable until the interviewer reconnects. Use Retry above.
+                </div>
               ) : (
                 <div className="space-y-3">
                   {sendError && (

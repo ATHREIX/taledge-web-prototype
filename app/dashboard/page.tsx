@@ -20,7 +20,9 @@ import {
 import { doc, getDoc } from "firebase/firestore";
 import { useAuth } from "@/components/AuthProvider";
 import { db } from "@/lib/firebase";
-import { PageShell, Card, Heading, Badge, Avatar, CountUp, Tooltip } from "@/components/ui";
+import { PageShell, Card, Heading, Badge, Avatar, CountUp, Tooltip, ButtonLink } from "@/components/ui";
+import { DashboardHeader } from "@/components/dashboard";
+import { containerVariants } from "@/lib/motion";
 import { roleDef, workspaceId, workspacePath, type Role } from "@/lib/roles";
 
 type Tile = { title: string; desc: string; href: string; icon: React.ReactNode };
@@ -187,8 +189,8 @@ export default function DashboardPage() {
           <Heading as="h1" className="text-2xl">Sign in to continue</Heading>
           <p className="mt-3 text-sm text-ink-500">Your command center is private to your account.</p>
           <div className="mt-6 flex justify-center gap-3">
-            <Link href="/login" className="btn-primary">Sign in</Link>
-            <Link href="/register" className="btn-ghost">Create account</Link>
+            <ButtonLink href="/login" size="lg">Sign in</ButtonLink>
+            <ButtonLink href="/register" variant="ghost" size="lg">Create account</ButtonLink>
           </div>
         </Card>
       </PageShell>
@@ -201,27 +203,26 @@ export default function DashboardPage() {
   return (
     <PageShell width="wide">
       {/* ───────── Command header ───────── */}
-      <motion.header
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: EASE }}
-        className="flex flex-wrap items-end justify-between gap-4 border-b border-ink-200/70 pb-6"
-      >
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-brand-600">Talent Command Center</p>
-          <div className="mt-2 flex flex-wrap items-center gap-3">
-            <Heading as="h1" className="text-2xl sm:text-3xl">Welcome back, {first}</Heading>
-            <Badge tone="brand">{def.label}</Badge>
-          </div>
-          <p className="mt-2 text-sm text-ink-500">{def.blurb}</p>
-        </div>
-        {today && (
-          <div className="text-right">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-400">Today</p>
-            <p className="mt-1 text-sm font-semibold text-ink-700">{today}</p>
-          </div>
-        )}
-      </motion.header>
+      <motion.div initial="hidden" animate="visible" variants={containerVariants}>
+        <DashboardHeader
+          eyebrow="Talent Command Center"
+          title={
+            <span className="inline-flex flex-wrap items-center gap-3 align-middle">
+              Welcome back, {first}
+              <Badge tone="brand">{def.label}</Badge>
+            </span>
+          }
+          description={def.blurb}
+          actions={
+            today ? (
+              <div className="text-right">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-500">Today</p>
+                <p className="mt-1 text-sm font-semibold text-ink-700">{today}</p>
+              </div>
+            ) : undefined
+          }
+        />
+      </motion.div>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* ───────── Main column ───────── */}
@@ -240,7 +241,7 @@ export default function DashboardPage() {
                   <div className="min-w-0">
                     {nextStage ? (
                       <>
-                        <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-400">Next step</p>
+                        <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-500">Next step</p>
                         <h2 className="mt-1 text-xl font-bold text-ink-900">{nextStage.label}</h2>
                         <p className="mt-1 text-sm text-ink-500">
                           {completedCount} of {stages.length} steps complete. Continue your assessment to reach your Fit Score.
@@ -293,7 +294,7 @@ export default function DashboardPage() {
                               )}
                             </span>
                             <span className="min-w-0">
-                              <span className="block text-[10px] font-bold uppercase tracking-wide text-ink-400">Step {i + 1}</span>
+                              <span className="block text-[11px] font-bold uppercase tracking-wide text-ink-500">Step {i + 1}</span>
                               <span className={"block text-[13px] font-semibold leading-tight " + (s.done ? "text-emerald-800" : isNext ? "text-brand-700" : "text-ink-700")}>
                                 {s.label}
                               </span>
@@ -308,7 +309,7 @@ export default function DashboardPage() {
             ) : (
               <Card className="mt-3 flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
-                  <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-400">Your workspace</p>
+                  <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-500">Your workspace</p>
                   <h2 className="mt-1 text-xl font-bold text-ink-900">Open your {def.label.toLowerCase()} workspace</h2>
                   <p className="mt-1 max-w-md text-sm text-ink-500">{def.blurb}</p>
                 </div>
@@ -411,6 +412,6 @@ export default function DashboardPage() {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-400">{children}</h2>
+    <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-500">{children}</h2>
   );
 }

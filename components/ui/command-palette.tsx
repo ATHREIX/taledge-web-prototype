@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -58,6 +58,8 @@ export function CommandPalette() {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listboxId = useId();
+  const optionId = (i: number) => `${listboxId}-opt-${i}`;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -161,10 +163,18 @@ export function CommandPalette() {
                 placeholder="Search pages and actions…"
                 className="w-full bg-transparent py-4 text-sm text-ink-900 outline-none placeholder:text-ink-400"
                 aria-label="Search commands"
+                role="combobox"
+                aria-expanded="true"
+                aria-controls={listboxId}
+                aria-autocomplete="list"
+                aria-activedescendant={results.length ? optionId(active) : undefined}
               />
               <kbd className="rounded border border-ink-200 bg-ink-50 px-1.5 py-0.5 text-[10px] font-bold text-ink-500">ESC</kbd>
             </div>
-            <div className="max-h-[50vh] overflow-y-auto p-2">
+            <span aria-live="polite" className="sr-only">
+              {results.length} {results.length === 1 ? "result" : "results"}
+            </span>
+            <div className="max-h-[50vh] overflow-y-auto p-2" role="listbox" id={listboxId} aria-label="Commands">
               {results.length === 0 ? (
                 <p className="px-3 py-8 text-center text-sm text-ink-500">No matches found.</p>
               ) : (
@@ -172,6 +182,9 @@ export function CommandPalette() {
                   <button
                     key={c.href}
                     type="button"
+                    role="option"
+                    id={optionId(i)}
+                    aria-selected={i === active}
                     onMouseEnter={() => setActive(i)}
                     onClick={() => go(c.href)}
                     className={
