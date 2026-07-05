@@ -62,22 +62,24 @@ function liveCaptionUsable(): boolean {
 // control message. This makes premature/abrupt endings structurally impossible
 // regardless of how weakly the model follows instructions.
 //
-// The round is governed PRIMARILY by elapsed time so it always feels like a
-// full, real interview (~30 min) and can never end abruptly mid-answer:
+// The round is sized to finish WITHIN A SINGLE Gemini Live socket session. Gemini
+// Live caps one WebSocket at ~10 min; resuming across that cap is fragile (the
+// browser-direct socket has no server to own reconnection), so a round that runs
+// past 10 min risks freezing mid-interview. Keeping the hard cap under 10 min
+// means the whole interview happens in one uninterrupted socket — no cap, no
+// reconnect, no freeze. It also matches the model's own natural pacing (it wants
+// to wrap ~8-10 min in), which stops the "said 'interview complete' then kept
+// asking" loop that a too-high minimum used to force. (For genuinely long,
+// multi-session interviews, build the server-side WS proxy first.)
 //
-// LIVE_MIN_MINUTES     - the interview NEVER wraps up before this many minutes,
-//                        no matter how many questions have been asked. This is
-//                        the floor that makes a substantial 30-minute interview.
-// LIVE_MIN_ANSWERS     - a substance floor: also require at least this many real
-//                        answers before wrapping (a candidate who barely speaks
-//                        for 30 min shouldn't trigger a premature, thin wrap-up).
-// LIVE_MAX_MINUTES     - hard time backstop: the round always ends by here.
-// LIVE_HARD_CAP_ASKED  - absolute backstop on questions asked, regardless of all
-//                        else, so the round can never run away.
-const LIVE_MIN_MINUTES = 30;
-const LIVE_MIN_ANSWERS = 8;
-const LIVE_MAX_MINUTES = 45;
-const LIVE_HARD_CAP_ASKED = 60;
+// LIVE_MIN_MINUTES     - never wrap before this many minutes (a substance floor).
+// LIVE_MIN_ANSWERS     - also require at least this many real answers before wrap.
+// LIVE_MAX_MINUTES      - hard time backstop; always ends by here (< the ~10-min cap).
+// LIVE_HARD_CAP_ASKED  - absolute backstop on questions asked.
+const LIVE_MIN_MINUTES = 6;
+const LIVE_MIN_ANSWERS = 6;
+const LIVE_MAX_MINUTES = 9;
+const LIVE_HARD_CAP_ASKED = 30;
 // Private director signals (never shown in the transcript; the system prompt
 // tells the model these are control messages, not the candidate).
 const LIVE_WRAP_UP_MSG = "[WRAP_UP]";
