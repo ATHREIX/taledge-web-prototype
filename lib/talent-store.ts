@@ -479,6 +479,21 @@ export async function listExamAspirants(): Promise<ExamAspirant[]> {
   return readCollection<ExamAspirant>(COL.examAspirants, seededExam);
 }
 
+/** One exam aspirant's durable record (seed OR real result), or null. Mirrors
+ *  getCandidate — used by the exam workspace hub to show real results. */
+export async function getExamAspirant(id: string): Promise<ExamAspirantRecord | null> {
+  if (useFirestore()) {
+    try {
+      const snap = await adminDb!.collection(COL.examAspirants).doc(id).get();
+      if (snap.exists) return toPlain(snap.data()) as ExamAspirantRecord;
+    } catch (e) {
+      onFirestoreError("getExamAspirant", e);
+    }
+  }
+  const f = loadFile();
+  return (f.examAspirants?.[id] as ExamAspirantRecord) ?? null;
+}
+
 /**
  * Upsert an exam (Track 2) aspirant's assessment result into the SAME
  * examAspirants collection the institute exam-cohort view reads. Mirrors

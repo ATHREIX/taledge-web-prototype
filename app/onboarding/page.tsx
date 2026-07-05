@@ -119,7 +119,7 @@ export default function Onboarding() {
   // (/onboarding?invite=<token>), the recruiter already chose the role + track -
   // we resolve the token and PREFILL + LOCK those instead of re-asking.
   const [inviteCtx, setInviteCtx] = useState<
-    { token: string; recruiterId: string; jobId: string; role: string } | null
+    { token: string; recruiterId: string; jobId: string; role: string; track: "placement" | "exam" } | null
   >(null);
   // Window-dependent values must NOT be read during render (the server has no
   // window → it would render a different branch than the client's first paint
@@ -157,8 +157,12 @@ export default function Onboarding() {
         const r = await fetch(`/api/invite/${encodeURIComponent(token)}`);
         const d = await r.json();
         if (cancelled || !d?.ok) return;
-        setInviteCtx({ token, recruiterId: d.recruiterId, jobId: d.jobId, role: d.role });
-        setTrack("placement"); // a recruiter posting is always placement, never exam
+        // Honor the invite's OWN track: a recruiter posting is always placement,
+        // but an institute cohort invite can be the EXAM track. Forcing placement
+        // dropped every exam-cohort invitee into the wrong funnel.
+        const inviteTrack: "placement" | "exam" = d.track === "exam" ? "exam" : "placement";
+        setInviteCtx({ token, recruiterId: d.recruiterId, jobId: d.jobId, role: d.role, track: inviteTrack });
+        setTrack(inviteTrack);
         if (d.role) setSelectedRole(d.role);
         if (d.name) setFullName((v) => v || d.name);
         if (d.email) setEmail((v) => v || d.email);
@@ -181,8 +185,13 @@ export default function Onboarding() {
   // Exam-track aspirants live under their own id namespace. In enforced mode the
   // signed-in user owns their exam workspace (their uid); demo falls back to the
   // shared seed aspirant. Computed in render so it updates once auth resolves.
-  const examId =
-    process.env.NEXT_PUBLIC_AUTH_ENFORCED === "true" && user?.uid ? user.uid : "aspirant-001";
+  // An INVITED exam aspirant is account-less, so their exam workspace is their own
+  // invite-derived id (not the shared seed aspirant-001, which they'd overwrite).
+  const examId = inviteCtx
+    ? candidateId
+    : process.env.NEXT_PUBLIC_AUTH_ENFORCED === "true" && user?.uid
+      ? user.uid
+      : "aspirant-001";
 
   async function handleFile(file: File) {
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
