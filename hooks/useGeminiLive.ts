@@ -407,6 +407,22 @@ export function useGeminiLive() {
           // A close before the FIRST setupComplete = a failed connect (e.g. rejected
           // token) → surface as failure so the caller can fall back.
           if (!isReconnect && !settled) { settle(false); return; }
+          // The socket may have died MID-AI-TURN (very likely at the ~10-min cap,
+          // which tends to land while the interviewer is talking). aiTurnActiveRef
+          // is cleared ONLY on turnComplete, which never arrived — so it stays true,
+          // the mic gate (onaudioprocess) stays muted, and partialAi is frozen: the
+          // UI is stuck on "interviewer is speaking… your mic is muted" forever.
+          // Clear the interrupted-turn state so the mic reopens and the candidate
+          // can respond once reconnected.
+          aiTurnActiveRef.current = false;
+          isPlaying.current = false;
+          aiTurnRef.current = "";
+          userTurnRef.current = "";
+          if (speechEndTimerRef.current) { clearTimeout(speechEndTimerRef.current); speechEndTimerRef.current = null; }
+          setAiSpeaking(false);
+          setPartialAi("");
+          setPartialUser("");
+
           // Otherwise this is a MID-INTERVIEW close — the ~10-min Live connection
           // cap, a GoAway, or a transient drop. ALWAYS attempt to resume: do NOT
           // gate on having a resumption handle (a handle-less session used to just
