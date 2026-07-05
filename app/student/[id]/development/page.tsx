@@ -1,4 +1,5 @@
 import { ScoreRing, Sparkline } from "@/components/score-ring";
+import { WorkspaceBack } from "@/components/workspace-back";
 import { getStudent } from "@/lib/data";
 import { getCandidate } from "@/lib/talent-store";
 import {
@@ -45,9 +46,7 @@ export default async function Development({
         }
         description="Personalized learning pathway synthesized from DNLA + AI interviews. Coach-matched, sprint-structured, longitudinally tracked."
         actions={
-          <ButtonLink href={`/student/${s.id}`} variant="ghost" size="sm">
-            <ArrowLeft /> Back
-          </ButtonLink>
+          <WorkspaceBack id={s.id} />
         }
       />
 
@@ -443,13 +442,6 @@ function ArrowRight() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
       <path d="M5 12h14M13 5l7 7-7 7" />
-    </svg>
-  );
-}
-function ArrowLeft() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
-      <path d="M19 12H5M11 19l-7-7 7-7" />
     </svg>
   );
 }
