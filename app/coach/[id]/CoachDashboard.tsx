@@ -186,17 +186,21 @@ function toExamQueueItem(item: QueueItem): QueueViewItem | null {
 // --- MAIN DASHBOARD ---
 
 export default function CoachDashboard({ coachId }: { coachId: string }) {
-  // Seed queues/goals/outcomes/history only surface in DEMO mode. In enforced
-  // mode they collapse to empty arrays so the existing EmptyState renders.
-  const placementItems = (DEMO ? placementQueue : [])
+  // The coach role has no live mentee-ingestion source yet, so gating the seed
+  // queues to DEMO left the coach dashboard a dead-end empty shell in production
+  // (no queue → the only session-creating UI never renders → the coach can do
+  // nothing). For the pilot, surface the illustrative cohort so the coach
+  // experience is demonstrable end-to-end; it's clearly labelled "sample cohort"
+  // below. (Replace with a real per-coach queue store before non-pilot launch.)
+  const placementItems = placementQueue
     .map(toPlacementQueueItem)
     .filter((item): item is QueueViewItem => item !== null);
-  const examItems = (DEMO ? examQueue : [])
+  const examItems = examQueue
     .map(toExamQueueItem)
     .filter((item): item is QueueViewItem => item !== null);
-  const goals = DEMO ? interventionGoals : [];
-  const outcomes = DEMO ? outcomeMetrics : [];
-  const sessions = DEMO ? sessionHistory : [];
+  const goals = interventionGoals;
+  const outcomes = outcomeMetrics;
+  const sessions = sessionHistory;
   const allQueue = [...placementItems, ...examItems];
   const urgentItems = allQueue.filter((item) => item.priority === "critical" || item.priority === "high");
   const hasQueue = allQueue.length > 0;
@@ -271,9 +275,9 @@ export default function CoachDashboard({ coachId }: { coachId: string }) {
   return (
     <DashboardShell>
       <DashboardHeader
-        eyebrow="Coaching Command Center"
+        eyebrow="Coaching Command Center · Sample cohort"
         title={coachName}
-        description="Command center for placement coaching and exam counselling. Monitor risks, track interventions, and review outcomes in real-time."
+        description="Command center for placement coaching and exam counselling. Monitor risks, track interventions, and review outcomes. The mentee queue below is an illustrative sample cohort for the pilot."
         actions={
           <>
             <Button
