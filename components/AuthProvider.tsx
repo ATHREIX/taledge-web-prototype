@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { onIdTokenChanged } from 'firebase/auth';
 import type { User } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
@@ -34,6 +34,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<Role | null>(null);
+  // Have we ever seen a real signed-in user? Guards the cookie-clear so a
+  // transient/initial null doesn't sign the user out (see the listener below).
+  const hadUserRef = useRef(false);
 
   // Hydrate role from cache on mount so the role-aware nav renders instantly on
   // repeat visits, instead of flashing a neutral nav while Firestore is read.
@@ -56,20 +59,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unsubscribe = onIdTokenChanged(auth, async (user) => {
       setUser(user);
       setLoading(false);
-      try {
-        setTokenCookie(user ? await user.getIdToken() : null);
-      } catch {
-        /* cookie mirror is best-effort */
-      }
-      // Resolve the stakeholder role once per sign-in (best-effort), and cache
-      // it so the role-aware nav is instant next time.
-      if (!user) {
-        setRole(null);
-        // Sign-out: purge this account's workspace data (résumé, transcripts,
-        // reports, fit-scores, cached role) so the next account on this browser
-        // starts clean instead of inheriting the previous user's journey.
-        clearWorkspaceData();
-      } else {
+
+      if (user) {
+        hadUserRef.current = true;
+        try {
+          setTokenCookie(await user.getIdToken());
+        } catch {
+          /* cookie mirror is best-effort */
+        }
         // The cached role is only valid for the SAME uid. If a different user
         // just signed in (Firebase fires onIdTokenChanged directly with the new
         // user, with no intervening null event), drop the previous user's role
@@ -97,10 +94,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch {
           /* keep cached role on a transient read failure (same uid) */
         }
+      } else if (hadUserRef.current) {
+        // A REAL sign-out (we previously had a user). Only NOW clear the cookie +
+        // purge workspace data. CRITICAL: a transient/initial null — which fires
+        // before a persisted session restores, or on a brief auth flicker — must
+        // NOT clear the cookie, or the next navigation is bounced to /login and
+        // reads as "it randomly signed me out". Explicit logout (nav.tsx) also
+        // clears the cookie directly, so this only handles genuine session loss.
+        hadUserRef.current = false;
+        setRole(null);
+        setTokenCookie(null);
+        clearWorkspaceData();
       }
     });
 
     return () => unsubscribe();
+  }, []);
+
+  // Keep the gate cookie alive across idle/backgrounded tabs. The cookie tracks
+  // the 1h token; Firebase auto-refreshes the token only on ACTIVE tabs, so a tab
+  // left idle/backgrounded past ~1h lets the cookie lapse — and the next
+  // navigation is bounced to /login ("it signed me out after a while"). On the
+  // tab becoming visible / regaining focus, re-mint the cookie from a fresh token
+  // BEFORE the user navigates.
+  useEffect(() => {
+    if (!auth) return;
+    const refresh = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      const u = auth?.currentUser;
+      if (!u) return;
+      try {
+        writeSessionCookie(await u.getIdToken());
+      } catch {
+        /* best-effort */
+      }
+    };
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('focus', refresh);
+    };
   }, []);
 
   return (
