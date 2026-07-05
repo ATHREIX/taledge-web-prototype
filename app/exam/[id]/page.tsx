@@ -1,5 +1,5 @@
-import { notFound } from "next/navigation";
 import { getExam } from "@/lib/data";
+import { getExamAspirant } from "@/lib/talent-store";
 import ExamClient from "./ExamClient";
 
 type Tone = "dark" | "success" | "warn" | "danger";
@@ -10,8 +10,12 @@ export default async function ExamPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const e = getExam(id);
-  if (!e) notFound();
+  // Seed/blank base, then merge the aspirant's durable stored result (real
+  // successPotential/motivation/etc. once they've completed the assessment) so a
+  // real aspirant sees their own data instead of a 404 or an all-zero hub.
+  const base = getExam(id);
+  const stored = await getExamAspirant(id);
+  const e = stored ? { ...base, ...stored } : base;
 
   const last = <T,>(items: T[]) => items[items.length - 1];
   const clamp = (value: number) => Math.min(100, Math.max(0, value));

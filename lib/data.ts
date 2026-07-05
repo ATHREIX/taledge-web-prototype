@@ -605,12 +605,32 @@ export function getStudent(id: string) {
     status: "Not started" as const
   };
 }
-// Return undefined for unknown ids so the page-level `if (!e) notFound()` guard
-// fires the real not-found UX instead of rendering a hollow all-zero dashboard.
-// (Exam aspirants are fixed demo entities, never per-user uids, so a strict
-// lookup is safe — unlike getStudent, where real users browse under their uid.)
-export function getExam(id: string) {
-  return examAspirants.find((e) => e.id === id);
+// Lenient fallback (like getStudent): in enforced mode onboarding routes a real
+// exam aspirant to /exam/<uid>, so a strict seed-only lookup 404'd every real
+// aspirant's own workspace hub and every in-funnel "back to workspace" link. Return
+// a blank aspirant for an unknown id so the hub renders; the page then merges the
+// aspirant's stored results (see app/exam/[id]/page.tsx) over this base.
+export function getExam(id: string): ExamAspirant {
+  return (
+    examAspirants.find((e) => e.id === id) || {
+      id,
+      name: "New Aspirant",
+      avatar: "NA",
+      exam: "Competitive Exam",
+      attempt: "Attempt 1",
+      monthsPreparing: 0,
+      successPotential: 0,
+      motivation: 0,
+      consistency: 0,
+      resilience: 0,
+      stressIndex: 0,
+      risks: [],
+      consistencyTrend: [],
+      moodTrend: [],
+      studyHoursTrend: [],
+      institute: "",
+    }
+  );
 }
 export function getInstitute(id: string) {
   return institutes.find((i) => i.id === id);

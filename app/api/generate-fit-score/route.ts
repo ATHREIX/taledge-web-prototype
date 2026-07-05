@@ -4,7 +4,7 @@ import { getPrincipal, unauthorized, forbidden, principalHasRole } from "@/lib/s
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { isProd } from "@/lib/flags";
-import { upsertCandidate, upsertExamAspirant, getCandidate, getInvite, getInstituteRecord, updateInviteStatus, isInstituteAdmin, canAdministerInstitute } from "@/lib/talent-store";
+import { upsertCandidate, upsertExamAspirant, getCandidate, getExamAspirant, getInvite, getInstituteRecord, updateInviteStatus, isInstituteAdmin, canAdministerInstitute } from "@/lib/talent-store";
 
 // Hard caps to keep payloads bounded and prevent prompt-bloat / cost abuse.
 const MAX_TRANSCRIPT_MESSAGES = 200;
@@ -739,7 +739,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "studentId required" }, { status: 400 });
   }
   try {
-    const rec = await getCandidate(sid);
+    // Exam-track results live in the examAspirants collection, not candidates —
+    // without this fallback an exam aspirant's stored readiness report could never
+    // be read back (it always returned null), so the page kept re-generating.
+    const rec = (await getCandidate(sid)) ?? (await getExamAspirant(sid));
     // Read access: demo mode; the owner (uid); an invited candidate's report; a
     // recruiter viewing a candidate who CONSENTED to recruiter visibility; or an
     // institute admin viewing a student in their own institute.
