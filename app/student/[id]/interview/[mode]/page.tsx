@@ -76,10 +76,18 @@ function liveCaptionUsable(): boolean {
 // LIVE_MIN_ANSWERS     - also require at least this many real answers before wrap.
 // LIVE_MAX_MINUTES      - hard time backstop; always ends by here (< the ~10-min cap).
 // LIVE_HARD_CAP_ASKED  - absolute backstop on questions asked.
+// ADAPTIVE length: the round ends when the interviewer has gathered enough signal
+// (its natural close), bounded by a substance floor and a hard ceiling — NOT a
+// fixed clock. A quick, shallow candidate can wrap near the floor; a strong one
+// probed deep runs toward the ceiling. The ceiling crosses the ~10-min Gemini Live
+// socket cap once, so this doubles as the live test of the reconnection fixes
+// (PR #38 always-reconnect + PR #42 mid-turn state reset). If a >10-min interview
+// stays seamless, adaptive length is solved with no new infra; if it ever freezes
+// at the cap, the server-side WS proxy is the permanent fix.
 const LIVE_MIN_MINUTES = 6;
-const LIVE_MIN_ANSWERS = 6;
-const LIVE_MAX_MINUTES = 9;
-const LIVE_HARD_CAP_ASKED = 30;
+const LIVE_MIN_ANSWERS = 8;
+const LIVE_MAX_MINUTES = 18;
+const LIVE_HARD_CAP_ASKED = 40;
 // Private director signals (never shown in the transcript; the system prompt
 // tells the model these are control messages, not the candidate).
 const LIVE_WRAP_UP_MSG = "[WRAP_UP]";
