@@ -717,7 +717,15 @@ export async function canAdministerInstitute(
 ): Promise<boolean> {
   if (demo) return true;
   if (await isInstituteAdmin(instituteId, uid, false)) return true;
-  if (instituteId === "institute-placement" && (await getUserRole(uid)) === "institute") return true;
+  // Pilot: an institute-role account administers the default pilot tenants
+  // (placement AND exam — the dashboard toggles between them, so both must be
+  // reachable or "Exam institute" 404s the pilot account).
+  if (
+    (instituteId === "institute-placement" || instituteId === "institute-exam") &&
+    (await getUserRole(uid)) === "institute"
+  ) {
+    return true;
+  }
   return false;
 }
 

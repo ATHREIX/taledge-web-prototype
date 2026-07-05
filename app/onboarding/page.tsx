@@ -1268,7 +1268,9 @@ export default function Onboarding() {
                         // (awaited, like Begin) before navigating so the Firestore
                         // write isn't abandoned on unmount and the dashboard has data.
                         await persistDemoProfile();
-                        router.push(`/student/${candidateId}`);
+                        // Route to the track's OWN workspace — an exam aspirant
+                        // skipped into /student/... would land in the wrong namespace.
+                        router.push(track === "exam" ? `/exam/${examId}` : `/student/${candidateId}`);
                       }}
                       className="w-full sm:w-auto text-ink-500 hover:text-ink-900 font-medium transition-colors py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 rounded-md"
                     >
