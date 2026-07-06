@@ -1962,6 +1962,29 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   }
 
   const handleGoToVerify = () => {
+    // Face-ID ONCE per browser session. If this candidate already enrolled a
+    // verified reference in an earlier round (sessionStorage), reuse it and skip
+    // the manual Face-ID capture instead of re-verifying identity before EVERY
+    // round. The per-round server session still requires its faceVerified flag
+    // (the voice route 403s without it), so POST "verified" for this round's
+    // (already preloaded) session. Only skip when we also have the preloaded
+    // sessionId to mark; otherwise fall back to the normal Face-ID step.
+    try {
+      const saved = sessionStorage.getItem(`taledge:faceRef:${id}`);
+      if (saved && sessionIdRef.current) {
+        referenceImageRef.current = saved;
+        authedFetch("/api/interview/proctor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: sessionIdRef.current, event: "verified" }),
+        }).catch(() => {});
+        setVerificationResult({ status: "success" });
+        setSetupStep("interview");
+        return;
+      }
+    } catch {
+      /* sessionStorage blocked → fall through to the manual Face-ID step */
+    }
     setSetupStep("verify");
   };
 
@@ -2145,6 +2168,14 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             // Enrol this verified frame as the identity reference. Every later
             // identity check compares the live camera against THIS person.
             referenceImageRef.current = base64Image;
+            // Persist the verified reference for THIS browser session so later
+            // rounds can skip the manual Face-ID step (see handleGoToVerify) — the
+            // candidate shouldn't re-verify their identity before every round.
+            try {
+              sessionStorage.setItem(`taledge:faceRef:${id}`, base64Image);
+            } catch {
+              /* sessionStorage blocked → later rounds fall back to manual verify */
+            }
             // Record the successful face check on the server session so the
             // voice endpoint can require verification before serving questions.
             if (sessionIdRef.current) {
