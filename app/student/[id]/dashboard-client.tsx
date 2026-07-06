@@ -38,7 +38,7 @@ export default function DashboardClient({ student }: { student: Student }) {
   const ctaTitle = hasStarted ? "Continue assessment" : "Start assessment";
   const ctaDescription = hasStarted
     ? "Pick up where you left off. Your assessment progress is saved - jump back into the pilot flow or review your results."
-    : "Begin your assessment with the DNLA behavioural profile (step 1), then move on to the technical and behavioural interviews.";
+    : "Begin with your résumé and the technical interview, review your DNLA psychometric profile, then the behavioural and final interviews.";
 
   // Treat a 0 / missing score as "not started" so the synthetic fallback record
   // (getStudent returns fit.fit = 0 for unknown ids) renders an em-dash instead
