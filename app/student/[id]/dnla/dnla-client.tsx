@@ -329,11 +329,11 @@ export default function DnlaClient({ student }: { student: Student }) {
       done: journey.ai,
     },
     {
-      key: "dnla",
-      title: "DNLA behavioural interview",
-      desc: "A behavioural round targeting your DNLA competency axes - achievement drive, interpersonal skills, execution and resilience under pressure.",
-      href: `${flowBase}/${id}/interview/dnla`,
-      cta: journey.dnla ? "Retake DNLA interview" : "Start DNLA interview",
+      key: "behavioural",
+      title: "Behavioural interview",
+      desc: "A conversational round validating your behavioural competencies - achievement drive, interpersonal skills, execution and resilience under pressure - against your profile.",
+      href: `${flowBase}/${id}/interview/behavioural`,
+      cta: journey.dnla ? "Retake behavioural interview" : "Start behavioural interview",
       done: journey.dnla,
     },
     {
@@ -454,7 +454,7 @@ export default function DnlaClient({ student }: { student: Student }) {
       <PageHeader
         eyebrow="Assessment journey"
         title="Your TalEdge assessment"
-        description={`Six guided stages - résumé analysis, the AI interview, the DNLA interview, a combined final round, a separate report for each interview, and a comparison report. ${s.name}'s DNLA behavioural competency profile is shown below the journey.`}
+        description={`Guided stages - résumé analysis, the technical interview, the DNLA psychometric profile (this page), a behavioural interview, a combined final round, and the reports. ${s.name}'s DNLA behavioural competency profile is shown below the journey.`}
         actions={
           <div className="flex items-center gap-3">
             {live.phase === "complete" ? (
