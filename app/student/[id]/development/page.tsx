@@ -366,7 +366,7 @@ function CoachCard({
   sessions: number;
 }) {
   return (
-    <Card variant="frosted" hover className="overflow-hidden cursor-pointer p-5 sm:p-6">
+    <Card variant="frosted" hover className="overflow-hidden p-5 sm:p-6">
       <div className="flex items-center gap-3">
         <div
           className="grid h-12 w-12 place-items-center rounded-xl bg-ink-900 text-sm font-bold text-white"
@@ -390,8 +390,8 @@ function CoachCard({
         </span>
         <span>{sessions} sessions</span>
       </div>
-      <Button type="button" variant="primary" className="mt-5 w-full">
-        Book session
+      <Button type="button" variant="soft" disabled className="mt-5 w-full">
+        Book session · coming soon
       </Button>
     </Card>
   );
