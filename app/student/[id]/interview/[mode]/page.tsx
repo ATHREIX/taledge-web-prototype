@@ -476,6 +476,12 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   // separately so the candidate never loses their typed/spoken response).
   const [sendError, setSendError] = useState<string | null>(null);
 
+  // True when this round REUSED the session's already-verified face reference
+  // (Face-ID once per session). The per-round server session still needs its
+  // "verified" proctor flag, posted as soon as the session id is available.
+  const faceReusedRef = useRef(false);
+  const verifiedPostedRef = useRef(false);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   // Dedicated <video> for the Face-ID verify dialog. It shares the SAME
   // MediaStream as the background proctoring feed (a stream can drive multiple
@@ -677,6 +683,17 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           // otherwise the voice endpoint 403s every answer. The `sessionId` state
           // is still set later in startInterview() to flip the "Live" UI.
           sessionIdRef.current = data.sessionId;
+          // If this round already skipped Face-ID by reusing the session's verified
+          // reference (Face-ID once per session) before the preload finished, mark
+          // this fresh server session verified now so the voice route won't 403.
+          if (faceReusedRef.current && !verifiedPostedRef.current) {
+            verifiedPostedRef.current = true;
+            authedFetch("/api/interview/proctor", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId: data.sessionId, event: "verified" }),
+            }).catch(() => {});
+          }
           return;
         }
         // Reached the server but it declined to start the session (rate limit,
@@ -1976,13 +1993,22 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     // sessionId to mark; otherwise fall back to the normal Face-ID step.
     try {
       const saved = sessionStorage.getItem(`taledge:faceRef:${id}`);
-      if (saved && sessionIdRef.current) {
+      if (saved) {
+        // Reuse the enrolled reference and SKIP the manual Face-ID entirely — do
+        // NOT gate on the preloaded session id (it may not be ready yet, which is
+        // exactly why Face-ID kept re-appearing every round). The per-round server
+        // session gets its "verified" flag either now (if preloaded) or the moment
+        // the preload finishes (see preloadInterviewSession).
         referenceImageRef.current = saved;
-        authedFetch("/api/interview/proctor", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: sessionIdRef.current, event: "verified" }),
-        }).catch(() => {});
+        faceReusedRef.current = true;
+        if (sessionIdRef.current) {
+          verifiedPostedRef.current = true;
+          authedFetch("/api/interview/proctor", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId: sessionIdRef.current, event: "verified" }),
+          }).catch(() => {});
+        }
         setVerificationResult({ status: "success" });
         setSetupStep("interview");
         return;
