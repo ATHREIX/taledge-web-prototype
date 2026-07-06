@@ -269,7 +269,7 @@ export default function DnlaClient({ student }: { student: Student }) {
   const [journey, setJourney] = useState({
     resume: false,
     ai: false,
-    dnla: false,
+    behavioural: false,
     final: false,
     reports: false,
   });
@@ -304,14 +304,27 @@ export default function DnlaClient({ student }: { student: Student }) {
     setJourney({
       resume: resumeDone,
       ai: hasAnswers(`taledge:interview:${id}:technical`),
-      dnla: hasAnswers(`taledge:interview:${id}:dnla`),
+      // The behavioural round now runs as mode="behavioural" (saves to
+      // :behavioural); accept the legacy :dnla key too so older sessions still
+      // register as complete.
+      behavioural:
+        hasAnswers(`taledge:interview:${id}:behavioural`) ||
+        hasAnswers(`taledge:interview:${id}:dnla`),
       final: hasAnswers(`taledge:interview:${id}:final`),
       reports: reportsDone,
     });
   }, [id]);
 
   // The six-stage flow shown as a guided stepper at the top of this page.
-  const stages = [
+  const stages: Array<{
+    key: string;
+    title: string;
+    desc: string;
+    href: string;
+    cta: string;
+    done: boolean;
+    sample?: boolean;
+  }> = [
     {
       key: "resume",
       title: "Resume analysis",
@@ -334,17 +347,20 @@ export default function DnlaClient({ student }: { student: Student }) {
       desc: "Your behavioural competency profile from the licensed DNLA framework - achievement drive, interpersonal skills, execution and resilience under pressure. Shown at the top of this page.",
       href: `${flowBase}/${id}/dnla#dnla-profile`,
       cta: "View DNLA profile",
-      // The psychometric profile is always viewable (sample until the licensed
-      // provider is activated), so it's an available step, not a gated to-do.
-      done: true,
+      done: false,
+      // Not a gated to-do and NOT "Complete" (the candidate hasn't sat a real
+      // questionnaire — it's the pilot sample until the licensed provider is
+      // activated). Rendered with a neutral "Sample" badge and skipped by the
+      // next-step pointer so it never blocks or falsely reads as done.
+      sample: true,
     },
     {
       key: "behavioural",
       title: "Behavioural interview",
       desc: "A conversational round validating your behavioural competencies - achievement drive, interpersonal skills, execution and resilience under pressure - against your profile.",
       href: `${flowBase}/${id}/interview/behavioural`,
-      cta: journey.dnla ? "Retake behavioural interview" : "Start behavioural interview",
-      done: journey.dnla,
+      cta: journey.behavioural ? "Retake behavioural interview" : "Start behavioural interview",
+      done: journey.behavioural,
     },
     {
       key: "final",
@@ -371,7 +387,9 @@ export default function DnlaClient({ student }: { student: Student }) {
       done: journey.reports,
     },
   ];
-  const activeIndex = stages.findIndex((st) => !st.done);
+  // The "next up" stage = first stage that is neither done nor an always-available
+  // sample (the DNLA profile must never become the blocking next step).
+  const activeIndex = stages.findIndex((st) => !st.done && !st.sample);
 
   // ── Live vs sample data source ────────────────────────────────────────────
   // When the partner result is in, render the candidate's REAL profile; the
@@ -499,7 +517,7 @@ export default function DnlaClient({ student }: { student: Student }) {
         <div className="grid gap-3">
           {stages.map((st, i) => {
             const isActive = i === activeIndex;
-            const state = st.done ? "done" : isActive ? "active" : "upcoming";
+            const state = st.sample ? "sample" : st.done ? "done" : isActive ? "active" : "upcoming";
             return (
               <Card
                 key={st.key}
@@ -508,6 +526,7 @@ export default function DnlaClient({ student }: { student: Student }) {
                   "rounded-xl2 p-5 transition-colors",
                   state === "done" && "border-emerald-200 bg-emerald-50/40",
                   state === "active" && "border-brand-300 bg-brand-50/40 ring-1 ring-brand-200",
+                  state === "sample" && "border-amber-200 bg-amber-50/30",
                   state === "upcoming" && "opacity-90"
                 )}
               >
@@ -519,6 +538,7 @@ export default function DnlaClient({ student }: { student: Student }) {
                         "grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-bold",
                         state === "done" && "bg-emerald-500 text-white",
                         state === "active" && "bg-brand-600 text-white",
+                        state === "sample" && "bg-amber-100 text-amber-700",
                         state === "upcoming" && "bg-ink-100 text-ink-500"
                       )}
                     >
@@ -527,8 +547,8 @@ export default function DnlaClient({ student }: { student: Student }) {
                     <div>
                       <div className="flex items-center gap-2">
                         <Label>{st.title}</Label>
-                        <Badge tone={state === "done" ? "success" : state === "active" ? "brand" : "neutral"}>
-                          {state === "done" ? "Complete" : state === "active" ? "Next up" : "Upcoming"}
+                        <Badge tone={state === "done" ? "success" : state === "active" ? "brand" : state === "sample" ? "warn" : "neutral"}>
+                          {state === "done" ? "Complete" : state === "active" ? "Next up" : state === "sample" ? "Sample" : "Upcoming"}
                         </Badge>
                       </div>
                       <p className="mt-1 max-w-2xl text-sm text-ink-500">{st.desc}</p>
