@@ -4,7 +4,7 @@ import { notFound, useParams, useRouter, usePathname, useSearchParams } from "ne
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ScoreRing, Bar } from "@/components/score-ring";
-import { getStudent } from "@/lib/data";
+import { getStudent, SAMPLE_DNLA } from "@/lib/data";
 import {
   PageShell,
   PageHeader,
@@ -781,7 +781,7 @@ function FitScorePageInner() {
                 </ButtonLink>
               </div>
               <Card variant="default" className="w-full rounded-xl2 overflow-hidden p-6">
-                {(s.dnla ?? []).length === 0 ? (
+                {(s.dnla?.length ? s.dnla : SAMPLE_DNLA).length === 0 ? (
                   <>
                     <Eyebrow>DNLA profile</Eyebrow>
                     <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-600">
@@ -790,7 +790,7 @@ function FitScorePageInner() {
                   </>
                 ) : (
                   <ul className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
-                    {[...(s.dnla ?? [])]
+                    {[...(s.dnla?.length ? s.dnla : SAMPLE_DNLA)]
                       .sort((a, b) => b.score - a.score)
                       .map((d) => (
                         <li key={d.competency}>

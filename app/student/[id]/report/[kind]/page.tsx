@@ -57,11 +57,29 @@ const KINDS = {
     desc: "Structured evaluation of the AI (skills) interview - grounded in your transcript and resume signals.",
   },
   dnla: {
-    label: "DNLA Interview",
-    eyebrow: "DNLA Interview Report",
-    transcriptKey: (id: string) => `taledge:interview:${id}:dnla`,
+    label: "Behavioural Interview",
+    eyebrow: "Behavioural Interview Report",
+    // The guided funnel writes the behavioural transcript to `:behavioural` (and
+    // never `:dnla`), so resolve to the first key that actually holds a transcript
+    // - `:behavioural`, then `:dnla` (legacy/seed), then `:final` - mirroring
+    // fit-score + comparison. Otherwise a candidate who finished the real funnel is
+    // wrongly told "No interview evidence yet".
+    transcriptKey: (id: string) => {
+      const candidates = [
+        `taledge:interview:${id}:behavioural`,
+        `taledge:interview:${id}:dnla`,
+        `taledge:interview:${id}:final`,
+      ];
+      if (typeof window !== "undefined") {
+        for (const k of candidates) {
+          const v = localStorage.getItem(k);
+          if (v && v !== "[]") return k;
+        }
+      }
+      return candidates[1];
+    },
     primary: "behavioural" as const,
-    desc: "Structured evaluation of the DNLA behavioural interview - psychometric and conduct signals from your transcript.",
+    desc: "Structured evaluation of the behavioural interview - psychometric and conduct signals from your transcript.",
   },
 } as const;
 
@@ -289,7 +307,7 @@ export default function InterviewReportPage() {
               </p>
               <div className="mt-6 flex flex-wrap justify-center gap-3">
                 <ButtonLink
-                  href={`${flowBase}/${s.id}/interview/${kind === "ai" ? "technical" : "dnla"}`}
+                  href={`${flowBase}/${s.id}/interview/${kind === "ai" ? "technical" : "behavioural"}`}
                   variant="primary"
                   size="lg"
                 >

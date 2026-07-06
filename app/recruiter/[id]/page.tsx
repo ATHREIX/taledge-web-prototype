@@ -184,7 +184,11 @@ export default function Recruiter() {
           : candidate.tech > 0
             ? "Technical complete"
             : "Pending behavioural");
-      const dnla: string = meta.dnla ?? (candidate.fit >= 70 ? "Available" : "Pending");
+      // DNLA status must reflect a REAL psychometric import, not the fit score.
+      // The licensed provider is held/deactivated, so no candidate has DNLA data
+      // (dnlaReady = c.dnla?.length > 0, server-side); showing "Available" off
+      // fit >= 70 fabricated a signal recruiters would shortlist on.
+      const dnla: string = meta.dnla ?? ((candidate as { dnlaReady?: boolean }).dnlaReady ? "Available" : "Pending");
       const experience: string =
         meta.experience ?? (candidate.success >= 75 ? "1-3 years" : "Fresher");
       const jobType: string =
