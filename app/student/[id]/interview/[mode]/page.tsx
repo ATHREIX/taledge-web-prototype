@@ -299,28 +299,29 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const MODE_LABEL: Record<string, string> = {
     technical: "Technical",
     behavioural: "Behavioural",
-    dnla: "DNLA Behavioural",
+    // "dnla" is a Gemini behavioural interview round. Per the PRD, DNLA is a
+    // PSYCHOMETRIC QUESTIONNAIRE (Matrix 3, imported), NOT an AI interview — the
+    // AI conversational round is the BEHAVIOURAL interview (Matrix 4). Label it as
+    // such so it is never presented to the candidate as "DNLA". The funnel routes
+    // through mode="behavioural"; this mode stays only for any direct link.
+    dnla: "Behavioural",
     final: "Final Combined",
   };
   const modeLabel = MODE_LABEL[mode] ?? "Assessment";
 
-  // Flow chaining: where this round hands off after it concludes.
-  //   technical → dnla → final → fit-score. (behavioural stays a standalone
-  //   round that goes straight to the report.)
+  // Guided AI-interview funnel, per the PRD: Technical (Matrix 1) → Behavioural
+  // (Matrix 4) → Final. The DNLA psychometric (Matrix 3) is a SEPARATE
+  // questionnaire step (the /[id]/dnla page), NOT an AI interview, so it is not in
+  // this conversational chain.
   const NEXT_STEP: Record<string, { href: string; label: string }> = {
-    // Guided funnel: technical → dnla → final. The DNLA round is a Gemini-backed
-    // behavioural interview (see app/api/interview/start/route.ts mode="dnla"); it
-    // does NOT depend on the external DNLA provider API, so the funnel routes
-    // through it today. (The licensed DNLA questionnaire at /[id]/dnla is a
-    // separate provider-gated step.)
-    technical: { href: `${flowBase}/${id}/interview/dnla`, label: "Continue to DNLA interview" },
+    technical: { href: `${flowBase}/${id}/interview/behavioural`, label: "Continue to behavioural interview" },
+    behavioural: { href: `${flowBase}/${id}/interview/final`, label: "Continue to final interview" },
+    // The old "dnla" AI round is out of the funnel; keep a handoff for any direct link.
     dnla: { href: `${flowBase}/${id}/interview/final`, label: "Continue to final interview" },
     // Terminal of the guided funnel = the canonical Fit Score page. It runs the
     // scoring + recruiter-binding (invite token) generate, and is reachable for
-    // every candidate - unlike /comparison, which requires a DNLA transcript the
-    // funnel never produces. (Comparison stays linkable from the Fit Score page.)
+    // every candidate.
     final: { href: `${flowBase}/${id}/fit-score`, label: "View your Fit Score" },
-    behavioural: { href: `${flowBase}/${id}/fit-score`, label: "View Results & Report" },
   };
   const nextStep = NEXT_STEP[mode] ?? { href: `${flowBase}/${id}/fit-score`, label: "View Results & Report" };
 
@@ -3701,13 +3702,11 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
               {done ? (
                 <div className="bg-emerald-50 rounded-xl2 p-6 border border-emerald-100 text-center">
                   <h3 className="text-lg font-bold text-emerald-800 mb-2">
-                    {mode === "final" || mode === "behavioural" ? "Assessment Completed" : `${modeLabel} Round Completed`}
+                    {mode === "final" ? "Assessment Completed" : `${modeLabel} Round Completed`}
                   </h3>
                   <p className="text-ink-500 text-sm mb-4">
                     {mode === "final"
-                      ? "Both interviews are complete. Building your comparison report…"
-                      : mode === "behavioural"
-                      ? "Your responses have been analyzed. Generating your Fit Score report…"
+                      ? "Your interviews are complete. Building your report…"
                       : "This round is complete. Continue to the next round of your assessment."}
                   </p>
                   <button type="button" onClick={goToNextStep} className="px-8 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-500 shadow-panel transition-all inline-flex items-center justify-center gap-2">
