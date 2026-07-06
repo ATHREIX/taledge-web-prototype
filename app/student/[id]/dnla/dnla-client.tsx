@@ -331,7 +331,7 @@ export default function DnlaClient({ student }: { student: Student }) {
     {
       key: "dnla-profile",
       title: "DNLA psychometric profile",
-      desc: "Your behavioural competency profile from the licensed DNLA framework - achievement drive, interpersonal skills, execution and resilience under pressure. Shown below the journey.",
+      desc: "Your behavioural competency profile from the licensed DNLA framework - achievement drive, interpersonal skills, execution and resilience under pressure. Shown at the top of this page.",
       href: `${flowBase}/${id}/dnla#dnla-profile`,
       cta: "View DNLA profile",
       // The psychometric profile is always viewable (sample until the licensed
