@@ -349,6 +349,12 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const wrapUpSentRef = useRef(false);
   const wrapUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const continueNudgeRef = useRef(0);
+  // Live transcript mirror + a bounded counter for the wrap-up fallback, so the
+  // fallback never force-ends the round while the candidate still owes an answer
+  // to the interviewer's most recent question (the "asked a question, then said
+  // interview complete without my answer" bug).
+  const liveMsgsRef = useRef<{ role: string; text: string }[]>([]);
+  const wrapFallbackCountRef = useRef(0);
   // Wall-clock start of the live interview (set when the session goes live).
   // Drives the time-based pacing so the round always runs a full ~30 min and is
   // hard-capped at ~45 min, independent of how many questions have been asked.
@@ -2288,6 +2294,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       // Reset the client-director state for the fresh session.
       wrapUpSentRef.current = false;
       continueNudgeRef.current = 0;
+      wrapFallbackCountRef.current = 0;
       liveStartedAtRef.current = performance.now(); // start the ~30-min pacing clock
       if (wrapUpTimerRef.current) { clearTimeout(wrapUpTimerRef.current); wrapUpTimerRef.current = null; }
       setLiveActive(true);
@@ -2355,8 +2362,41 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   //   3) end gracefully when that closing arrives;
   //   4) if the model disobeys and tries to close before time's up, nudge it to
   //      keep going instead of ending early.
+  //
+  // Wrap-up fallback: if the model never delivers a recognizable closing, end
+  // gracefully a bit later — but NEVER cut the candidate off mid-question. When
+  // the timer fires and the interviewer's latest turn is still an unanswered
+  // question, re-send [WRAP_UP] (ask it to close after this answer) and extend
+  // the window instead of ending, bounded so a silent candidate still wraps. The
+  // MAX_MINUTES ticker is the ultimate hard end.
+  const armWrapFallback = () => {
+    if (wrapUpTimerRef.current) clearTimeout(wrapUpTimerRef.current);
+    wrapUpTimerRef.current = setTimeout(() => {
+      if (liveEndedRef.current) return;
+      const msgs = liveMsgsRef.current;
+      const last = msgs[msgs.length - 1];
+      const lastIsUnansweredQuestion =
+        !!last &&
+        last.role === "ai" &&
+        /\?/.test(last.text) &&
+        !/this interview is now complete/i.test(last.text);
+      // Candidate still owes an answer to the interviewer's latest question: do
+      // NOT end (that cuts them off mid-question) and do NOT re-signal [WRAP_UP]
+      // (that would force the model to close BEFORE they answer). Just wait and
+      // re-check, bounded so a genuinely silent candidate still wraps; the
+      // MAX_MINUTES ticker is the ultimate hard end. Once they answer, the model's
+      // own [WRAP_UP]-driven closing (branch 3) or the next fire ends it cleanly.
+      if (lastIsUnansweredQuestion && wrapFallbackCountRef.current < 4) {
+        wrapFallbackCountRef.current += 1;
+        armWrapFallback();
+        return;
+      }
+      gracefulEndLive();
+    }, 30000);
+  };
   useEffect(() => {
     if (!liveActive || liveEndedRef.current || !live.messages.length) return;
+    liveMsgsRef.current = live.messages;
     const aiTurns = live.messages.filter((m) => m.role === "ai");
     const answered = live.messages.filter((m) => m.role === "user").length;
     const lastAi = aiTurns[aiTurns.length - 1];
@@ -2390,11 +2430,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     if (!wrapUpSentRef.current && readyToWrap) {
       wrapUpSentRef.current = true;
       try { live.sendControl(LIVE_WRAP_UP_MSG); } catch {}
-      // Fallback only: if the model never delivers its closing, end gracefully a
-      // bit later. We do NOT mute the mic here, so the candidate is never cut off
-      // mid-sentence - the interviewer naturally closes after they finish.
-      if (wrapUpTimerRef.current) clearTimeout(wrapUpTimerRef.current);
-      wrapUpTimerRef.current = setTimeout(() => { gracefulEndLive(); }, 30000);
+      // Fallback only: end gracefully a bit later IF the model never delivers its
+      // closing — but armWrapFallback never cuts the candidate off mid-question.
+      armWrapFallback();
       return;
     }
 
@@ -2430,8 +2468,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       if (!wrapUpSentRef.current && liveMinutes >= LIVE_MIN_MINUTES && answered >= LIVE_MIN_ANSWERS) {
         wrapUpSentRef.current = true;
         try { live.sendControl(LIVE_WRAP_UP_MSG); } catch {}
-        if (wrapUpTimerRef.current) clearTimeout(wrapUpTimerRef.current);
-        wrapUpTimerRef.current = setTimeout(() => { gracefulEndLive(); }, 30000);
+        armWrapFallback();
       }
     }, 15000);
     return () => clearInterval(tick);
