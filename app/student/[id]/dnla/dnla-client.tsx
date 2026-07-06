@@ -329,6 +329,16 @@ export default function DnlaClient({ student }: { student: Student }) {
       done: journey.ai,
     },
     {
+      key: "dnla-profile",
+      title: "DNLA psychometric profile",
+      desc: "Your behavioural competency profile from the licensed DNLA framework - achievement drive, interpersonal skills, execution and resilience under pressure. Shown below the journey.",
+      href: `${flowBase}/${id}/dnla#dnla-profile`,
+      cta: "View DNLA profile",
+      // The psychometric profile is always viewable (sample until the licensed
+      // provider is activated), so it's an available step, not a gated to-do.
+      done: true,
+    },
+    {
       key: "behavioural",
       title: "Behavioural interview",
       desc: "A conversational round validating your behavioural competencies - achievement drive, interpersonal skills, execution and resilience under pressure - against your profile.",
@@ -538,7 +548,7 @@ export default function DnlaClient({ student }: { student: Student }) {
 
       {renderProfile && (
       <>
-      <div className="mb-5 border-t border-ink-200/60 pt-6">
+      <div id="dnla-profile" className="mb-5 border-t border-ink-200/60 pt-6 scroll-mt-24">
         <Eyebrow className="text-brand-500">DNLA behavioural competency profile</Eyebrow>
         <Heading as="h2" className="mt-1 text-lg sm:text-xl">
           {isLiveComplete ? "Your psychometric profile" : "Sample psychometric scores"}
