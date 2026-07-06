@@ -313,18 +313,17 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   };
   const modeLabel = MODE_LABEL[mode] ?? "Assessment";
 
-  // Guided AI-interview funnel, per the PRD: Technical (Matrix 1) → Behavioural
-  // (Matrix 4) → Final. The DNLA psychometric (Matrix 3) is a SEPARATE
-  // questionnaire step (the /[id]/dnla page), NOT an AI interview, so it is not in
-  // this conversational chain.
+  // Guided AI-interview funnel, per the PRD: exactly TWO interviews — Technical
+  // (Vector A / Matrix 1) → Behavioural (Vector D / Matrix 4) → Fit Score. The DNLA
+  // psychometric (Vector C / Matrix 3) is a SEPARATE questionnaire (the /[id]/dnla
+  // page), NOT an interview. There is NO third "final combined" round in the PRD, so
+  // it was removed from the funnel (it was also the round that hung on connect).
   const NEXT_STEP: Record<string, { href: string; label: string }> = {
     technical: { href: `${flowBase}/${id}/interview/behavioural`, label: "Continue to behavioural interview" },
-    behavioural: { href: `${flowBase}/${id}/interview/final`, label: "Continue to final interview" },
-    // The old "dnla" AI round is out of the funnel; keep a handoff for any direct link.
-    dnla: { href: `${flowBase}/${id}/interview/final`, label: "Continue to final interview" },
-    // Terminal of the guided funnel = the canonical Fit Score page. It runs the
-    // scoring + recruiter-binding (invite token) generate, and is reachable for
-    // every candidate.
+    // Behavioural is the LAST interview → straight to the Fit Score.
+    behavioural: { href: `${flowBase}/${id}/fit-score`, label: "View your Fit Score" },
+    // Out-of-funnel direct links still resolve to the Fit Score.
+    dnla: { href: `${flowBase}/${id}/fit-score`, label: "View your Fit Score" },
     final: { href: `${flowBase}/${id}/fit-score`, label: "View your Fit Score" },
   };
   const nextStep = NEXT_STEP[mode] ?? { href: `${flowBase}/${id}/fit-score`, label: "View Results & Report" };
@@ -3774,11 +3773,11 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
               {done ? (
                 <div className="bg-emerald-50 rounded-xl2 p-6 border border-emerald-100 text-center">
                   <h3 className="text-lg font-bold text-emerald-800 mb-2">
-                    {mode === "final" ? "Assessment Completed" : `${modeLabel} Round Completed`}
+                    {mode === "final" || mode === "behavioural" ? "Assessment Completed" : `${modeLabel} Round Completed`}
                   </h3>
                   <p className="text-ink-500 text-sm mb-4">
-                    {mode === "final"
-                      ? "Your interviews are complete. Building your report…"
+                    {mode === "final" || mode === "behavioural"
+                      ? "Both interviews are complete. Building your Fit Score report…"
                       : "This round is complete. Continue to the next round of your assessment."}
                   </p>
                   <button type="button" onClick={goToNextStep} className="px-8 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-500 shadow-panel transition-all inline-flex items-center justify-center gap-2">

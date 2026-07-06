@@ -363,14 +363,6 @@ export default function DnlaClient({ student }: { student: Student }) {
       done: journey.behavioural,
     },
     {
-      key: "final",
-      title: "Combined final interview",
-      desc: "A final round that builds on your AI interview.",
-      href: `${flowBase}/${id}/interview/final`,
-      cta: journey.final ? "Retake final interview" : "Start final interview",
-      done: journey.final,
-    },
-    {
       key: "reports",
       title: "Interview report",
       desc: "A standalone, evidence-grounded report for your AI interview.",
