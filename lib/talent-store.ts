@@ -704,11 +704,12 @@ export async function getUserRole(uid: string): Promise<string | null> {
  * May this uid administer this institute — the single authorization used by BOTH
  * the dashboard page (read) AND the write actions (cohort, share links,
  * interventions), so a pilot account can't view the dashboard yet 403 on every
- * button. Grants access on: exact `adminUids` membership, OR the documented pilot
- * fallback (an institute-ROLE account administers the default placement tenant
- * when it has no explicit adminUids binding yet). Fail-closed for everyone else;
- * a non-institute account (candidate/recruiter) is always denied. See
- * [[institute-pilot-fallback]].
+ * button. Grants access ONLY on exact `adminUids` membership (or demo). The old
+ * pilot fallback — any institute-ROLE account administering the default tenants —
+ * was REMOVED: `users/{uid}.role` is client-writable, so it let any signed-in user
+ * self-assign role:"institute" and read a tenant's cohort PII + invite tokens
+ * (candidate credentials → account takeover). Real institute admins must now be
+ * bound via adminUids (scripts/bind-institute-admin). Fail-closed for everyone else.
  */
 export async function canAdministerInstitute(
   instituteId: string,
@@ -716,17 +717,7 @@ export async function canAdministerInstitute(
   demo: boolean
 ): Promise<boolean> {
   if (demo) return true;
-  if (await isInstituteAdmin(instituteId, uid, false)) return true;
-  // Pilot: an institute-role account administers the default pilot tenants
-  // (placement AND exam — the dashboard toggles between them, so both must be
-  // reachable or "Exam institute" 404s the pilot account).
-  if (
-    (instituteId === "institute-placement" || instituteId === "institute-exam") &&
-    (await getUserRole(uid)) === "institute"
-  ) {
-    return true;
-  }
-  return false;
+  return isInstituteAdmin(instituteId, uid, false);
 }
 
 /** SCALE: one institute's cohort via an indexed `instituteId ==` query (not a
