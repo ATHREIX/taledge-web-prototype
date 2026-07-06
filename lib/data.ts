@@ -18,6 +18,22 @@ export type DnlaScore = {
   insight: string;
 };
 
+// Representative DNLA psychometric profile used as the PILOT SAMPLE wherever a
+// candidate has no real DNLA scores yet (the licensed provider import is not
+// activated — see NEXT_PUBLIC_DNLA_ENABLED / dnla-integration). Shown identically
+// on the workspace dashboard and the /dnla page so the "Sample DNLA data" badge is
+// never contradicted by an empty panel.
+export const SAMPLE_DNLA: DnlaScore[] = [
+  { competency: "Drive for Results", group: "Achievement Dynamics", score: 6, benchmark: 6, insight: "Pushes tasks to completion under deadlines." },
+  { competency: "Initiative", group: "Achievement Dynamics", score: 5, benchmark: 6, insight: "Takes ownership; waits for clarity before acting on ambiguity." },
+  { competency: "Collaboration", group: "Interpersonal Skills", score: 5, benchmark: 6, insight: "Works well one-on-one; quieter in larger groups." },
+  { competency: "Feedback Reception", group: "Interpersonal Skills", score: 4, benchmark: 6, insight: "Can become defensive when challenged under pressure." },
+  { competency: "Problem Solving", group: "Execution", score: 6, benchmark: 6, insight: "Strong analytical breakdown of problems." },
+  { competency: "Attention to Detail", group: "Execution", score: 6, benchmark: 5, insight: "Catches edge cases others miss." },
+  { competency: "Composure", group: "Stress & Resilience", score: 5, benchmark: 6, insight: "Stays calm in technical rounds." },
+  { competency: "Adaptability", group: "Stress & Resilience", score: 4, benchmark: 6, insight: "Prefers familiar tooling; ramps slower on new stacks." },
+];
+
 export type Student = {
   id: string;
   name: string;

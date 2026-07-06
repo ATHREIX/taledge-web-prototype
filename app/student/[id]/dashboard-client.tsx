@@ -1,7 +1,7 @@
 "use client";
 import { motion } from "framer-motion";
 import { Star, User, ArrowRight, Zap, Target, Compass, TrendingUp, Brain, Play, Rocket, ClipboardList, Gauge, Award, BarChart3, Activity } from "lucide-react";
-import { Student } from "@/lib/data";
+import { Student, SAMPLE_DNLA } from "@/lib/data";
 import { Card, Button, ButtonLink, Badge, Eyebrow, Heading, Stat, useToast } from "@/components/ui";
 import { Bar } from "@/components/score-ring";
 import { itemVariants } from "@/lib/motion";
@@ -23,8 +23,10 @@ export default function DashboardClient({ student }: { student: Student }) {
   const targetRole = student?.targetRole || "your target role";
   const coaches: Coach[] = COACHES;
 
-  // DNLA behavioural competency snapshot (sample/dummy data for the pilot).
-  const dnla = student?.dnla ?? [];
+  // DNLA behavioural competency snapshot. Real scores when present; otherwise the
+  // shared pilot SAMPLE profile, so the "Sample DNLA data" badge is never
+  // contradicted by an empty "no data yet" panel (matches the /dnla page).
+  const dnla = student?.dnla?.length ? student.dnla : SAMPLE_DNLA;
   const dnlaSorted = [...dnla].sort((a, b) => b.score - a.score);
   const dnlaTop = dnlaSorted.slice(0, 5);
   const strongest = dnlaSorted[0];
