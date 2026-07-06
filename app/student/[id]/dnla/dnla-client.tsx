@@ -253,6 +253,11 @@ export default function DnlaClient({ student }: { student: Student }) {
   const id = String(params.id);
   const s = student;
   const live = useDnlaLive(id);
+  // The licensed DNLA provider integration is gated by a public flag. Until it's
+  // activated (NEXT_PUBLIC_DNLA_ENABLED=true), show ONLY the clearly-labelled
+  // sample profile and hide the "Start assessment" CTA — otherwise a candidate
+  // clicks Start and dead-ends on a 503 (reads as "DNLA is broken").
+  const dnlaEnabled = process.env.NEXT_PUBLIC_DNLA_ENABLED === "true";
 
   // Shared by both tracks; keep navigation within the current namespace
   // (/exam for competitive-exam aspirants, /student for placement candidates).
@@ -376,6 +381,7 @@ export default function DnlaClient({ student }: { student: Student }) {
   // Sample profile is shown for the demo/loading/none/not-configured phases;
   // pending & error show only the status panel (no misleading numbers).
   const showSample =
+    !dnlaEnabled ||
     live.phase === "loading" ||
     live.phase === "none" ||
     live.phase === "not-configured";
@@ -528,7 +534,7 @@ export default function DnlaClient({ student }: { student: Student }) {
       </section>
 
       {/* ── Live DNLA status / start control ──────────────────────────────── */}
-      <DnlaLivePanel live={live} onStart={handleStart} onOpen={openQuestionnaire} />
+      {dnlaEnabled && <DnlaLivePanel live={live} onStart={handleStart} onOpen={openQuestionnaire} />}
 
       {renderProfile && (
       <>
