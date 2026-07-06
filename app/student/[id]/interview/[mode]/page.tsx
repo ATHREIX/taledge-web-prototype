@@ -84,9 +84,13 @@ function liveCaptionUsable(): boolean {
 // (PR #38 always-reconnect + PR #42 mid-turn state reset). If a >10-min interview
 // stays seamless, adaptive length is solved with no new infra; if it ever freezes
 // at the cap, the server-side WS proxy is the permanent fix.
-const LIVE_MIN_MINUTES = 6;
-const LIVE_MIN_ANSWERS = 8;
-const LIVE_MAX_MINUTES = 18;
+// Client requested 10-15 min rounds. NOTE: this crosses the ~10-min Gemini Live
+// socket cap on EVERY interview, so it leans hard on the reconnection fixes
+// (PR #38 always-reconnect + PR #42 mid-turn state reset). If any interview
+// freezes at ~10 min, the server-side WS proxy is required.
+const LIVE_MIN_MINUTES = 10;
+const LIVE_MIN_ANSWERS = 10;
+const LIVE_MAX_MINUTES = 15;
 const LIVE_HARD_CAP_ASKED = 40;
 // Private director signals (never shown in the transcript; the system prompt
 // tells the model these are control messages, not the candidate).
