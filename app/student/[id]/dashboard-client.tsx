@@ -204,7 +204,7 @@ export default function DashboardClient({ student }: { student: Student }) {
 
                   {/* Tooltip */}
                   <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-ink-800/95 backdrop-blur-xl border border-white/10 text-ink-100 text-[11px] font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all duration-300 scale-95 group-hover:scale-100 shadow-xl pointer-events-none origin-bottom">
-                    Batch Avg
+                    Batch Avg · sample
                     <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-ink-800/95 border-r border-b border-white/10 rotate-45" />
                   </div>
                 </motion.div>
@@ -217,6 +217,7 @@ export default function DashboardClient({ student }: { student: Student }) {
             <Card variant="default" className="rounded-xl2 shadow-panel p-6 relative overflow-hidden">
               <Eyebrow className="mb-4 flex items-center gap-2">
                 <Target size={16} aria-hidden="true" /> Batch-Level Gaps
+                <Badge tone="warn">Sample</Badge>
               </Eyebrow>
               <ul className="space-y-4">
                 <li className="flex items-start gap-3">
@@ -358,8 +359,15 @@ export default function DashboardClient({ student }: { student: Student }) {
             <Heading as="h2" className="flex items-center gap-2">
               <User className="text-brand-500" size={24} aria-hidden="true" />
               Coaching Support
+              <Badge tone="warn">Sample coaches</Badge>
             </Heading>
-            <Button type="button" variant="link" size="sm" className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="flex items-center gap-1"
+              onClick={() => toast("A full coach directory is coming soon.", "info")}
+            >
               View all <ArrowRight size={16} aria-hidden="true" />
             </Button>
           </div>
@@ -391,7 +399,13 @@ export default function DashboardClient({ student }: { student: Student }) {
                     </div>
                     <div className="mt-4 pt-4 border-t border-ink-100 flex items-center justify-between">
                       <Badge tone="neutral">{coach.focus}</Badge>
-                      <Button type="button" variant="soft" size="sm" aria-label={`Book a session with ${coach.name}`}>
+                      <Button
+                        type="button"
+                        variant="soft"
+                        size="sm"
+                        aria-label={`Book a session with ${coach.name}`}
+                        onClick={() => toast(`Booking with ${coach.name} is coming soon.`, "info")}
+                      >
                         Book
                       </Button>
                     </div>
