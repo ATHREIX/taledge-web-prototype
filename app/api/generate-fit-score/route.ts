@@ -447,10 +447,35 @@ Strictly valid JSON. No prose before or after.`;
   });
 
   try {
-    const { parsed, model } = await generateGeminiJson(apiKey, prompt, {
-      maxOutputTokens: 8192,
-      temperature: 0.2,
-    });
+    // Try the primary text model, then fall back to alternates. Gemini quota is
+    // largely PER-MODEL, so when the primary model is rate-limited/exhausted (429 →
+    // a fast "service unavailable" for the candidate right after they finish), a
+    // sibling model on a different quota bucket usually still scores the report.
+    // undefined = the configured GEMINI_TEXT_MODEL (default gemini-2.5-flash).
+    const modelCandidates: (string | undefined)[] = [undefined, "gemini-2.0-flash", "gemini-flash-latest"];
+    let parsed: any = null;
+    let model = "";
+    let lastErr: any = null;
+    for (const m of modelCandidates) {
+      try {
+        const res = await generateGeminiJson(apiKey, prompt, {
+          maxOutputTokens: 8192,
+          temperature: 0.2,
+          ...(m ? { model: m } : {}),
+        });
+        parsed = res.parsed;
+        model = res.model;
+        lastErr = null;
+        break;
+      } catch (err: any) {
+        lastErr = err;
+        logger.warn("fit-score: model attempt failed, trying next", {
+          model: m || "default",
+          status: err?.status,
+        });
+      }
+    }
+    if (lastErr || !parsed) throw lastErr || new Error("All Fit Score model attempts failed.");
 
     const generated = {
       technical_score: clamp(parsed.technical_score),
