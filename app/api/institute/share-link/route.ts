@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getPrincipal, unauthorized, forbidden } from "@/lib/server-auth";
+import { getPrincipal, unauthorized, forbidden, getPublicBaseUrl } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { createShareLink, getInstituteRecord, canAdministerInstitute, listCandidatesByInstitute } from "@/lib/talent-store";
 import { sendRecruiterShareEmail } from "@/lib/email";
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
   // Best-effort email (no-op unless RESEND_API_KEY is set — never blocks the link).
   let emailed = false;
   if (recruiterEmail) {
-    const fullLink = new URL(path, req.url).toString();
+    const fullLink = new URL(path, getPublicBaseUrl(req)).toString();
     emailed = await sendRecruiterShareEmail({
       to: recruiterEmail,
       instituteName: inst.name,

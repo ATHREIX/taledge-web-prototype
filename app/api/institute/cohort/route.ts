@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getPrincipal, unauthorized, forbidden } from "@/lib/server-auth";
+import { getPrincipal, unauthorized, forbidden, getPublicBaseUrl } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { isProd } from "@/lib/flags";
@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const invites = await createInstituteInvites(instituteId, cohort, track, req.nextUrl.origin, valid);
+    const invites = await createInstituteInvites(instituteId, cohort, track, getPublicBaseUrl(req), valid);
 
     // Auto-send invite emails IF a provider is configured; else the institute
     // copies the links from the UI (graceful, no-key fallback).
