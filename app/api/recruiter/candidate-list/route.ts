@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPrincipal, unauthorized, forbidden, principalHasRole } from "@/lib/server-auth";
+import { getPrincipal, unauthorized, forbidden, principalHasRole, getPublicBaseUrl } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { isProd } from "@/lib/flags";
@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
     // Generate REAL, persisted, tokenised invite links into the assessment flow.
     // (The actual email send is a separate concern that needs an email provider —
     // here the recruiter copies/sends the links; `emailDispatched` says so plainly.)
-    const invites = await createInvites(recruiterId, jobId, req.nextUrl.origin, validCandidates);
+    const invites = await createInvites(recruiterId, jobId, getPublicBaseUrl(req), validCandidates);
 
     // Auto-send the invite emails IF an email provider is configured; otherwise
     // the recruiter copies the links from the UI (graceful, no-key fallback).

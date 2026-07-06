@@ -51,6 +51,12 @@ env:
     availability: [BUILD, RUNTIME]
 
   # ---- Public feature flags (non-secret) ----
+  # Public base URL for candidate-facing links (invite / share links). WITHOUT this,
+  # links are built from Cloud Run's INTERNAL origin (http://0.0.0.0:8080) and are
+  # dead. Must match the deployed domain.
+  - variable: NEXT_PUBLIC_APP_URL
+    value: "https://taledge-be--int-taledge.us-central1.hosted.app"
+    availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_AUTH_ENFORCED
     value: "true"
     availability: [BUILD, RUNTIME]

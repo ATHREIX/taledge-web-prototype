@@ -16,6 +16,32 @@ export type Principal = {
   invite?: boolean;
 };
 
+/**
+ * The PUBLIC base URL for building candidate-facing links (invite / share links).
+ * On Cloud Run / App Hosting, `req.nextUrl.origin` and `req.url` carry the INTERNAL
+ * origin (http://0.0.0.0:8080), which produced dead invite links. Resolve in order:
+ *   1. NEXT_PUBLIC_APP_URL / APP_URL (explicit, set in apphosting.yaml) — most reliable.
+ *   2. x-forwarded-host (+ proto) — the public host the proxy forwards, ignoring the
+ *      internal 0.0.0.0 / localhost host.
+ *   3. the request origin — correct in local dev.
+ * Returns with no trailing slash.
+ */
+export function getPublicBaseUrl(req: NextRequest | Request): string {
+  const configured = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "").trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  const h = req.headers;
+  const fwdHost = h.get("x-forwarded-host") || h.get("host") || "";
+  const fwdProto = h.get("x-forwarded-proto") || "https";
+  if (fwdHost && !/^(0\.0\.0\.0|localhost|127\.|\[?::)/i.test(fwdHost)) {
+    return `${fwdProto}://${fwdHost}`.replace(/\/+$/, "");
+  }
+  try {
+    return new URL((req as Request).url).origin;
+  } catch {
+    return "";
+  }
+}
+
 function bearer(req: NextRequest | Request): string | null {
   const h = req.headers.get("authorization") || req.headers.get("Authorization");
   if (!h) return null;
