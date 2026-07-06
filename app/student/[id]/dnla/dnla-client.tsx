@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, usePathname } from "next/navigation";
-import { type DnlaScore, type Student } from "@/lib/data";
+import { type DnlaScore, type Student, SAMPLE_DNLA } from "@/lib/data";
 import {
   PageShell,
   PageHeader,
@@ -395,7 +395,11 @@ export default function DnlaClient({ student }: { student: Student }) {
     live.phase === "loading" ||
     live.phase === "none" ||
     live.phase === "not-configured";
-  const dnla: DnlaScore[] = isLiveComplete ? liveItems : showSample ? s.dnla ?? [] : [];
+  const dnla: DnlaScore[] = isLiveComplete
+    ? liveItems
+    : showSample
+    ? (s.dnla?.length ? s.dnla : SAMPLE_DNLA)
+    : [];
   const hasData = dnla.length > 0;
 
   // Group rollups — derived from the data itself so it works for both the sample
@@ -462,9 +466,9 @@ export default function DnlaClient({ student }: { student: Student }) {
         ]}
       />
       <PageHeader
-        eyebrow="Assessment journey"
-        title="Your TalEdge assessment"
-        description={`Guided stages - résumé analysis, the technical interview, the DNLA psychometric profile (this page), a behavioural interview, a combined final round, and the reports. ${s.name}'s DNLA behavioural competency profile is shown below the journey.`}
+        eyebrow="DNLA · Social & Emotional Competence"
+        title="Your DNLA psychometric profile"
+        description={`${s.name}'s behavioural competency profile across the four DNLA axes - achievement drive, interpersonal skills, execution, and resilience under pressure. Your full assessment journey (résumé, interviews, reports) follows below the profile.`}
         actions={
           <div className="flex items-center gap-3">
             {live.phase === "complete" ? (
@@ -487,8 +491,11 @@ export default function DnlaClient({ student }: { student: Student }) {
         }
       />
 
+      {/* The DNLA profile leads this page; the assessment stepper follows it
+          (order-last) so /dnla reads as "your DNLA profile", not a second dashboard. */}
+      <div className="flex flex-col gap-8">
       {/* ── Guided assessment stepper ─────────────────────────────────────── */}
-      <section className="mb-8">
+      <section className="order-last">
         <div className="grid gap-3">
           {stages.map((st, i) => {
             const isActive = i === activeIndex;
@@ -547,8 +554,8 @@ export default function DnlaClient({ student }: { student: Student }) {
       {dnlaEnabled && <DnlaLivePanel live={live} onStart={handleStart} onOpen={openQuestionnaire} />}
 
       {renderProfile && (
-      <>
-      <div id="dnla-profile" className="mb-5 border-t border-ink-200/60 pt-6 scroll-mt-24">
+      <div className="w-full">
+      <div id="dnla-profile" className="mb-5 scroll-mt-24">
         <Eyebrow className="text-brand-500">DNLA behavioural competency profile</Eyebrow>
         <Heading as="h2" className="mt-1 text-lg sm:text-xl">
           {isLiveComplete ? "Your psychometric profile" : "Sample psychometric scores"}
@@ -741,10 +748,11 @@ export default function DnlaClient({ student }: { student: Student }) {
           </section>
         </>
       )}
-      </>
+      </div>
       )}
+      </div>
 
-      {/* CTA: jump to the next stage in the assessment journey above. */}
+      {/* CTA: jump to the next stage in the assessment journey. */}
       <Card className="mb-5 border-brand-200/70 bg-brand-50/40">
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
