@@ -2,6 +2,7 @@ import { ScoreRing, Sparkline } from "@/components/score-ring";
 import { WorkspaceBack } from "@/components/workspace-back";
 import { getStudent } from "@/lib/data";
 import { getCandidate } from "@/lib/talent-store";
+import { dnlaVideosByAxis, type DnlaDevVideo } from "@/lib/dnla-development-videos";
 import {
   PageShell,
   PageHeader,
@@ -148,6 +149,42 @@ export default async function Development({
             ]}
             foot="Expected fit at end of pathway: 84"
           />
+        </div>
+      </section>
+
+      {/* DNLA Social-Competency resource library */}
+      <section className="mt-12">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <Eyebrow>The Resource Pool</Eyebrow>
+            <Heading className="mt-3 text-gradient-brand">
+              DNLA development videos
+            </Heading>
+            <p className="mt-2 max-w-2xl text-sm text-ink-500">
+              A short lesson for each of the 17 Social-Competency factors DNLA
+              measures. Work on any factor your profile scored below its
+              benchmark — the videos load only when you press play.
+            </p>
+          </div>
+          <Badge tone="warn">In German</Badge>
+        </div>
+
+        <div className="space-y-8">
+          {dnlaVideosByAxis().map((grp) => (
+            <div key={grp.axis}>
+              <div className="mb-3 flex items-center gap-2">
+                <Eyebrow>{grp.label}</Eyebrow>
+                <span className="text-xs text-ink-400">
+                  {grp.videos.length} factor{grp.videos.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {grp.videos.map((v) => (
+                  <ResourceVideo key={v.factor} video={v} />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -332,6 +369,36 @@ function Sprint({
       )}
       <div className="mt-5 border-t border-ink-100 pt-3 text-xs font-medium text-ink-500">
         {foot}
+      </div>
+    </Card>
+  );
+}
+
+function ResourceVideo({ video }: { video: DnlaDevVideo }) {
+  return (
+    <Card variant="default" className="overflow-hidden p-0">
+      <video
+        controls
+        preload="none"
+        playsInline
+        className="aspect-video w-full bg-ink-900"
+        aria-label={`DNLA lesson: ${video.en} (${video.de}), in German`}
+      >
+        <source src={video.url} type="video/mp4" />
+        Your browser does not support embedded video.{" "}
+        <a href={video.url} className="underline">
+          Open the video
+        </a>
+        .
+      </video>
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-sm font-semibold tracking-tight text-ink-900">
+            {video.en}
+          </h3>
+          <span className="shrink-0 text-[11px] text-ink-400">{video.de}</span>
+        </div>
+        <p className="mt-1.5 text-xs leading-relaxed text-ink-500">{video.blurb}</p>
       </div>
     </Card>
   );
