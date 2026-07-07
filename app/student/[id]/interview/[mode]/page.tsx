@@ -2010,7 +2010,14 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           }).catch(() => {});
         }
         setVerificationResult({ status: "success" });
-        setSetupStep("interview");
+        // Actually START the interview. The manual Face-ID path reaches the live
+        // interview via the "Identity verified — Start interview" button
+        // (handleStartInterview, which sets hasStarted + connects). The skip has no
+        // such button, so it MUST call it directly — otherwise the round lands on
+        // "Complete the proctoring setup" and never connects (the 2nd-interview
+        // hang). This runs inside the "Continue to Face ID" click gesture, so
+        // fullscreen is still permitted.
+        handleStartInterview();
         return;
       }
     } catch {
