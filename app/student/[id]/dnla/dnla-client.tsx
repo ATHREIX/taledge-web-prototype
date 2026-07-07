@@ -363,6 +363,17 @@ export default function DnlaClient({ student }: { student: Student }) {
       done: journey.behavioural,
     },
     {
+      key: "dnla-report",
+      title: "DNLA report",
+      desc: "Your psychometric report across the four DNLA competency axes - achievement drive, interpersonal skills, execution and resilience - scored 1-7 against the top-performer benchmark, with per-competency insight.",
+      href: `${flowBase}/${id}/dnla#dnla-profile`,
+      cta: "View DNLA report",
+      done: false,
+      // Sample until the licensed DNLA provider import is activated (same as the
+      // psychometric-profile step); shown with the neutral "Sample" badge.
+      sample: true,
+    },
+    {
       key: "reports",
       title: "Interview report",
       desc: "A standalone, evidence-grounded report for your AI interview.",
