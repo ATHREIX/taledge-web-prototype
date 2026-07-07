@@ -26,6 +26,10 @@ const contentSecurityPolicy = [
   // Firebase Analytics measurement endpoints.
   "connect-src 'self' https://generativelanguage.googleapis.com wss://generativelanguage.googleapis.com https://*.googleapis.com wss://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.google.com https://cdn.jsdelivr.net https://login.microsoftonline.com https://tfhub.dev https://www.kaggle.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com",
   "img-src 'self' data: blob: https:",
+  // dnla.de hosts the Social-Competency development videos (<video> on the
+  // development page). Without this, media-src falls back to default-src 'self'
+  // and the browser refuses to load the cross-origin MP4s.
+  "media-src 'self' blob: https://www.dnla.de",
   // apis.google.com hosts the Firebase auth popup/iframe client (Google + Microsoft SSO).
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://cdn.jsdelivr.net https://apis.google.com",
   "worker-src 'self' blob:",
