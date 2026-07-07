@@ -82,18 +82,6 @@ env:
     value: "true"
     availability: [RUNTIME]
 
-  # ---- TEMPORARY one-time bootstrap flag. REMOVE after use. ----
-  # Enables POST /api/admin/bootstrap-institute-admin, which binds an allowlisted
-  # pilot admin (test@university1.com) to their institute(s) using prod ADC
-  # (int-taledge) — the offline bind script can't, it targets the wrong project.
-  # This is a non-secret flag: the route hard-codes an email allowlist, so the
-  # only bind it can ever perform is the intended one (no self-escalation path,
-  # no credential in git). DELETE this var + the route file once the bind is
-  # confirmed.
-  - variable: ADMIN_BOOTSTRAP_ENABLED
-    value: "true"
-    availability: [RUNTIME]
-
   # ---- Server-side non-secret config ----
   # Gemini model ids. Pinned explicitly (they otherwise default in lib/gemini.ts)
   # so ops can retune without a code deploy. OPS: the browser opens the Live
