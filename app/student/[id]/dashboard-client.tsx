@@ -40,7 +40,7 @@ export default function DashboardClient({ student }: { student: Student }) {
   const ctaTitle = hasStarted ? "Continue assessment" : "Start assessment";
   const ctaDescription = hasStarted
     ? "Pick up where you left off. Your assessment progress is saved - jump back into the pilot flow or review your results."
-    : "Begin with your résumé and the technical interview, review your DNLA psychometric profile, then the behavioural and final interviews.";
+    : "Begin with your résumé and the AI interview, review your DNLA psychometric profile, then the behavioural interview, and finish with your interview and comparison reports.";
 
   // Treat a 0 / missing score as "not started" so the synthetic fallback record
   // (getStudent returns fit.fit = 0 for unknown ids) renders an em-dash instead
@@ -104,7 +104,7 @@ export default function DashboardClient({ student }: { student: Student }) {
                   size="md"
                   className="flex items-center justify-center gap-2"
                 >
-                  <ClipboardList size={16} aria-hidden="true" /> Technical interview
+                  <ClipboardList size={16} aria-hidden="true" /> AI interview
                 </ButtonLink>
                 <ButtonLink
                   href={`/student/${student.id}/fit-score`}
@@ -288,12 +288,12 @@ export default function DashboardClient({ student }: { student: Student }) {
               <div className="flex items-center gap-3">
                 <Badge tone="warn">Sample DNLA data</Badge>
                 <ButtonLink
-                  href={`/student/${student.id}/dnla`}
+                  href={`/student/${student.id}/dnla#dnla-profile`}
                   variant="soft"
                   size="sm"
                   className="flex items-center gap-1"
                 >
-                  Full report <ArrowRight size={14} aria-hidden="true" />
+                  View DNLA report <ArrowRight size={14} aria-hidden="true" />
                 </ButtonLink>
               </div>
             </div>
