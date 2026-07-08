@@ -45,6 +45,20 @@ const SCENARIOS = {
     vus: 15,
     duration: "30m",
   },
+  // Extreme capacity hunt — 1000 VUs. ONLY against localhost / a preview deploy;
+  // a single-IP 1000-VU flood at a prod behind Google's edge is blocked as an
+  // attack (403) and measures nothing. Needs `ulimit -n 100000` first.
+  peak1k: {
+    executor: "ramping-vus",
+    startVUs: 0,
+    stages: [
+      { duration: "1m", target: 250 },
+      { duration: "1m", target: 500 },
+      { duration: "2m", target: 1000 },
+      { duration: "2m", target: 1000 },
+      { duration: "1m", target: 0 },
+    ],
+  },
 };
 
 export const SCENARIO_NAME = __ENV.SCENARIO || "load";

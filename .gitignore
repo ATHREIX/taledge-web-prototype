@@ -35,4 +35,4 @@ serviceAccount.json
 /reports/
 
 # k6 load-test artifacts
-loadtest/summary.json
+loadtest/summary*.json

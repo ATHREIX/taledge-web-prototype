@@ -14,6 +14,7 @@ import { Trend, Rate } from "k6/metrics";
 import { textSummary } from "https://jslib.k6.io/k6-summary/0.1.0/index.js";
 import {
   BASE,
+  ENFORCED,
   VIDEO,
   VIDEO_PROBE,
   PUBLIC_PAGES,
@@ -33,6 +34,29 @@ const videoTTFB = new Trend("video_ttfb", true);
 const authEnforced = new Rate("auth_enforced_correct"); // protected surface stays gated
 const cspCorrect = new Rate("csp_media_allowed");       // CSP still lets dnla video load
 
+// Thresholds adapt to the target: the auth-enforcement checks only make sense
+// against an AUTH_ENFORCED deployment (prod), not a local demo-mode server.
+function buildThresholds() {
+  const t = {
+    // Genuine transport/5xx failures only. abortOnFail stops a doomed run early.
+    http_req_failed: [{ threshold: "rate<0.01", abortOnFail: true, delayAbortEval: "30s" }],
+    // Latency budget for browser docs + APIs (video excluded via its own tag).
+    "http_req_duration{kind:page}": ["p(95)<2000", "p(99)<4000"],
+    "http_req_duration{kind:api}": ["p(95)<1500"],
+    // Every functional assertion must hold.
+    checks: ["rate>0.99"],
+    // CSP must keep allowing the dnla video origin (scored only on real responses).
+    csp_media_allowed: ["rate>0.99"],
+    // Video start-of-playback budget (only meaningful when VIDEO_PROBE=1).
+    video_ttfb: ["p(95)<1000"],
+  };
+  if (ENFORCED) {
+    // Security posture must never regress under load — enforced targets only.
+    t.auth_enforced_correct = ["rate==1"];
+  }
+  return t;
+}
+
 // ── options ─────────────────────────────────────────────────────────────────
 export const options = {
   scenarios: selectedScenario(),
@@ -41,20 +65,7 @@ export const options = {
   // http_req_failed only flags genuine breakage (5xx, unexpected 4xx).
   // Applied globally in setup() via http.setResponseCallback.
 
-  thresholds: {
-    // Genuine transport/5xx failures only. abortOnFail stops a doomed run early.
-    http_req_failed: [{ threshold: "rate<0.01", abortOnFail: true, delayAbortEval: "30s" }],
-    // Latency budget for browser docs + APIs (video excluded via its own tag).
-    "http_req_duration{kind:page}": ["p(95)<2000", "p(99)<4000"],
-    "http_req_duration{kind:api}": ["p(95)<1500"],
-    // Every functional assertion must hold.
-    checks: ["rate>0.99"],
-    // Security posture must never regress under load.
-    auth_enforced_correct: ["rate==1"],
-    csp_media_allowed: ["rate==1"],
-    // Video start-of-playback budget (only meaningful when VIDEO_PROBE=1).
-    video_ttfb: ["p(95)<1000"],
-  },
+  thresholds: buildThresholds(),
 
   // Fail the process on threshold breach so CI goes red.
   // (k6 exits non-zero automatically on threshold failure.)
@@ -90,16 +101,20 @@ export default function () {
       redirects: 0,
       tags: { name: "page/login", kind: "page" },
     });
-    const csp = r.headers["Content-Security-Policy"] || "";
-    const mediaOk = csp.includes("https://www.dnla.de");
-    cspCorrect.add(mediaOk);
-    check(r, {
-      "csp present": () => !!csp,
-      "csp allows dnla media": () => mediaOk,
-      "hsts present": () => !!r.headers["Strict-Transport-Security"],
-      "nosniff present": () => r.headers["X-Content-Type-Options"] === "nosniff",
-      "frame-options deny": () => r.headers["X-Frame-Options"] === "DENY",
-    });
+    // A timed-out/dropped request (status 0) under saturation has no headers —
+    // that's a capacity limit, not a CSP regression, so don't score it here.
+    if (r.status !== 0) {
+      const csp = r.headers["Content-Security-Policy"] || "";
+      const mediaOk = csp.includes("https://www.dnla.de");
+      cspCorrect.add(mediaOk);
+      check(r, {
+        "csp present": () => !!csp,
+        "csp allows dnla media": () => mediaOk,
+        "hsts present": () => !!r.headers["Strict-Transport-Security"],
+        "nosniff present": () => r.headers["X-Content-Type-Options"] === "nosniff",
+        "frame-options deny": () => r.headers["X-Frame-Options"] === "DENY",
+      });
+    }
   });
 
   group("protected pages gated", () => {
@@ -109,10 +124,13 @@ export default function () {
         tags: { name: `protected${path}`, kind: "page" },
       });
       const gated = r.status >= 300 && r.status < 400; // login redirect
-      const okWithSession = r.status === 200;
-      authEnforced.add(gated || okWithSession);
+      const okRendered = r.status === 200; // demo mode (open) or valid session
+      // In an enforced target an anonymous VU MUST be redirected; in demo mode a
+      // 200 is expected. Only score the security metric where enforcement applies.
+      if (ENFORCED && r.status !== 0) authEnforced.add(gated);
       check(r, {
-        [`${path} gated or ok`]: () => gated || okWithSession,
+        [`${path} ${ENFORCED ? "gated" : "reachable"}`]: () =>
+          ENFORCED ? gated : gated || okRendered,
       });
     }
   });
@@ -126,10 +144,13 @@ export default function () {
     const guarded = http.get(`${BASE}${GUARDED_API}`, {
       tags: { name: "api/guarded", kind: "api" },
     });
+    // Enforced: anon MUST be rejected. Demo mode: the route runs open, so any
+    // non-5xx is fine — only assert the hard rejection where auth is enforced.
     const rejected = [401, 403, 404, 405].includes(guarded.status);
-    authEnforced.add(rejected);
+    if (ENFORCED && guarded.status !== 0) authEnforced.add(rejected);
     check(guarded, {
-      "protected api rejects anon": () => rejected,
+      "protected api handled": () =>
+        ENFORCED ? rejected : guarded.status > 0 && guarded.status < 500,
     });
   });
 

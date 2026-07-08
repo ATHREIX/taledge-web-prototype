@@ -4,6 +4,14 @@
 
 export const BASE = __ENV.BASE || "https://taledge-be--int-taledge.us-central1.hosted.app";
 
+// Is the target running with AUTH_ENFORCED=true? Prod is; a local `pnpm start`
+// defaults to demo mode (open, no gate). Auto-off for localhost so a local run
+// doesn't falsely fail the auth-enforcement assertions. Override with ENFORCED=1/0.
+export const ENFORCED =
+  __ENV.ENFORCED !== undefined
+    ? __ENV.ENFORCED === "1" || __ENV.ENFORCED === "true"
+    : !/localhost|127\.0\.0\.1/.test(BASE);
+
 // The DNLA development video the <video> player actually streams. Range-fetched,
 // never pulled in full (the files are 200-300 MB).
 export const VIDEO =
