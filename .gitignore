@@ -33,3 +33,6 @@ node_modules/
 serviceAccount.json
 # Generated interview evaluation PDFs (contain candidate data)
 /reports/
+
+# k6 load-test artifacts
+loadtest/summary.json

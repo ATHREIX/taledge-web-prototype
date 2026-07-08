@@ -12,7 +12,10 @@
     "seed": "tsx scripts/seed.ts",
     "bind:institute": "node scripts/bind-institute-admin.mjs",
     "verify:admin": "node scripts/verify-firebase-admin.mjs",
-    "check:sync": "node scripts/check-sync.mjs"
+    "check:sync": "node scripts/check-sync.mjs",
+    "loadtest": "k6 run loadtest/platform.test.js",
+    "loadtest:smoke": "SCENARIO=smoke k6 run loadtest/platform.test.js",
+    "loadtest:stress": "SCENARIO=stress k6 run loadtest/platform.test.js"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
