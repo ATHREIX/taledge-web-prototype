@@ -19,6 +19,15 @@ type GenerateOptions = {
    * text. Omit to leave the model default.
    */
   thinkingBudget?: number;
+  /**
+   * Per-attempt fetch timeout (default 20s) and total retry deadline (default
+   * 25s). The defaults suit short conversational turns; LONG generations (the
+   * Fit Score report: ~16KB prompt + up to 8192 output tokens with thinking)
+   * routinely need >20s, so those callers must raise both — otherwise every
+   * attempt is self-aborted and the route fails with "upstream timeout".
+   */
+  timeoutMs?: number;
+  totalDeadlineMs?: number;
 };
 
 export function getGeminiApiKey() {
@@ -68,8 +77,8 @@ export async function generateGeminiContent(
   const RETRYABLE = new Set([500, 502, 503, 504]);
   // Bound total time spent retrying so a hung upstream never burns the whole
   // serverless maxDuration. Each attempt is independently timed out.
-  const deadline = Date.now() + 25_000;
-  const PER_ATTEMPT_TIMEOUT_MS = 20_000;
+  const PER_ATTEMPT_TIMEOUT_MS = options.timeoutMs ?? 20_000;
+  const deadline = Date.now() + (options.totalDeadlineMs ?? 25_000);
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {

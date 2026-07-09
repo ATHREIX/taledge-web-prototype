@@ -452,7 +452,9 @@ Strictly valid JSON. No prose before or after.`;
     // a fast "service unavailable" for the candidate right after they finish), a
     // sibling model on a different quota bucket usually still scores the report.
     // undefined = the configured GEMINI_TEXT_MODEL (default gemini-2.5-flash).
-    const modelCandidates: (string | undefined)[] = [undefined, "gemini-2.0-flash", "gemini-flash-latest"];
+    // gemini-2.0-flash was RETIRED upstream (the API now 404s it), so the second
+    // slot is 2.5-flash-lite — a live model on its own quota bucket.
+    const modelCandidates: (string | undefined)[] = [undefined, "gemini-2.5-flash-lite", "gemini-flash-latest"];
     let parsed: any = null;
     let model = "";
     let lastErr: any = null;
@@ -461,6 +463,12 @@ Strictly valid JSON. No prose before or after.`;
         const res = await generateGeminiJson(apiKey, prompt, {
           maxOutputTokens: 8192,
           temperature: 0.2,
+          // A long interview (20+ answers) makes this a BIG generation: the
+          // default 20s per-attempt abort killed every attempt ("upstream
+          // timeout") and the whole route 502'd. Cloud Run allows 300s per
+          // request, so give each model one real 55s attempt instead.
+          timeoutMs: 55_000,
+          totalDeadlineMs: 60_000,
           ...(m ? { model: m } : {}),
         });
         parsed = res.parsed;

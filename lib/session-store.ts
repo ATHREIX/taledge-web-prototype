@@ -84,6 +84,18 @@ function onFirestoreError(scope: string, e: unknown): void {
   if (isAdminConfigured) throw e instanceof Error ? e : new Error(String(e));
 }
 
+/**
+ * Firestore rejects the ENTIRE write when any field value is `undefined`
+ * (e.g. an optional resumeSummary/dnlaSummary/priorInterviews that wasn't sent),
+ * which 500'd every non-final interview start in prod. Drop those keys before
+ * writing; the file fallback tolerates them either way.
+ */
+function stripUndefined<T extends Record<string, any>>(obj: T): T {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as T;
+}
+
 /* ----------------------------- file fallback ----------------------------- */
 function ensureDir(): void {
   if (!fs.existsSync(SESSION_DIR)) fs.mkdirSync(SESSION_DIR, { recursive: true });
@@ -145,7 +157,7 @@ export async function createSession(params: {
 
   if (useFirestore()) {
     try {
-      await adminDb!.collection(COLLECTION).doc(params.sessionId).set(session);
+      await adminDb!.collection(COLLECTION).doc(params.sessionId).set(stripUndefined(session));
       return session;
     } catch (e) {
       // In prod this rethrows (never diverge to the per-instance file store); in
@@ -188,7 +200,7 @@ export async function updateSession(
       // Write ONLY the provided fields (plus updatedAt), NOT the whole snapshot.
       // Re-persisting a stale full snapshot lets concurrent disjoint-field
       // writers clobber each other; a scoped merge lets them compose safely.
-      await ref.set({ ...updates, updatedAt: now }, { merge: true });
+      await ref.set(stripUndefined({ ...updates, updatedAt: now }), { merge: true });
       return { ...(snap.data() as SessionState), ...updates, updatedAt: now };
     } catch (e) {
       onFirestoreError("updateSession", e);
