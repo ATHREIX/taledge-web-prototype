@@ -133,14 +133,17 @@ export default function DashboardPage() {
     } catch {
       /* ignore */
     }
-    // Derive progress from the keys the interview flow ACTUALLY writes
-    // (`taledge:interview:${id}:{technical,dnla,final}`). The old keys
-    // (`taledge:dnla:*`, `:behavioural`) are never written by the real funnel,
-    // so the pipeline froze and "Next step" pointed at off-funnel rounds.
+    // Derive progress from the keys the interview flow ACTUALLY writes.
+    // The Final Interview IS the behavioural round (/interview/final aliases
+    // it), so its transcript lands under `:behavioural` — with `:dnla` and
+    // `:final` accepted as legacy keys from older funnels.
     setProgress({
       profile: profileDone,
       technical: has(`taledge:interview:${id}:technical`),
-      final: has(`taledge:interview:${id}:final`),
+      final:
+        has(`taledge:interview:${id}:behavioural`) ||
+        has(`taledge:interview:${id}:dnla`) ||
+        has(`taledge:interview:${id}:final`),
       fit: has(`taledge:fit-score:${id}`),
     });
   }, [state, role, user?.uid]);
@@ -153,7 +156,7 @@ export default function DashboardPage() {
     return [
       { key: "profile", label: "Profile & Résumé", href: "/onboarding", done: !!progress.profile },
       { key: "technical", label: "Technical Interview", href: `${ws}/interview/technical`, done: !!progress.technical },
-      { key: "final", label: "Final Interview", href: `${ws}/interview/final`, done: !!progress.final },
+      { key: "final", label: "Final Interview · Behavioural", href: `${ws}/interview/final`, done: !!progress.final },
       { key: "fit", label: "Fit Score", href: `${ws}/fit-score`, done: !!progress.fit },
     ];
   }, [role, ws, progress]);

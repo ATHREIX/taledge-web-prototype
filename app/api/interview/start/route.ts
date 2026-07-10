@@ -167,16 +167,18 @@ export async function POST(req: NextRequest) {
   }
 
   // stage 1/2 are legacy shorthands for the AI interview rounds; dnla/final are
-  // selected directly via `mode`.
-  const resolvedMode: InterviewMode | undefined =
+  // selected directly via `mode`. "final" (the funnel's Final Interview) IS the
+  // behavioural round, so it resolves to the behavioural interviewer.
+  const rawResolved: InterviewMode | undefined =
     body.stage === 1 ? "technical" : body.stage === 2 ? "behavioural" : body.mode;
 
-  if (!resolvedMode || !["technical", "behavioural", "dnla", "final"].includes(resolvedMode)) {
+  if (!rawResolved || !["technical", "behavioural", "dnla", "final"].includes(rawResolved)) {
     return NextResponse.json(
       { error: "mode must be 'technical', 'behavioural', 'dnla', or 'final', or stage must be 1 or 2" },
       { status: 400 }
     );
   }
+  const resolvedMode: InterviewMode = rawResolved === "final" ? "behavioural" : rawResolved;
 
   // 4. Server-authoritative session id; never trust a client-supplied one.
   const sessionId = crypto.randomUUID();

@@ -277,21 +277,24 @@ function useDialogFocus<T extends HTMLElement>(active: boolean) {
 }
 
 export default function InterviewPage({ params }: { params: Promise<{ id: string; mode: string }> }) {
-  const { id, mode } = use(params);
-  // Validate the [mode] route param. The flow runs:
-  //   technical (AI interview) → dnla (DNLA behavioural interview) →
-  //   final (combined round) → fit-score. "behavioural" remains a valid
-  //   standalone AI round. Anything else must 404.
-  if (mode !== "technical" && mode !== "behavioural" && mode !== "dnla" && mode !== "final") {
+  const { id, mode: rawMode } = use(params);
+  // Validate the [mode] route param. The funnel is exactly TWO interviews:
+  //   technical (AI interview, Vector A) → behavioural (Vector D) → fit-score.
+  // "Final Interview" IS the behavioural round — there is no separate combined
+  // round in the product — so /interview/final is an alias for the behavioural
+  // interview (its transcript persists under the behavioural key, which the
+  // Fit Score reads). "dnla" remains a legacy alias for behavioural links.
+  if (rawMode !== "technical" && rawMode !== "behavioural" && rawMode !== "dnla" && rawMode !== "final") {
     notFound();
   }
+  const mode = rawMode === "final" ? "behavioural" : rawMode;
   const router = useRouter();
   const pathname = usePathname();
   // The on-screen code compiler must be available wherever the interviewer can
-  // set a coding task - i.e. the technical AND final placement rounds (this
-  // mirrors the coding instruction in the Live system prompt). Previously it was
-  // technical-only, so the Final Combined round asked for code with no Code tab.
-  const isTechRound = mode === "technical" || mode === "final";
+  // set a coding task — only the technical round now that "final" aliases the
+  // behavioural interview (this mirrors the coding instruction in the Live
+  // system prompt, which is also gated to technical).
+  const isTechRound = mode === "technical";
   // This page is shared by both tracks. When mounted under /exam/[id]/... the
   // candidate is a competitive-exam aspirant; the interviewer persona and all
   // in-flow navigation (dashboard, fit-score) stay within that namespace.
@@ -665,7 +668,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
        resumeSummary: resumeContext,
        dnlaSummary: buildDnlaSummary(id),
        // The final round builds on the earlier AI + DNLA transcripts.
-       ...(mode === "final" ? { priorInterviews: buildPriorInterviews(id) } : {})
+       ...(mode === "behavioural" ? { priorInterviews: buildPriorInterviews(id) } : {})
     });
     const preloadInterviewSession = async (attempt = 1): Promise<void> => {
       try {
@@ -1960,7 +1963,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           resumeSummary: resumeContext,
           dnlaSummary: buildDnlaSummary(id),
           // The final round builds on the earlier AI + DNLA transcripts.
-          ...(mode === "final" ? { priorInterviews: buildPriorInterviews(id) } : {})
+          ...(mode === "behavioural" ? { priorInterviews: buildPriorInterviews(id) } : {})
         }),
       });
       const data = await res.json();
@@ -2314,7 +2317,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           resumeSummary: resumeContext,
           dnlaSummary: buildDnlaSummary(id),
           difficulty: difficultyRef.current,
-          ...(mode === "final" ? { priorInterviews: buildPriorInterviews(id) } : {}),
+          ...(mode === "behavioural" ? { priorInterviews: buildPriorInterviews(id) } : {}),
         },
         { captureMic: !useBrowserStt }
       );
@@ -2843,7 +2846,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       ].filter(Boolean).join("\n") : "",
       dnlaSummary: buildDnlaSummary(id),
       difficulty: difficultyRef.current,
-      ...(mode === "final" ? { priorInterviews: buildPriorInterviews(id) } : {}),
+      ...(mode === "behavioural" ? { priorInterviews: buildPriorInterviews(id) } : {}),
       transcript: messages.map((mm) => ({
         role: mm.role === "ai" ? "assistant" : "user",
         content: mm.text,
@@ -3806,10 +3809,10 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
               {done ? (
                 <div className="bg-emerald-50 rounded-xl2 p-6 border border-emerald-100 text-center">
                   <h3 className="text-lg font-bold text-emerald-800 mb-2">
-                    {mode === "final" || mode === "behavioural" ? "Assessment Completed" : `${modeLabel} Round Completed`}
+                    {mode === "behavioural" ? "Assessment Completed" : `${modeLabel} Round Completed`}
                   </h3>
                   <p className="text-ink-500 text-sm mb-4">
-                    {mode === "final" || mode === "behavioural"
+                    {mode === "behavioural"
                       ? "Both interviews are complete. Building your Fit Score report…"
                       : "This round is complete. Continue to the next round of your assessment."}
                   </p>

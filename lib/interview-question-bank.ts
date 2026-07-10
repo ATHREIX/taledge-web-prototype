@@ -198,7 +198,8 @@ export function seedQuestionsFor(
   track: "placement" | "exam" = "placement"
 ): string[] {
   if (track === "exam") return EXAM_BANK[examFamily(role)];
-  if (mode === "behavioural" || mode === "dnla") return BEHAVIOURAL_BANK;
+  // "final" is the funnel's Final Interview = the behavioural round.
+  if (mode === "behavioural" || mode === "dnla" || mode === "final") return BEHAVIOURAL_BANK;
   return TECHNICAL_BANK[roleFamily(role)];
 }
 

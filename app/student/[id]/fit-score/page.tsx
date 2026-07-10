@@ -229,13 +229,20 @@ function FitScorePageInner() {
     // `:behavioural` key when present, otherwise fall back to the funnel's
     // `:dnla` transcript - this is the key mismatch that previously left the
     // behavioural score permanently "Pending".
+    // The "final" round IS the behavioural interview (the dashboard's "Final
+    // Interview" step): a legacy `:final` transcript is the candidate's
+    // behavioural evidence when no behavioural/dnla one exists. Only when a
+    // real behavioural transcript is ALSO present does `:final` stay a separate
+    // holistic round — never send the same transcript as both.
+    const behavioural = readOne(
+      `taledge:interview:${id}:behavioural`,
+      `taledge:interview:${id}:dnla`
+    );
+    const finalT = readOne(`taledge:interview:${id}:final`);
     return {
       technical: readOne(`taledge:interview:${id}:technical`),
-      behavioural: readOne(
-        `taledge:interview:${id}:behavioural`,
-        `taledge:interview:${id}:dnla`
-      ),
-      final: readOne(`taledge:interview:${id}:final`),
+      behavioural: behavioural.length ? behavioural : finalT,
+      final: behavioural.length ? finalT : [],
     };
   }, [id]);
 

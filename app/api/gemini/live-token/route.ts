@@ -100,7 +100,10 @@ function buildSystemInstruction(b: Body): string {
   const name = cap(b.candidateName, 120) || "the candidate";
   const role = cap(b.role, 200) || "the role";
   const track = b.track === "exam" ? "exam" : "placement";
-  const mode = b.mode || "technical";
+  // "final" (the funnel's Final Interview) IS the behavioural round — alias it
+  // so a direct/legacy final link never gets the technical persona.
+  const rawMode = b.mode || "technical";
+  const mode = rawMode === "final" ? "behavioural" : rawMode;
   const difficulty = normalizeDifficulty(b.difficulty);
 
   const roleLine =
@@ -108,8 +111,6 @@ function buildSystemInstruction(b: Body): string {
       ? `You are a warm but rigorous mentor and examiner conducting a spoken readiness interview for the ${role} competitive exam.`
       : mode === "dnla"
       ? `You are a warm behavioural assessor conducting a spoken DNLA-style competency interview (Achievement Dynamics, Interpersonal Skills, Execution, Stress & Resilience) for a candidate targeting the ${role} role.`
-      : mode === "final"
-      ? `You are a senior panel interviewer conducting the spoken FINAL combined round for a candidate targeting the ${role} role, integrating their earlier technical and behavioural rounds.`
       : mode === "behavioural"
       ? `You are a sharp, perceptive behavioural interviewer — a senior HR director with 15 years of experience — conducting a spoken behavioural interview for a candidate targeting the ${role} role. You assess how they ACTUALLY operate: ownership vs blame when discussing failures (listen for "I" vs "the team" vs "them"), conflict handling, resilience under pressure, empathy for stakeholders, and how they respond to hard feedback. Ask for REAL past situations, then challenge rehearsed or generic narratives — probe what THEY specifically did, what went wrong, and what they would do differently. Do NOT ask technical, coding, or domain-knowledge questions; that is a separate round.`
       : `You are a demanding, principal-level technical interviewer for the ${role} role — a top-tier engineering bar-raiser conducting a rigorous spoken technical interview. Warm with the person, relentless on technical substance.`;
@@ -137,10 +138,11 @@ function buildSystemInstruction(b: Body): string {
     // inspiration only; tailor and follow up adaptively.
     questionBankDirective(role, mode, track),
     // Technical-round rigor: interrogate the candidate's ACTUAL stack + adversarial
-    // cognitive-load probing. Placement technical/final rounds only (not exam/dnla).
-    (mode === "technical" || mode === "final") && track === "placement" ? TECHNICAL_DEPTH : "",
+    // cognitive-load probing. Placement technical round only (behavioural/final/
+    // dnla rounds never grill technically).
+    mode === "technical" && track === "placement" ? TECHNICAL_DEPTH : "",
     // Drive a real coding task for technical placement interviews.
-    (mode === "technical" || mode === "final") && track === "placement"
+    mode === "technical" && track === "placement"
       ? `CODING TASK: For a technical role (software / data / ML / engineering), include at least ONE hands-on coding task: ask the candidate to implement a specific function or algorithm and tell them to write and RUN it in the on-screen "Code" tab (a multi-language compiler with a Run button). They will submit it as a typed answer marked "[Coding answer · <language>]" with its execution output — then critique its correctness, efficiency, and edge cases out loud, and follow up on it.`
       : "",
     resume ? `\nCandidate resume context (reference, not to read aloud):\n${resume}` : "",

@@ -68,13 +68,16 @@ async function callGeminiLLM(
   dnlaSummary: string | undefined,
   history: { role: "assistant" | "user"; content: string }[],
   transcript: string,
-  mode: "technical" | "behavioural" | "dnla" | "final",
+  rawMode: "technical" | "behavioural" | "dnla" | "final",
   turnIndex: number,
   priorRatings: number[],
   track: "placement" | "exam" = "placement",
   priorInterviews?: string,
   difficulty: Difficulty = "adaptive"
 ): Promise<{ question: string; isDone: boolean; rating: number | null }> {
+  // "final" (the funnel's Final Interview) IS the behavioural round — alias it
+  // so legacy final sessions get the behavioural interviewer, not the mixed one.
+  const mode = rawMode === "final" ? "behavioural" : rawMode;
   const apiKey = getGeminiApiKey();
   if (!apiKey) {
     throw Object.assign(new Error("Gemini interview service is not configured."), {
@@ -160,9 +163,10 @@ ADAPT to the real candidate — the schedule is secondary. ${lastRating === null
     CRITICAL: Ask EXACTLY ONE short question. Do NOT ask multi-part questions or combine multiple questions into one.
     ${concludeRule} Keep responses under 50 words.`;
 
-  const sysPrompt = mode === "final"
-    ? finalSysPrompt
-    : track === "exam" && mode !== "dnla"
+  // NOTE: mode "final" is aliased to "behavioural" above — the behavioural
+  // (HR-director) prompt below is the final round's prompt. finalSysPrompt is
+  // retired with it.
+  const sysPrompt = track === "exam" && mode !== "dnla"
     ? examSysPrompt
     : mode === "technical"
     ? `You are a senior interviewer with 15 years of experience hiring across EVERY field — engineering, data, design, product, marketing, sales, finance, operations, HR, consulting, law, healthcare, content, and more. You are sharp, calm, and read candidates well — you adapt in real time, listen to each answer, and ask the question a great human interviewer would ask next. ${multilingualInstruction}
