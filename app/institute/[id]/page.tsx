@@ -12,7 +12,7 @@ import {
   type Institute,
   type Student,
 } from "@/lib/data";
-import { resolveInstituteForView, listCandidatesByInstitute, listExamAspirants, listInterventions, canAdministerInstitute } from "@/lib/talent-store";
+import { resolveInstituteForView, listCandidatesByInstitute, listExamAspirants, listInterventions, canAdministerInstitute, ensureOwnInstituteForAdmin } from "@/lib/talent-store";
 import { InterventionsPanel } from "./InterventionsPanel";
 import { FadeIn, SlideUp, StaggerContainer, StaggerItem } from "@/components/motion";
 import { MotionDiv } from "./ClientMotion";
@@ -107,17 +107,14 @@ export default async function InstitutePage({
   // `id` may be an institute doc-id (demo) or a logged-in user's uid (enforced
   // mode routes nav to /institute/<uid>). Resolve to the actual institute and use
   // ITS id for every downstream query - otherwise a uid would query empty cohorts.
-  const inst = await resolveInstituteForView(id);
+  let inst = await resolveInstituteForView(id);
   if (!inst) notFound();
-  const instituteId = inst.id;
 
   // AUTHORIZATION (enforced mode). This server component renders a whole cohort's
   // PII + fit scores + DNLA. Middleware only checks that SOME credential exists,
   // so without this gate any signed-in user (a candidate, a recruiter, another
   // institute's admin) could open /institute/<any-id> and read that tenant's
-  // cohort. Require the caller to admin THIS institute (exact adminUids) — or, for
-  // the documented pilot, to be an institute-role account viewing the default
-  // placement tenant. Anyone else gets a 404 (never the data).
+  // cohort. Require the caller to admin the resolved institute (exact adminUids).
   if (AUTH_ENFORCED && isAdminConfigured && adminAuth) {
     const token = (await cookies()).get("firebaseIdToken")?.value;
     let callerUid: string | null = null;
@@ -128,12 +125,23 @@ export default async function InstitutePage({
         /* invalid/expired token → unauthenticated */
       }
     }
-    // Same authorization the write actions use, so a pilot account can't view the
-    // dashboard yet 403 on every button (exact adminUids, or an institute-role
-    // account on the pilot placement tenant).
-    const authorized = callerUid ? await canAdministerInstitute(instituteId, callerUid, false) : false;
+    let authorized = callerUid ? await canAdministerInstitute(inst.id, callerUid, false) : false;
+    // Not an admin of the RESOLVED tenant — typically an unbound institute
+    // account whose uid fell back to the seed placement tenant. Land them on
+    // their OWN tenant instead of 404ing: the bound one if it exists, else a
+    // freshly self-provisioned EMPTY tenant (institute-role accounts only; see
+    // ensureOwnInstituteForAdmin). This was the "university login, click
+    // placement, thrown out repeatedly" bug.
+    if (!authorized && callerUid) {
+      const own = await ensureOwnInstituteForAdmin(callerUid);
+      if (own) {
+        inst = own;
+        authorized = true;
+      }
+    }
     if (!authorized) notFound();
   }
+  const instituteId = inst.id;
 
   const isExam = inst.kind === "exam";
   // Durable data from the talent store (seed today; live candidate results once

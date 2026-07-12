@@ -313,7 +313,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     // such so it is never presented to the candidate as "DNLA". The funnel routes
     // through mode="behavioural"; this mode stays only for any direct link.
     dnla: "Behavioural",
-    final: "Final Combined",
+    // "final" never reaches here — it is aliased to "behavioural" above.
   };
   const modeLabel = MODE_LABEL[mode] ?? "Assessment";
 
@@ -326,9 +326,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     technical: { href: `${flowBase}/${id}/interview/behavioural`, label: "Continue to behavioural interview" },
     // Behavioural is the LAST interview → straight to the Fit Score.
     behavioural: { href: `${flowBase}/${id}/fit-score`, label: "View your Fit Score" },
-    // Out-of-funnel direct links still resolve to the Fit Score.
+    // Out-of-funnel direct links still resolve to the Fit Score ("final" is
+    // aliased to "behavioural" before this map is consulted).
     dnla: { href: `${flowBase}/${id}/fit-score`, label: "View your Fit Score" },
-    final: { href: `${flowBase}/${id}/fit-score`, label: "View your Fit Score" },
   };
   const nextStep = NEXT_STEP[mode] ?? { href: `${flowBase}/${id}/fit-score`, label: "View Results & Report" };
 

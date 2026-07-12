@@ -711,6 +711,69 @@ export async function getUserRole(uid: string): Promise<string | null> {
  * (candidate credentials → account takeover). Real institute admins must now be
  * bound via adminUids (scripts/bind-institute-admin). Fail-closed for everyone else.
  */
+/**
+ * The institute a real admin should land on — their bound tenant, or (for a
+ * genuine institute-role account with NO binding) a freshly self-provisioned
+ * EMPTY tenant of their own.
+ *
+ * WHY: the old pilot fallback ("any institute-role account administers the
+ * default placement tenant") was removed as a cross-tenant IDOR, but that left
+ * unbound institute accounts 404ing on their OWN workspace — the "university
+ * login → click placement → thrown out" bug. Self-provisioning is safe where
+ * the old fallback was not: the account only ever gets an empty tenant scoped
+ * to itself (adminUids: [uid]), never another tenant's cohort/PII. users/…role
+ * is client-writable, so the worst a self-assigned "institute" role yields is
+ * an empty dashboard of your own.
+ */
+export async function ensureOwnInstituteForAdmin(uid: string): Promise<Institute | null> {
+  if (!uid) return null;
+  const all = await listInstitutes();
+  const bound = all.find((i) => Array.isArray(i.adminUids) && i.adminUids.includes(uid));
+  if (bound) return bound;
+  const role = await getUserRole(uid);
+  if (role !== "institute") return null;
+
+  const id = `inst-${uid.slice(0, 12)}`;
+  const existing = all.find((i) => i.id === id);
+  if (existing) return existing;
+
+  // Name the tenant from the account's own profile when available.
+  let name = "Your Institute";
+  if (useFirestore()) {
+    try {
+      const snap = await adminDb!.collection("users").doc(uid).get();
+      const d = snap.data() as { institution?: string; fullName?: string } | undefined;
+      name = d?.institution?.trim() || (d?.fullName ? `${d.fullName.trim()}'s Institute` : name);
+    } catch {
+      /* cosmetic only */
+    }
+  }
+  const inst: Institute = {
+    id,
+    adminUids: [uid],
+    name,
+    kind: "placement",
+    cohort: 0,
+    interviewReady: 0,
+    avgFit: 0,
+    topGap: "—",
+    insights: [],
+    batches: [],
+  };
+  if (useFirestore()) {
+    try {
+      await adminDb!.collection(COL.institutes).doc(id).set(inst);
+      return inst;
+    } catch (e) {
+      onFirestoreError("ensureOwnInstituteForAdmin", e);
+    }
+  }
+  const f = loadFile();
+  f.institutes[id] = inst;
+  saveFile(f);
+  return inst;
+}
+
 export async function canAdministerInstitute(
   instituteId: string,
   uid: string,

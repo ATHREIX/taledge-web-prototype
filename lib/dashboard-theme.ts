@@ -22,11 +22,3 @@ export const toneClasses: Record<Tone, { text: string; bg: string; border: strin
   danger: { text: "text-rose-700", bg: "bg-rose-50", border: "border-rose-200", dot: "bg-rose-500" },
   neutral: { text: "text-ink-700", bg: "bg-ink-50", border: "border-ink-200", dot: "bg-ink-400" },
 };
-
-/** Heatmap fill for a 0-100 value (recruiter grid, institute readiness). */
-export function heatmapColor(value: number): string {
-  if (value >= 75) return "rgba(16,185,129,0.18)";
-  if (value >= 55) return "rgba(79,70,229,0.16)";
-  if (value >= 40) return "rgba(245,158,11,0.16)";
-  return "rgba(244,63,94,0.16)";
-}

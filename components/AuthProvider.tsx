@@ -38,6 +38,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // transient/initial null doesn't sign the user out (see the listener below).
   const hadUserRef = useRef(false);
 
+  // Re-sync the gate cookie whenever the tab regains focus/visibility. The
+  // cookie's max-age tracks the 1h Firebase token lifetime and onIdTokenChanged
+  // only refreshes it while the tab is ACTIVE — after laptop sleep or a long
+  // idle the cookie expires while the Firebase session (IndexedDB) is still
+  // valid, so the next server-component navigation bounced through middleware
+  // to /login and looked like a random sign-out (the institute-workspace
+  // "thrown out in front of the client" bug). getIdToken() returns the cached
+  // token or transparently refreshes an expired one.
+  useEffect(() => {
+    if (!auth) return;
+    const resync = () => {
+      const u = auth.currentUser;
+      if (u) u.getIdToken().then((t) => setTokenCookie(t)).catch(() => {});
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') resync();
+    };
+    window.addEventListener('focus', resync);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('focus', resync);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+
   // Hydrate role from cache on mount so the role-aware nav renders instantly on
   // repeat visits, instead of flashing a neutral nav while Firestore is read.
   useEffect(() => {

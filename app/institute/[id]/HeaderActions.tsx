@@ -55,12 +55,19 @@ export function HeaderActions({
     }
   };
 
+  // The placement/exam toggle links to the two SEED demo tenants. For a real
+  // institute admin those links point at tenants they don't administer, so
+  // only render the toggle when the current workspace IS a seed tenant.
+  const isSeedTenant = instituteId === "institute-placement" || instituteId === "institute-exam";
+
   return (
     <div className="flex flex-wrap gap-2">
-      {/* Switch between the placement and competitive-exam institute dashboards. */}
-      <ButtonLink href={isExam ? "/institute/institute-placement" : "/institute/institute-exam"} variant="ghost" size="lg">
-        {isExam ? "Placement institute" : "Exam institute"}
-      </ButtonLink>
+      {/* Switch between the placement and competitive-exam institute dashboards (demo tenants only). */}
+      {isSeedTenant && (
+        <ButtonLink href={isExam ? "/institute/institute-placement" : "/institute/institute-exam"} variant="ghost" size="lg">
+          {isExam ? "Placement institute" : "Exam institute"}
+        </ButtonLink>
+      )}
       <Button type="button" variant="ghost" size="lg" onClick={exportCohort}>
         <IconDownload /> Export cohort CSV
       </Button>

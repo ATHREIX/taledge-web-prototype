@@ -150,22 +150,8 @@ ADAPT to the real candidate — the schedule is secondary. ${lastRating === null
     Be supportive but do NOT validate weak answers. CRITICAL: Ask EXACTLY ONE short question. Do NOT ask multi-part questions or combine multiple questions into one.
     ${concludeRule} Keep responses under 50 words.`;
 
-  // Final combined round: integrates the AI interview + DNLA interview. The
-  // condensed prior transcripts are injected via the prompt body below.
-  const finalSysPrompt = `You are a senior panel interviewer conducting the FINAL combined round${track === "exam" ? ` of a ${role} readiness assessment` : role && role !== "Candidate" ? ` for the ${role} role` : ""}. You are sharp, fair, and adapt in real time like a seasoned human interviewer. ${multilingualInstruction}
-    This round INTEGRATES the candidate's two earlier rounds — their AI interview and their DNLA behavioural interview. Condensed summaries of BOTH are provided below under "Prior rounds". Use them to: probe gaps that were left unresolved, reconcile any contradiction between how they came across technically vs behaviourally, and push hardest on the weakest areas surfaced earlier.
-    ${dnlaInstruction}
-    Review their Resume Context, DNLA Report, and the Prior rounds summary below.
-    ${turnInstruction}
-    ${difficultyLadder}
-    Then formulate your next question so it explicitly BUILDS ON something specific from a prior round or their latest answer — not a generic new topic. Balance technical depth with behavioural insight. ${noRepeatInstruction}
-    ${codingInstruction}
-    CRITICAL: Ask EXACTLY ONE short question. Do NOT ask multi-part questions or combine multiple questions into one.
-    ${concludeRule} Keep responses under 50 words.`;
-
   // NOTE: mode "final" is aliased to "behavioural" above — the behavioural
-  // (HR-director) prompt below is the final round's prompt. finalSysPrompt is
-  // retired with it.
+  // (HR-director) prompt below is the final round's prompt.
   const sysPrompt = track === "exam" && mode !== "dnla"
     ? examSysPrompt
     : mode === "technical"
