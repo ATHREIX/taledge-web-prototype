@@ -102,9 +102,14 @@ function normalizeReport(raw: Partial<GenReport> | null | undefined): GenReport 
 }
 
 function resumeAvg(report: GenReport): number | null {
-  const rows = report.resume_breakdown.flatMap((g) => g?.rows ?? []);
-  if (rows.length === 0) return null;
-  return Math.round(rows.reduce((a, r) => a + (Number(r?.[1]) || 0), 0) / rows.length);
+  // Exclude "not assessed" (-1) rows — mirroring the server composite — so
+  // sentinel arithmetic can never synthesize a divergence warn/danger flag.
+  const vals = report.resume_breakdown
+    .flatMap((g) => g?.rows ?? [])
+    .map((r) => Number(r?.[1]))
+    .filter((v) => Number.isFinite(v) && v >= 0);
+  if (vals.length === 0) return null;
+  return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
 }
 
 function primaryScore(report: GenReport, round: RoundKey): number {

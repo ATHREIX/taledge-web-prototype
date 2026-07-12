@@ -424,12 +424,16 @@ export default function InterviewReportPage() {
   );
 }
 
-/** Mean of all resume_breakdown rows, rounded; null when none. */
+/** Mean of all VALID resume_breakdown rows, rounded; null when none.
+ *  "Not assessed" (-1) rows are excluded — mirroring the server composite —
+ *  never averaged in as negatives. */
 function resumeAvg(report: GenReport): number | null {
-  const rows = report.resume_breakdown.flatMap((g) => g?.rows ?? []);
-  if (rows.length === 0) return null;
-  const sum = rows.reduce((acc, r) => acc + (Number(r?.[1]) || 0), 0);
-  return Math.round(sum / rows.length);
+  const vals = report.resume_breakdown
+    .flatMap((g) => g?.rows ?? [])
+    .map((r) => Number(r?.[1]))
+    .filter((v) => Number.isFinite(v) && v >= 0);
+  if (vals.length === 0) return null;
+  return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
 }
 
 function RubricSection({
@@ -467,7 +471,21 @@ function RubricSection({
             <Eyebrow>{g.group}</Eyebrow>
             <div className="mt-4 space-y-3">
               {(Array.isArray(g.rows) ? g.rows : []).map(([label, value]) => {
-                const v = Math.max(0, Math.min(100, Number(value)));
+                // -1 = "not assessed" (excluded from averages) — rendering it
+                // as 0% would falsely read as a floor score.
+                const raw = Number(value);
+                if (raw < 0) {
+                  return (
+                    <div key={String(label)}>
+                      <div className="mb-1 flex items-center justify-between text-xs">
+                        <span className="font-medium text-ink-700">{label}</span>
+                        <span className="font-semibold text-ink-400">Not assessed</span>
+                      </div>
+                      <Bar value={0} tone="muted" />
+                    </div>
+                  );
+                }
+                const v = Math.max(0, Math.min(100, raw));
                 return (
                   <div key={String(label)}>
                     <div className="mb-1 flex items-center justify-between text-xs">

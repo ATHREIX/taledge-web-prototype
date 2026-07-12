@@ -58,37 +58,61 @@ function neutralizeFence(text: string): string {
   return text.replace(/\[\s*(BEGIN|END)\s+UNTRUSTED[^\]]*\]/gi, "[redacted-marker]");
 }
 
-function transcriptToText(msgs: Msg[] | undefined): string {
-  if (!msgs || msgs.length === 0) return "(no responses)";
-
-  const filtered = msgs.filter(m => {
-    const text = m.content.toLowerCase().trim();
-    return !(
-      text === "exit" ||
-      text === "quit" ||
-      text === "end" ||
-      text === "stop" ||
-      text === "terminate" ||
-      text.includes("end the interview") ||
+/** A candidate turn that is purely a session-control command (not an answer).
+ *  Deliberately narrow: only SHORT user turns qualify — a substantive answer
+ *  that merely CONTAINS "stop the interview" (plausible in HR-domain answers)
+ *  must never be silently dropped from scoring. */
+function isControlCommand(m: Msg): boolean {
+  if (m.role !== "user") return false;
+  const text = m.content.toLowerCase().trim();
+  if (["exit", "quit", "end", "stop", "terminate"].includes(text)) return true;
+  return (
+    text.length <= 48 &&
+    (text.includes("end the interview") ||
       text.includes("stop the interview") ||
-      text.includes("thank you for completing this assessment")
-    );
-  });
+      text.includes("thank you for completing this assessment"))
+  );
+}
 
-  if (filtered.length === 0) return "(no responses)";
-
-  return filtered
-    .map(
-      (m, i) =>
-        `${m.role === "assistant" ? "Q" : "A"}${Math.floor(i / 2) + 1}: ${neutralizeFence(m.content)}`
-    )
-    .join("\n");
+/**
+ * Render all transcript sections with ONE GLOBAL answer numbering (A1..An
+ * across technical → behavioural → final, in order) and return the answer
+ * list in exactly that order. The per-question audit matrix attaches answers
+ * by this same index, so numbering and attachment CANNOT drift apart (the old
+ * per-section restart + index-halving mislabeled Q/A after any filtered turn
+ * and could attach the wrong answer to a matrix entry).
+ */
+function renderTranscripts(
+  technical: Msg[],
+  behavioural: Msg[],
+  final: Msg[]
+): { technical: string; behavioural: string; final: string; answers: string[] } {
+  const answers: string[] = [];
+  const render = (msgs: Msg[]): string => {
+    const lines: string[] = [];
+    for (const m of msgs) {
+      if (isControlCommand(m)) continue;
+      if (m.role === "user") {
+        answers.push(m.content);
+        lines.push(`A${answers.length}: ${neutralizeFence(m.content)}`);
+      } else {
+        lines.push(`Q: ${neutralizeFence(m.content)}`);
+      }
+    }
+    return lines.length ? lines.join("\n") : "(no responses)";
+  };
+  const technicalText = render(technical);
+  const behaviouralText = render(behavioural);
+  const finalText = render(final);
+  return { technical: technicalText, behavioural: behaviouralText, final: finalText, answers };
 }
 
 function clamp(n: any, min = 0, max = 100): number {
   if (n === null || n === undefined || n === -1) return -1;
   const v = Number(n);
-  if (!isFinite(v)) return Math.round((min + max) / 2);
+  // Unparseable model output is NOT evidence — treat as "not assessed" (-1,
+  // excluded from averages), never fabricate a mid-band placeholder score.
+  if (!isFinite(v)) return -1;
   if (v === -1) return -1;
   return Math.max(min, Math.min(max, Math.round(v)));
 }
@@ -339,6 +363,10 @@ export async function POST(req: NextRequest) {
     ? `Requirements for the ${body.targetRole} competitive exam: syllabus/subject mastery, conceptual depth, problem-solving speed and accuracy, revision and mock-test discipline, time management, and exam-day resilience under pressure.${body.targetRole.toLowerCase().includes("upsc") ? " Also current-affairs awareness and structured answer-writing." : ""}`
     : ROLE_JDS[body.targetRole] || `Required Skills and competencies for the ${body.targetRole} role, including foundational technical skills, communication, problem-solving, and role-aligned expertise.`;
 
+  // One global answer numbering across all sections — the audit matrix
+  // attaches answers by the same index, so they cannot drift apart.
+  const rendered = renderTranscripts(technicalQA, behaviouralQA, finalQA);
+
   const prompt = `You are a senior ${isExam ? "exam-readiness assessor evaluating a competitive-exam aspirant" : "talent intelligence analyst computing a candidate's Fit Score"} per the Taledge PRD §9 rubric.
 
 You will receive:
@@ -358,7 +386,7 @@ CRITICAL GROUNDING RULES:
 4. Do NOT invent capabilities the candidate did not demonstrate.
 5. Do NOT give generous scores without evidence. If the candidate gave a one-word answer, score that dimension low.
 6. The narrative MUST reference at least 2 specific things the candidate said (paraphrased or quoted).
-7bis. AUDIT MATRIX: For EVERY candidate answer (each "A<n>:" line across the transcripts, in order), you MUST also emit one entry in "per_question_matrix": the answer's own 0-100 score, and a "cells" object scoring ONLY the rubric sub-dimensions that this specific answer produced evidence for (use the EXACT sub-score labels from the rubric lists below as keys; omit rows with no signal from this answer). CONSISTENCY REQUIREMENT: for each sub-score label, the mean of its cell values across all questions must equal (within ±2) the value you report for that row in the corresponding breakdown — the breakdown IS the aggregate of these cells. Include a short "evidence" line quoting or paraphrasing the answer.
+7bis. AUDIT MATRIX: For EVERY candidate answer (each "A<n>:" line — the numbering is GLOBAL and continuous across all transcript sections; use that exact n as "q"), you MUST also emit one entry in "per_question_matrix": the answer's own 0-100 score, and a "cells" object scoring ONLY the rubric sub-dimensions that this specific answer produced evidence for (use the EXACT sub-score labels from the rubric lists below as keys; omit rows with no signal from this answer). CONSISTENCY REQUIREMENT: for each sub-score label, the mean of its cell values across all questions must equal (within ±2) the value you report for that row in the corresponding breakdown — the breakdown IS the aggregate of these cells. Include a short "evidence" line quoting or paraphrasing the answer.
 7ter. CLARIFICATION TURNS: If an answer is PURELY a clarification request, a stall, or a connectivity remark with no substantive content (e.g. "Sorry, I didn't understand the question", "Please allow me one moment", "Are we connected?"), set its per_question_matrix entry's "answer_score" to -1 (non-scoring turn) and its "cells" to {} — the delay/help-needed signal belongs ONLY in the Delivery Signals rows (Hesitation, Hint dependency, Confidence), never as a standalone failed answer. An answer that engages the question but reveals a knowledge gap IS still scored normally.
 7quater. RESUME ROW EVIDENCE: For EVERY row you score in resume_breakdown, you MUST also emit one entry in "resume_row_evidence" quoting the exact resume/JD/transcript text that grounds that row's score. If the resume context above says "(not provided)" for summary, skills AND projects, you have NO basis to score the resume component: still return the resume_breakdown shape but score every row 0 and state "no resume provided" as each row's evidence — the server drops the resume component from the composite in that case.
 7quinquies. RESUME vs INTERVIEW CONSISTENCY: Compare the project(s) the candidate actually discussed in the transcripts against the "Resume projects" list above. Two DISTINCT cases — never conflate them: (a) MISMATCH — the candidate discussed a project and it does not correspond to any provided resume project: include a cross_flags entry { "label": "Resume vs Interview project mismatch", "tone": "warn" } (tone "danger" if the resume claims materially exceed what the interview demonstrated) and cap "Complexity vs Claim alignment" at 50, stating the mismatch in that row's evidence. (b) NOT DISCUSSED — no project came up in the interview at all: this is NOT a mismatch and MUST NOT be described as a cap or penalty; score "Complexity vs Claim alignment" in the thin-evidence band (rule 3) and write evidence that a user can understand, e.g. "The resume's project claims could not be verified because no project was discussed in the interview — score reflects unverified claims, not project quality."
@@ -388,17 +416,17 @@ DNLA risks: ${dnlaRisks.join("; ") || "(none)"}
 
 Technical Interview transcript:
 [BEGIN UNTRUSTED TECHNICAL TRANSCRIPT DATA]
-${transcriptToText(technicalQA)}
+${rendered.technical}
 [END UNTRUSTED TECHNICAL TRANSCRIPT DATA]
 
 Behavioural Interview transcript:
 [BEGIN UNTRUSTED BEHAVIOURAL TRANSCRIPT DATA]
-${transcriptToText(behaviouralQA)}
+${rendered.behavioural}
 [END UNTRUSTED BEHAVIOURAL TRANSCRIPT DATA]
 
 Final combined-round transcript (holistic; weigh into the overall fit, do not double-count as a separate stage):
 [BEGIN UNTRUSTED FINAL TRANSCRIPT DATA]
-${transcriptToText(finalQA)}
+${rendered.final}
 [END UNTRUSTED FINAL TRANSCRIPT DATA]
 
 Sub-score rubric (every numeric must be an integer 0-100):
@@ -540,7 +568,9 @@ Strictly valid JSON. No prose before or after.`;
         ? parsed.cross_flags.slice(0, 4).map((f: any) => ({
             label: String(f.label || ""),
             verdict: String(f.verdict || ""),
-            tone: ["ok", "warn", "danger"].includes(f.tone) ? f.tone : "warn",
+            // Unknown/missing tone is NOT evidence of a problem — never
+            // default into a penalizing value.
+            tone: ["ok", "warn", "danger"].includes(f.tone) ? f.tone : "ok",
           }))
         : [],
     };
@@ -569,10 +599,11 @@ Strictly valid JSON. No prose before or after.`;
         }))
       : [];
     {
-      const allAnswers = [...technicalQA, ...behaviouralQA, ...finalQA].filter((m) => m.role === "user");
+      // Attach by the SAME numbering the prompt displayed (rendered.answers) —
+      // never a separately-filtered list that could drift off-by-one.
       for (const p of perQuestionMatrix) {
-        const a = allAnswers[p.q - 1];
-        if (a) p.answer = a.content.slice(0, 1200);
+        const a = rendered.answers[p.q - 1];
+        if (a) p.answer = a.slice(0, 1200);
       }
     }
     // Evidence quotes grounding each resume row (rule 7quater) — audit-only.
@@ -682,6 +713,13 @@ Strictly valid JSON. No prose before or after.`;
       if (Number.isFinite(drift) && drift > 15) {
         logger.warn("fit-score: large LLM/computed divergence", { uid, studentId: body.studentId, llmFit, computedFit, llmSuccess, computedSuccess });
       }
+    } else {
+      // Degenerate output: no component produced a single valid sub-score. The
+      // raw LLM headline numbers must NOT ship as if they were server-computed
+      // — mark everything pending instead.
+      logger.warn("fit-score: no valid sub-scores in any component; marking headline pending", { uid, studentId: body.studentId });
+      generated.fit_score = -1;
+      generated.success_probability = -1;
     }
 
     // ── Durable scoring-audit ledger ─────────────────────────────────────────
@@ -799,8 +837,9 @@ Strictly valid JSON. No prose before or after.`;
               // the sub-score so the institute sees "pending", not a real 0.
               ...(techScore >= 0 ? { technical: techScore } : {}),
               ...(behavScore >= 0 ? { behavioural: behavScore } : {}),
-              fit: fitNum,
-              successProbability: generated.success_probability as number,
+              // A pending (-1) composite is never persisted as a real score.
+              ...(fitNum >= 0 ? { fit: fitNum } : {}),
+              ...((generated.success_probability as number) >= 0 ? { successProbability: generated.success_probability as number } : {}),
             },
             successPotential: fitNum,
             ...(behavScore >= 0 ? { resilience: behavScore } : {}),
@@ -833,8 +872,9 @@ Strictly valid JSON. No prose before or after.`;
               // the sub-score so recruiters/institutes see "pending", not a real 0.
               ...(techScore >= 0 ? { technical: techScore } : {}),
               ...(behavScore >= 0 ? { behavioural: behavScore } : {}),
-              fit: fitNum,
-              successProbability: generated.success_probability as number,
+              // A pending (-1) composite is never persisted as a real score.
+              ...(fitNum >= 0 ? { fit: fitNum } : {}),
+              ...((generated.success_probability as number) >= 0 ? { successProbability: generated.success_probability as number } : {}),
             },
             status,
             // "Verified" means the flow completed under a REAL signed-in account,

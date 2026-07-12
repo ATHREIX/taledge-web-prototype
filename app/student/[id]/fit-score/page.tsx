@@ -235,18 +235,30 @@ function FitScorePageInner() {
     // Parse each round INDEPENDENTLY: one corrupted transcript must not discard
     // the others (a single shared try/catch previously wiped all three rounds,
     // silently scoring everything "Pending" off a real, completed interview).
+    // A transcript only counts as REAL evidence if the candidate actually
+    // answered. The interview page persists the transcript as soon as the AI's
+    // greeting exists, so a round the candidate opened and abandoned leaves an
+    // assistant-only array behind — without this check that greeting-only stub
+    // SHADOWED the completed round stored under a fallback key (e.g. opened
+    // /interview/behavioural once, completed the real round under :dnla → the
+    // real transcript was never read and the stage scored empty).
+    const hasAnswers = (msgs: Msg[]) => msgs.some((m) => m?.role === "user");
     const readOne = (...keys: string[]): Msg[] => {
+      let firstNonEmpty: Msg[] = [];
       for (const k of keys) {
         const raw = localStorage.getItem(k);
         if (!raw) continue;
         try {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) return parsed as Msg[];
+          if (Array.isArray(parsed) && parsed.length) {
+            if (hasAnswers(parsed as Msg[])) return parsed as Msg[];
+            if (!firstNonEmpty.length) firstNonEmpty = parsed as Msg[];
+          }
         } catch {
           /* corrupted entry for this key - try the next, then give up */
         }
       }
-      return [];
+      return firstNonEmpty;
     };
     // The guided funnel routes the behavioural round to /interview/dnla, so it
     // persists the transcript under the `:dnla` key. Prefer the standalone
@@ -263,10 +275,11 @@ function FitScorePageInner() {
       `taledge:interview:${id}:dnla`
     );
     const finalT = readOne(`taledge:interview:${id}:final`);
+    const behaviouralReal = hasAnswers(behavioural) ? behavioural : finalT;
     return {
       technical: readOne(`taledge:interview:${id}:technical`),
-      behavioural: behavioural.length ? behavioural : finalT,
-      final: behavioural.length ? finalT : [],
+      behavioural: behaviouralReal,
+      final: behaviouralReal === finalT ? [] : finalT,
     };
   }, [id]);
 
@@ -743,10 +756,15 @@ function FitScorePageInner() {
               title="Resume & profile features"
               desc="Per PRD §9.2 · skill matching against the JD, project quality, academic signals, and resume quality."
               score={(() => {
-                const rows = report.resume_breakdown.flatMap(g => g?.rows ?? []);
-                if (rows.length === 0) return 0;
-                const sum = rows.reduce((acc, r) => acc + (Number(r?.[1]) || 0), 0);
-                return Math.round(sum / rows.length);
+                // Mirror the server composite exactly: "not assessed" (-1)
+                // rows are EXCLUDED, never averaged in as negatives; no valid
+                // rows at all → Pending, not a fake 0%.
+                const vals = report.resume_breakdown
+                  .flatMap(g => g?.rows ?? [])
+                  .map(r => Number(r?.[1]))
+                  .filter(v => Number.isFinite(v) && v >= 0);
+                if (vals.length === 0) return -1;
+                return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
               })()}
               groups={report.resume_breakdown}
             />
