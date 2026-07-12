@@ -143,6 +143,29 @@ function FitScorePageInner() {
   // Candidate's real name, resolved from the durable record (recruiter view only -
   // the recruiter's own localStorage profile would otherwise mislabel the report).
   const [recruiterName, setRecruiterName] = useState<string>("");
+  // Score-evidence ledger (owner view): the durable audit behind THIS report —
+  // per-question cells + resume row evidence — so "why did I get this score?"
+  // is answerable from stored data, on the page, for every candidate.
+  const [audit, setAudit] = useState<{
+    perQuestionMatrix?: { q: number; question: string; answerScore: number; evidence: string; cells?: Record<string, number> }[];
+    resumeRowEvidence?: { row: string; evidence: string }[];
+    resumePending?: boolean;
+    ts?: number;
+  } | null>(null);
+  useEffect(() => {
+    if (recruiterView) return;
+    let alive = true;
+    (async () => {
+      try {
+        const r = await authedFetch(`/api/reports/scoring-audit?studentId=${encodeURIComponent(id)}&limit=1`);
+        const d = await r.json();
+        if (alive && d?.ok && Array.isArray(d.audits) && d.audits[0]) setAudit(d.audits[0]);
+      } catch {
+        /* evidence panel is best-effort */
+      }
+    })();
+    return () => { alive = false; };
+  }, [id, recruiterView, status]);
 
   // Publish the Fit Score report to the recruiter portal. Confirms intent,
   // shows a loading state, and surfaces a success / error result.
@@ -890,6 +913,54 @@ function FitScorePageInner() {
                 </div>
               </Card>
             </motion.section>
+
+            {/* SCORE EVIDENCE - the audit ledger behind this report, so every
+                number is explainable to the candidate from stored data. Owner
+                view only; hidden until an audit exists for this student. */}
+            {!recruiterView && audit && ((audit.perQuestionMatrix?.length || 0) > 0 || (audit.resumeRowEvidence?.length || 0) > 0) && (
+            <motion.section variants={itemVariants} className="mt-12">
+              <div className="mb-6">
+                <Eyebrow>Score transparency</Eyebrow>
+                <Heading className="mt-3 sm:text-3xl">How your scores were derived</Heading>
+                <p className="mt-2 max-w-2xl text-sm text-ink-500">
+                  Every score is grounded in your own answers and profile. Below is the stored
+                  evidence the scoring engine recorded for this report — per answer, and per
+                  resume dimension.
+                </p>
+              </div>
+              {(audit.perQuestionMatrix?.length || 0) > 0 && (
+                <Card variant="default" className="rounded-xl2 overflow-hidden p-0 mb-6">
+                  <div className="border-b border-ink-200/40 bg-ink-50/60 px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-ink-500">
+                    Answer-by-answer evidence
+                  </div>
+                  {audit.perQuestionMatrix!.map((pq) => (
+                    <div key={pq.q} className="border-b border-ink-100 px-6 py-4 text-sm last:border-0">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="font-bold text-ink-900">Q{pq.q} · {pq.question || "Answer"}</div>
+                        <Badge tone={pq.answerScore < 0 ? "neutral" : pq.answerScore >= 65 ? "success" : pq.answerScore >= 40 ? "warn" : "danger"}>
+                          {pq.answerScore < 0 ? "Clarification — not scored" : `${pq.answerScore}/100`}
+                        </Badge>
+                      </div>
+                      {pq.evidence && <p className="mt-1.5 text-ink-600">{pq.evidence}</p>}
+                    </div>
+                  ))}
+                </Card>
+              )}
+              {(audit.resumeRowEvidence?.length || 0) > 0 && (
+                <Card variant="default" className="rounded-xl2 overflow-hidden p-0">
+                  <div className="border-b border-ink-200/40 bg-ink-50/60 px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-ink-500">
+                    Resume &amp; profile — evidence per dimension
+                  </div>
+                  {audit.resumeRowEvidence!.map((r) => (
+                    <div key={r.row} className="grid grid-cols-12 gap-3 border-b border-ink-100 px-6 py-4 text-sm last:border-0">
+                      <div className="col-span-4 font-bold text-ink-900">{r.row}</div>
+                      <div className="col-span-8 text-ink-600">{r.evidence}</div>
+                    </div>
+                  ))}
+                </Card>
+              )}
+            </motion.section>
+            )}
 
             {/* PUBLISH OR REATTEMPT - candidate self-actions, hidden in the
                 recruiter read-only view. */}
