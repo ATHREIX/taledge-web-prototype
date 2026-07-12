@@ -8,6 +8,7 @@ import {
 } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 
 /**
  * Server-side Firebase Admin. Used by API routes / server data access to
@@ -56,3 +57,23 @@ export const adminApp: App | null = app;
 export const adminAuth: Auth | null = app ? getAuth(app) : null;
 export const adminDb: Firestore | null = app ? getFirestore(app) : null;
 export const isAdminConfigured = !!app;
+
+/**
+ * Default Cloud Storage bucket for durable file archival (original resume
+ * PDFs — see /api/parse-resume). Null when admin is not configured (demo/
+ * local) or no bucket name is known; callers degrade gracefully.
+ */
+export function adminBucket() {
+  if (!app) return null;
+  const name =
+    process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET?.trim() ||
+    (process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+      ? `${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}.firebasestorage.app`
+      : "");
+  if (!name) return null;
+  try {
+    return getStorage(app).bucket(name);
+  } catch {
+    return null;
+  }
+}

@@ -4,6 +4,40 @@ import { getPrincipal, unauthorized } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { isProd } from "@/lib/flags";
+import { adminBucket, adminDb } from "@/lib/firebase-admin";
+
+/**
+ * Archive the ORIGINAL uploaded resume PDF to Cloud Storage and record the
+ * pointer on the user's doc. Without this, only the parser's EXTRACTION exists
+ * anywhere — a dispute over "what did the resume actually say" would be
+ * unanswerable. Best-effort: an archive failure must never fail the upload.
+ */
+async function archiveResumePdf(uid: string, filename: string, bytes: Uint8Array): Promise<string | null> {
+  try {
+    const bucket = adminBucket();
+    if (!bucket) return null; // demo/local — nothing durable to write to
+    const safeName = filename.replace(/[^\w.\-]+/g, "_").slice(0, 120) || "resume.pdf";
+    const path = `resume-archive/${uid}/${Date.now()}-${safeName}`;
+    await bucket.file(path).save(Buffer.from(bytes), {
+      contentType: "application/pdf",
+      resumable: false,
+      metadata: { metadata: { uid, originalName: filename.slice(0, 200) } },
+    });
+    // Pointer on the user doc so the latest archived original is one lookup away.
+    try {
+      await adminDb
+        ?.collection("users")
+        .doc(uid)
+        .set({ resumeArchivePath: path, resumeArchiveTs: Date.now() }, { merge: true });
+    } catch {
+      /* pointer is best-effort; the object itself is already archived */
+    }
+    return path;
+  } catch (e) {
+    logger.warn("parse-resume: archive failed (non-fatal)", { uid, err: String(e) });
+    return null;
+  }
+}
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -209,6 +243,11 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Durable archive of the ORIGINAL file (validated PDF) — awaited so the
+    // serverless runtime cannot kill the write, but failures never block parsing.
+    const archivePath = await archiveResumePdf(uid, filename, bytes);
+    if (archivePath) logger.info("parse-resume: original archived", { uid, archivePath });
 
     // No Gemini key (demo) → degrade gracefully to local extraction instead of
     // failing the upload. Onboarding stays usable with manual entry.
