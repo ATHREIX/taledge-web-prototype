@@ -57,6 +57,20 @@ export type ScoringAudit = {
   };
   /** Per-question × component evidence matrix emitted by the scorer. */
   perQuestionMatrix: PerQuestionCell[];
+  /** EXACTLY what resume data the scorer was given (the dispute-settler when a
+   *  candidate claims "my resume said something else"). Empty strings/arrays
+   *  when nothing was provided. */
+  resumeInputs: {
+    summary: string;
+    skills: string[];
+    projects: { title: string; stack: string[]; impact: string }[];
+    /** The JD text the resume was scored against (role-specific or generic fallback). */
+    jdText: string;
+  };
+  /** Quoted evidence grounding each resume row score (rule 7quater). */
+  resumeRowEvidence: { row: string; evidence: string }[];
+  /** True when NO resume payload existed → resume component dropped from fit. */
+  resumePending: boolean;
   /** The 20 rubric row scores (flattened "Group · Row" -> 0-100). */
   rowScores: Record<string, number>;
   /** Raw LLM headline numbers (before the anti-hallucination recomputation). */

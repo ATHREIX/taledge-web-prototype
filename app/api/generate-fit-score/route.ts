@@ -355,6 +355,9 @@ CRITICAL GROUNDING RULES:
 5. Do NOT give generous scores without evidence. If the candidate gave a one-word answer, score that dimension low.
 6. The narrative MUST reference at least 2 specific things the candidate said (paraphrased or quoted).
 7bis. AUDIT MATRIX: For EVERY candidate answer (each "A<n>:" line across the transcripts, in order), you MUST also emit one entry in "per_question_matrix": the answer's own 0-100 score, and a "cells" object scoring ONLY the rubric sub-dimensions that this specific answer produced evidence for (use the EXACT sub-score labels from the rubric lists below as keys; omit rows with no signal from this answer). CONSISTENCY REQUIREMENT: for each sub-score label, the mean of its cell values across all questions must equal (within ±2) the value you report for that row in the corresponding breakdown — the breakdown IS the aggregate of these cells. Include a short "evidence" line quoting or paraphrasing the answer.
+7ter. CLARIFICATION TURNS: If an answer is PURELY a clarification request, a stall, or a connectivity remark with no substantive content (e.g. "Sorry, I didn't understand the question", "Please allow me one moment", "Are we connected?"), set its per_question_matrix entry's "answer_score" to -1 (non-scoring turn) and its "cells" to {} — the delay/help-needed signal belongs ONLY in the Delivery Signals rows (Hesitation, Hint dependency, Confidence), never as a standalone failed answer. An answer that engages the question but reveals a knowledge gap IS still scored normally.
+7quater. RESUME ROW EVIDENCE: For EVERY row you score in resume_breakdown, you MUST also emit one entry in "resume_row_evidence" quoting the exact resume/JD/transcript text that grounds that row's score. If the resume context above says "(not provided)" for summary, skills AND projects, you have NO basis to score the resume component: still return the resume_breakdown shape but score every row 0 and state "no resume provided" as each row's evidence — the server drops the resume component from the composite in that case.
+7quinquies. RESUME vs INTERVIEW CONSISTENCY: Compare the project(s) the candidate actually discussed in the transcripts against the "Resume projects" list above. If resume projects WERE provided and the interview project does not correspond to any of them, you MUST (a) include a cross_flags entry { "label": "Resume vs Interview project mismatch", "tone": "warn" } (tone "danger" if the resume claims materially exceed what the interview demonstrated), and (b) cap the "Complexity vs Claim alignment" row at 50.
 7. If a transcript section says "(no responses)", it means that interview stage has not been started yet. You MUST set its corresponding headline score (technical_score or behavioural_score) to -1. Compute the overall fit_score and success_probability composites based ONLY on the completed interview stages (do not include the -1 stage in calculations). Keep the breakdown subscores for the missing stage as 0.
 8. CODING: If the candidate submitted code (an answer marked "[Coding answer · <language>]" containing source and an "Execution result"), evaluate it CONCRETELY: correctness for the problem asked, time/space efficiency, edge-case handling, and code quality — and crucially whether it actually compiled and produced correct output (use the "Execution result": a non-zero exit code, stderr, or compile error is a strong negative signal; clean expected output is a strong positive one). Ground Component 01 sub-scores and the narrative in this. Only when code was actually submitted, ALSO append this group to technical_breakdown: { "group": "Coding Implementation", "rows": [["Correctness (compiled & correct output)", <0-100>], ["Efficiency & complexity", <0-100>], ["Edge cases & code quality", <0-100>]] }.
 
@@ -435,7 +438,10 @@ Return EXACTLY this JSON shape (no markdown fences, no commentary):
     { "label": "<check>", "verdict": "<one-sentence finding>", "tone": "ok" | "warn" | "danger" }
   ],
   "per_question_matrix": [
-    { "q": <1-based answer index across all transcripts>, "question": "<short paraphrase of the question asked>", "answer_score": <0-100>, "cells": { "<exact sub-score label>": <0-100>, ... }, "evidence": "<one-line quote/paraphrase grounding the cells>" }
+    { "q": <1-based answer index across all transcripts>, "question": "<short paraphrase of the question asked>", "answer_score": <0-100 or -1 for a pure clarification/stall turn>, "cells": { "<exact sub-score label>": <0-100>, ... }, "evidence": "<one-line quote/paraphrase grounding the cells>" }
+  ],
+  "resume_row_evidence": [
+    { "row": "<exact resume sub-score label>", "evidence": "<quoted resume/JD/transcript text grounding this row's score>" }
   ]
 }
 
@@ -562,6 +568,13 @@ Strictly valid JSON. No prose before or after.`;
         if (a) p.answer = a.content.slice(0, 1200);
       }
     }
+    // Evidence quotes grounding each resume row (rule 7quater) — audit-only.
+    const resumeRowEvidence: { row: string; evidence: string }[] = Array.isArray(parsed.resume_row_evidence)
+      ? parsed.resume_row_evidence.slice(0, 16).map((r: any) => ({
+          row: String(r?.row || "").slice(0, 80),
+          evidence: String(r?.evidence || "").slice(0, 400),
+        }))
+      : [];
 
     // ── Reconcile headline scores against the evidence-grounded sub-scores ────
     // technical_score / behavioural_score are recomputed as the mean of their
@@ -570,7 +583,13 @@ Strictly valid JSON. No prose before or after.`;
     // derives from it with a penalty for danger/warn cross-flags. The LLM's own
     // headline numbers are logged for divergence monitoring but not trusted.
     const techAvg = generated.technical_score === -1 ? null : avgRows(generated.technical_breakdown);
-    const resumeAvg = avgRows(generated.resume_breakdown);
+    // RESUME-PENDING RULE: with no resume payload at all there is NO evidence
+    // basis for the resume component — treating LLM-invented pedigree rows as
+    // 20% of the fit was a real scoring defect (a candidate without an uploaded
+    // resume got scored on a resume that doesn't exist). Drop the component and
+    // renormalize, exactly like a pending interview stage.
+    const hasResume = !!(body.resumeSummary?.trim() || resumeSkills.length || resumeProjects.length);
+    const resumeAvg = hasResume ? avgRows(generated.resume_breakdown) : null;
     const behavAvg = generated.behavioural_score === -1 ? null : avgRows(generated.behavioural_breakdown);
 
     // PRD §4.2 — the competitive-exam (Track 2) "Success Potential" uses a
@@ -642,6 +661,14 @@ Strictly valid JSON. No prose before or after.`;
       ts: Date.now(),
       transcripts: { technical: technicalQA, behavioural: behaviouralQA, final: finalQA },
       perQuestionMatrix,
+      resumeInputs: {
+        summary: String(body.resumeSummary || "").slice(0, 3000),
+        skills: resumeSkills,
+        projects: resumeProjects,
+        jdText: jdText.slice(0, 1500),
+      },
+      resumeRowEvidence,
+      resumePending: !hasResume,
       rowScores,
       llmHeadline: { technical: llmTech, behavioural: llmBehav, fit: llmFit, success: llmSuccess },
       computedHeadline: {
@@ -815,6 +842,8 @@ Strictly valid JSON. No prose before or after.`;
         llmHeadline: { fit_score: llmFit, success_probability: llmSuccess },
         // Ledger id of the durable per-question scoring audit (null in demo/local).
         auditId,
+        // True when no resume payload existed → resume component excluded from fit.
+        resumePending: !hasResume,
       },
     });
   } catch (e: any) {
