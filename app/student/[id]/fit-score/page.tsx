@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ScoreRing, Bar } from "@/components/score-ring";
 import { getStudent, SAMPLE_DNLA } from "@/lib/data";
+import { resumeFingerprint } from "@/lib/resume-hash";
 import {
   PageShell,
   PageHeader,
@@ -305,6 +306,20 @@ function FitScorePageInner() {
           ].filter(Boolean).join("\n"),
           resumeSkills: profile.resumeSkills?.length ? profile.resumeSkills : s.skills,
           resumeProjects: profile.resumeProjects?.length ? profile.resumeProjects : s.projects,
+          // Resume-swap detection: fingerprint of the fields being scored NOW +
+          // the fingerprints stored when each round was conducted. The server
+          // flags a mismatch ("resume changed between interview and scoring").
+          resumeFingerprint: resumeFingerprint(profile),
+          interviewResumeHashes: (() => {
+            const h: Record<string, string> = {};
+            for (const k of ["technical", "behavioural", "dnla", "final"]) {
+              try {
+                const v = localStorage.getItem(`taledge:interview:${id}:${k}:resumeHash`);
+                if (v) h[k] = v;
+              } catch {}
+            }
+            return h;
+          })(),
           technicalQA: technical,
           behaviouralQA: behavioural,
           finalQA: final,

@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Mic, MicOff, Send, Camera, AlertTriangle, ShieldAlert, FileText, Loader2, Eye, Smartphone, Users, MonitorOff, Clipboard, Brain, Check, X, ArrowRight, Clock, RefreshCw, ScanFace, Lock, BadgeCheck, ChevronRight } from "lucide-react";
 import { Card, Button, ButtonLink, Badge, Eyebrow, Heading } from "@/components/ui";
 import { authedFetch } from "@/lib/api-client";
+import { resumeFingerprint } from "@/lib/resume-hash";
 import { getStudent } from "@/lib/data";
 import { useGeminiLive } from "@/hooks/useGeminiLive";
 import { CodeRunner, type RunResult, type TestSummary } from "@/components/code/code-runner";
@@ -656,6 +657,14 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     // interviewer). A failed/rate-limited start used to be swallowed silently,
     // leaving sessionIdRef null with no signal, so we retry once and log the
     // failure instead of failing invisibly.
+    // Fingerprint the resume this round is grounded in. Persisted with the
+    // transcript so the Fit Score can detect a resume swap between interview
+    // and scoring (see lib/resume-hash.ts).
+    const resumeFp = localProfile ? resumeFingerprint(localProfile) : "";
+    try {
+      localStorage.setItem(`taledge:interview:${id}:${mode}:resumeHash`, resumeFp);
+    } catch {}
+
     const startBody = JSON.stringify({
        studentId: id,
        candidateName: localProfile?.fullName || "Candidate",
@@ -666,6 +675,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
        ...(mode === "technical" || mode === "behavioural" ? { stage: mode === "technical" ? 1 : 2 } : {}),
        track,
        resumeSummary: resumeContext,
+       resumeFingerprint: resumeFp,
        dnlaSummary: buildDnlaSummary(id),
        // The final round builds on the earlier AI + DNLA transcripts.
        ...(mode === "behavioural" ? { priorInterviews: buildPriorInterviews(id) } : {})

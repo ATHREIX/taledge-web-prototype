@@ -71,6 +71,11 @@ export type ScoringAudit = {
   resumeRowEvidence: { row: string; evidence: string }[];
   /** True when NO resume payload existed → resume component dropped from fit. */
   resumePending: boolean;
+  /** Fingerprint of the resume scored now vs the ones each round was conducted
+   *  with (lib/resume-hash) — the resume-swap forensic trail. */
+  resumeHashAtScoring: string;
+  interviewResumeHashes: Record<string, string>;
+  resumeChangedMidFlow: boolean;
   /** The 20 rubric row scores (flattened "Group · Row" -> 0-100). */
   rowScores: Record<string, number>;
   /** Raw LLM headline numbers (before the anti-hallucination recomputation). */

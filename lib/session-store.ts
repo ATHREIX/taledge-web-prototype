@@ -42,6 +42,8 @@ export interface SessionState {
   /** Condensed transcripts of the earlier rounds (AI + DNLA), passed to the
    * "final" interview so its questions build on what already happened. */
   priorInterviews?: string;
+  /** Fingerprint of the resume this round was conducted with (lib/resume-hash). */
+  resumeHash?: string;
   transcript: TranscriptEntry[];
   turnIndex: number;
   isDone: boolean;
@@ -129,6 +131,8 @@ export async function createSession(params: {
   resumeSummary?: string;
   dnlaSummary?: string;
   priorInterviews?: string;
+  /** Fingerprint of the resume this round was conducted with (lib/resume-hash). */
+  resumeHash?: string;
 }): Promise<SessionState> {
   const now = Date.now();
   const session: SessionState = {
@@ -141,6 +145,7 @@ export async function createSession(params: {
     resumeSummary: params.resumeSummary,
     dnlaSummary: params.dnlaSummary,
     priorInterviews: params.priorInterviews,
+    resumeHash: params.resumeHash,
     transcript: [],
     turnIndex: 0,
     isDone: false,

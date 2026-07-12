@@ -23,6 +23,10 @@ type Body = {
   dnlaSummary?: string;
   /** Condensed AI + DNLA transcripts — only used by the "final" round. */
   priorInterviews?: string;
+  /** Client-computed fingerprint of the resume fields this round is grounded
+   *  in (lib/resume-hash). Stored on the session so a resume swap between
+   *  interview and scoring is provable from server data. */
+  resumeFingerprint?: string;
 };
 
 const MAX_STR = 4000;
@@ -155,6 +159,9 @@ export async function POST(req: NextRequest) {
   if (body.priorInterviews !== undefined && (typeof body.priorInterviews !== "string" || body.priorInterviews.length > MAX_STR * 8)) {
     return NextResponse.json({ error: "priorInterviews must be a string" }, { status: 400 });
   }
+  if (body.resumeFingerprint !== undefined && (typeof body.resumeFingerprint !== "string" || body.resumeFingerprint.length > 64)) {
+    return NextResponse.json({ error: "resumeFingerprint must be a short string" }, { status: 400 });
+  }
   if (body.mode !== undefined && !["technical", "behavioural", "dnla", "final"].includes(body.mode)) {
     return NextResponse.json({ error: "mode must be 'technical', 'behavioural', 'dnla', or 'final'" }, { status: 400 });
   }
@@ -195,6 +202,7 @@ export async function POST(req: NextRequest) {
       resumeSummary: body.resumeSummary,
       dnlaSummary: body.dnlaSummary,
       priorInterviews: body.priorInterviews,
+      resumeHash: body.resumeFingerprint || undefined,
     });
   } catch (e) {
     logger.error("interview-start: createSession failed", { err: String(e), uid });

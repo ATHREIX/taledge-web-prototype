@@ -46,6 +46,10 @@ type Body = {
    *  it SERVER-SIDE, never trusted from the client. */
   inviteToken?: string;
   college?: string;
+  /** Client fingerprint of the resume fields submitted for scoring (lib/resume-hash). */
+  resumeFingerprint?: string;
+  /** Fingerprints stored when each interview round was conducted, keyed by round. */
+  interviewResumeHashes?: Record<string, string>;
 };
 
 // Neutralize any attempt by candidate content to forge the data-fence markers
@@ -576,6 +580,43 @@ Strictly valid JSON. No prose before or after.`;
         }))
       : [];
 
+    // ── Resume-swap detection ────────────────────────────────────────────────
+    // Compare the fingerprint of the resume being scored NOW against the
+    // fingerprints captured when each interview round was conducted. A mismatch
+    // means the interview was grounded in a DIFFERENT resume than the one being
+    // scored (upload A → interview → upload B → score): flag it as a danger
+    // cross-flag (feeds the success-probability penalty) and record everything
+    // in the audit ledger. Fingerprints are client-computed over the RAW
+    // profile fields (the two routes receive differently composed summaries).
+    const resumeHashAtScoring =
+      typeof body.resumeFingerprint === "string" ? body.resumeFingerprint.slice(0, 64) : "";
+    const interviewResumeHashes: Record<string, string> = {};
+    if (body.interviewResumeHashes && typeof body.interviewResumeHashes === "object") {
+      for (const [k, v] of Object.entries(body.interviewResumeHashes).slice(0, 8)) {
+        if (typeof v === "string" && v) interviewResumeHashes[String(k).slice(0, 20)] = v.slice(0, 64);
+      }
+    }
+    const roundHashes = Object.values(interviewResumeHashes).filter(Boolean);
+    const resumeChangedMidFlow =
+      roundHashes.length > 0 && roundHashes.some((h) => h !== resumeHashAtScoring);
+    if (resumeChangedMidFlow) {
+      logger.warn("fit-score: resume changed between interview and scoring", {
+        uid,
+        studentId: body.studentId,
+        resumeHashAtScoring,
+        interviewResumeHashes,
+      });
+      generated.cross_flags = [
+        ...generated.cross_flags.slice(0, 3),
+        {
+          label: "Resume changed between interview and scoring",
+          verdict:
+            "The resume submitted for scoring differs from the one the interview was conducted with — resume-derived scores may not describe the interviewed profile.",
+          tone: "danger" as const,
+        },
+      ];
+    }
+
     // ── Reconcile headline scores against the evidence-grounded sub-scores ────
     // technical_score / behavioural_score are recomputed as the mean of their
     // breakdown rows (kept -1 when that stage is pending). fit_score is a
@@ -669,6 +710,9 @@ Strictly valid JSON. No prose before or after.`;
       },
       resumeRowEvidence,
       resumePending: !hasResume,
+      resumeHashAtScoring,
+      interviewResumeHashes,
+      resumeChangedMidFlow,
       rowScores,
       llmHeadline: { technical: llmTech, behavioural: llmBehav, fit: llmFit, success: llmSuccess },
       computedHeadline: {
