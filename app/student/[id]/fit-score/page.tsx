@@ -1124,7 +1124,22 @@ function RubricSection({
               <Eyebrow>{g.group}</Eyebrow>
               <div className="mt-4 space-y-3">
                 {(Array.isArray(g.rows) ? g.rows : []).map(([label, value]) => {
-                  const v = Math.max(0, Math.min(100, Number(value)));
+                  // -1 = "not assessed" (no grounding data — excluded from the
+                  // component average server-side). Rendering it as 0% would
+                  // falsely read as a terrible score.
+                  const raw = Number(value);
+                  if (raw < 0) {
+                    return (
+                      <div key={String(label)}>
+                        <div className="mb-1 flex items-center justify-between text-xs">
+                          <span className="text-ink-700 font-medium">{label}</span>
+                          <span className="font-semibold text-ink-400">Not assessed</span>
+                        </div>
+                        <Bar value={0} tone="muted" />
+                      </div>
+                    );
+                  }
+                  const v = Math.max(0, Math.min(100, raw));
                   return (
                     <div key={String(label)}>
                       <div className="mb-1 flex items-center justify-between text-xs">
