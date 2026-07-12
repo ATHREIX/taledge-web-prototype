@@ -768,6 +768,9 @@ Strictly valid JSON. No prose before or after.`;
       drift: auditDrift,
       crossFlags: generated.cross_flags,
       penaltyApplied,
+      // Full report snapshot — powers the "previous attempts" history. JSON
+      // string: Firestore rejects the breakdowns' nested arrays as fields.
+      report: JSON.stringify(generated),
     });
 
     // ── Persist the result to the talent store ───────────────────────────────

@@ -146,20 +146,31 @@ function FitScorePageInner() {
   // Score-evidence ledger (owner view): the durable audit behind THIS report —
   // per-question cells + resume row evidence — so "why did I get this score?"
   // is answerable from stored data, on the page, for every candidate.
-  const [audit, setAudit] = useState<{
+  type AuditDoc = {
+    id?: string;
     perQuestionMatrix?: { q: number; question: string; answerScore: number; evidence: string; cells?: Record<string, number> }[];
     resumeRowEvidence?: { row: string; evidence: string }[];
     resumePending?: boolean;
     ts?: number;
-  } | null>(null);
+    targetRole?: string;
+    computedHeadline?: { technical: number; behavioural: number; fit: number; success: number };
+    report?: string;
+  };
+  // audits[0] = newest attempt (drives the evidence panel); the full list
+  // powers the "previous attempts" history — every generation is kept.
+  const [audits, setAudits] = useState<AuditDoc[]>([]);
+  const audit = audits[0] ?? null;
+  // When set, the page is showing a PREVIOUS attempt's report (read-only view
+  // of that snapshot); null = the current/latest report.
+  const [viewingAttempt, setViewingAttempt] = useState<AuditDoc | null>(null);
   useEffect(() => {
     if (recruiterView) return;
     let alive = true;
     (async () => {
       try {
-        const r = await authedFetch(`/api/reports/scoring-audit?studentId=${encodeURIComponent(id)}&limit=1`);
+        const r = await authedFetch(`/api/reports/scoring-audit?studentId=${encodeURIComponent(id)}&limit=10`);
         const d = await r.json();
-        if (alive && d?.ok && Array.isArray(d.audits) && d.audits[0]) setAudit(d.audits[0]);
+        if (alive && d?.ok && Array.isArray(d.audits)) setAudits(d.audits);
       } catch {
         /* evidence panel is best-effort */
       }
@@ -977,6 +988,90 @@ function FitScorePageInner() {
                   ))}
                 </Card>
               )}
+            </motion.section>
+            )}
+
+            {/* INTERVIEW ATTEMPTS - every Fit Score generation is kept as its
+                own attempt (scoringAudits ledger); the candidate can open any
+                previous attempt's report. Owner view only. */}
+            {!recruiterView && audits.length > 0 && (
+            <motion.section variants={itemVariants} className="mt-12">
+              <div className="mb-6">
+                <Eyebrow>Attempt history</Eyebrow>
+                <Heading className="mt-3 sm:text-3xl">Your Fit Score attempts</Heading>
+                <p className="mt-2 max-w-2xl text-sm text-ink-500">
+                  Every generated report is kept. A new interview always produces a NEW
+                  report — previous ones stay available here for comparison.
+                </p>
+                {viewingAttempt && (
+                  <div className="mt-3 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    <span>
+                      Viewing the report generated on {viewingAttempt.ts ? new Date(viewingAttempt.ts).toLocaleString() : "an earlier date"} — not your latest result.
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        // Restore the latest attempt's snapshot — no paid regeneration.
+                        try {
+                          if (audits[0]?.report) setReport(normalizeReport(JSON.parse(audits[0].report as string)));
+                        } catch { /* keep whatever is shown */ }
+                        setViewingAttempt(null);
+                      }}
+                    >
+                      Back to latest
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <Card variant="default" className="rounded-xl2 overflow-hidden p-0">
+                <div className="grid grid-cols-12 border-b border-ink-200/40 bg-ink-50/60 px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-ink-500">
+                  <div className="col-span-4">Attempt</div>
+                  <div className="col-span-2 text-right">Fit</div>
+                  <div className="col-span-2 text-right">Technical</div>
+                  <div className="col-span-2 text-right">Behavioural</div>
+                  <div className="col-span-2 text-right">View</div>
+                </div>
+                {audits.map((a, i) => {
+                  const h = a.computedHeadline;
+                  const fmtScore = (v?: number) => (v == null || v < 0 ? "Pending" : `${v}%`);
+                  return (
+                    <div key={a.id || a.ts || i} className="grid grid-cols-12 items-center border-b border-ink-100 px-6 py-4 text-sm last:border-0">
+                      <div className="col-span-4 font-medium text-ink-800">
+                        {a.ts ? new Date(a.ts).toLocaleString() : `Attempt ${audits.length - i}`}
+                        {i === 0 && <Badge tone="brand" className="ml-2">Latest</Badge>}
+                      </div>
+                      <div className="col-span-2 text-right font-bold tabular-nums">{fmtScore(h?.fit)}</div>
+                      <div className="col-span-2 text-right tabular-nums">{fmtScore(h?.technical)}</div>
+                      <div className="col-span-2 text-right tabular-nums">{fmtScore(h?.behavioural)}</div>
+                      <div className="col-span-2 text-right">
+                        {a.report ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              try {
+                                const parsed = JSON.parse(a.report as string);
+                                setReport(normalizeReport(parsed));
+                                setViewingAttempt(a);
+                                window.scrollTo({ top: 0, behavior: "smooth" });
+                              } catch {
+                                /* corrupt snapshot — ignore */
+                              }
+                            }}
+                          >
+                            {i === 0 ? "Reload" : "View"}
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-ink-400">No snapshot</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </Card>
             </motion.section>
             )}
 

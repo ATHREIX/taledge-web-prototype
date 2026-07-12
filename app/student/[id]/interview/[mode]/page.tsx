@@ -1939,6 +1939,14 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
 
     try {
       localStorage.removeItem(`taledge:fit-score:${id}`);
+      // ATTEMPT ISOLATION: starting a NEW round supersedes any previous
+      // attempt's stored transcript for this mode. Without this, an old
+      // abandoned attempt's answers could be scored as if they were this
+      // round's evidence (a Fit Score generated seconds after a fresh round
+      // started was built from a stale morning transcript). Previous REPORTS
+      // stay viewable — they live server-side in the scoringAudits ledger.
+      localStorage.removeItem(`taledge:interview:${id}:${mode}`);
+      localStorage.removeItem(`taledge:interview:${id}:${mode}:updatedAt`);
     } catch (e) {}
     if (preloadedSession) {
       finishConnect();

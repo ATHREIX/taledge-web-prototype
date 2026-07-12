@@ -87,6 +87,12 @@ export type ScoringAudit = {
   crossFlags: { label: string; verdict: string; tone: string }[];
   /** Success-probability penalty actually applied from flags. */
   penaltyApplied: number;
+  /** The FULL generated report of this attempt (same shape the Fit Score page
+   *  renders). Each generation is its own attempt — the candidate can open any
+   *  previous attempt's report from the history panel. Stored as a JSON string
+   *  to sidestep Firestore's nested-array limits (breakdown rows are arrays of
+   *  arrays). */
+  report?: string;
 };
 
 const capMsgs = (msgs: Msg[], perMsg = 1200, maxMsgs = 120): Msg[] =>
