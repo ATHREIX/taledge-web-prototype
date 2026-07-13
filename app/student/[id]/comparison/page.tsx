@@ -18,6 +18,7 @@ import {
 } from "@/components/ui";
 import { authedFetch } from "@/lib/api-client";
 import { containerVariants, itemVariants } from "@/lib/motion";
+import { resolveBehaviouralKey } from "@/lib/transcript-keys";
 
 type Msg = { role: "assistant" | "user"; content: string };
 type Row = [string, number];
@@ -58,26 +59,10 @@ const ROUNDS = {
   dnla: {
     label: "DNLA Interview",
     short: "DNLA (behavioural)",
-    // The guided funnel chains technical→final→fit-score and never writes
-    // `:dnla`, so a candidate who finished the real funnel would otherwise be
-    // told the behavioural round is missing. Resolve to the first key that
-    // actually holds a transcript - `:behavioural`, then `:dnla`, then
-    // `:final` - mirroring fit-score/page.tsx. Defaults to `:dnla` (seed demo
-    // candidate-001 has a `:dnla` transcript, and SSR has no localStorage).
-    transcriptKey: (id: string) => {
-      const candidates = [
-        `taledge:interview:${id}:behavioural`,
-        `taledge:interview:${id}:dnla`,
-        `taledge:interview:${id}:final`,
-      ];
-      if (typeof window !== "undefined") {
-        for (const k of candidates) {
-          const v = localStorage.getItem(k);
-          if (v && v !== "[]") return k;
-        }
-      }
-      return candidates[1];
-    },
+    // Resolve to the behavioural key that actually holds a USER answer (shared
+    // helper) — a greeting-only stub must not shadow the completed round, or the
+    // comparison wrongly reports the behavioural round as missing.
+    transcriptKey: (id: string) => resolveBehaviouralKey(id),
     primary: "behavioural" as const,
     interviewMode: "dnla",
   },

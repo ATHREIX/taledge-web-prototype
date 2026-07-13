@@ -19,6 +19,7 @@ import {
 } from "@/components/ui";
 import { authedFetch } from "@/lib/api-client";
 import { containerVariants, itemVariants } from "@/lib/motion";
+import { resolveBehaviouralKey } from "@/lib/transcript-keys";
 
 type Msg = { role: "assistant" | "user"; content: string };
 type Row = [string, number];
@@ -59,25 +60,11 @@ const KINDS = {
   dnla: {
     label: "Behavioural Interview",
     eyebrow: "Behavioural Interview Report",
-    // The guided funnel writes the behavioural transcript to `:behavioural` (and
-    // never `:dnla`), so resolve to the first key that actually holds a transcript
-    // - `:behavioural`, then `:dnla` (legacy/seed), then `:final` - mirroring
-    // fit-score + comparison. Otherwise a candidate who finished the real funnel is
-    // wrongly told "No interview evidence yet".
-    transcriptKey: (id: string) => {
-      const candidates = [
-        `taledge:interview:${id}:behavioural`,
-        `taledge:interview:${id}:dnla`,
-        `taledge:interview:${id}:final`,
-      ];
-      if (typeof window !== "undefined") {
-        for (const k of candidates) {
-          const v = localStorage.getItem(k);
-          if (v && v !== "[]") return k;
-        }
-      }
-      return candidates[1];
-    },
+    // Resolve to the behavioural key that actually holds a USER answer (shared
+    // helper) — a greeting-only stub from an abandoned round must not shadow the
+    // completed round stored under a fallback key, or the candidate is wrongly
+    // told "No interview evidence yet".
+    transcriptKey: (id: string) => resolveBehaviouralKey(id),
     primary: "behavioural" as const,
     desc: "Structured evaluation of the behavioural interview - psychometric and conduct signals from your transcript.",
   },
