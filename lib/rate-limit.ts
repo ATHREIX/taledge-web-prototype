@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { adminDb, isAdminConfigured } from "@/lib/firebase-admin";
+import { COLLECTIONS } from "@/lib/firestore/schema";
 import { logger } from "@/lib/logger";
 
 /**
@@ -25,7 +26,7 @@ type Bucket = { count: number; resetAt: number };
 const buckets = new Map<string, Bucket>();
 
 /** Shared Firestore collection holding one fixed-window counter doc per key. */
-const RATE_LIMIT_COLLECTION = "rateLimits";
+const RATE_LIMIT_COLLECTION = COLLECTIONS.rateLimits;
 
 export interface RateLimitResult {
   ok: boolean;

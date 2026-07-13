@@ -4,6 +4,7 @@ import os from "node:os";
 import fs from "node:fs";
 import { adminDb, isAdminConfigured } from "@/lib/firebase-admin";
 import { logger } from "@/lib/logger";
+import { COLLECTIONS } from "@/lib/firestore/schema";
 
 /**
  * Durable, owner-scoped coaching-session store. Mirrors the talent-store
@@ -28,7 +29,7 @@ export type CoachingSession = {
   createdAt: number;
 };
 
-const COL = "coachingSessions";
+const COL = COLLECTIONS.coachingSessions;
 const useFirestore = () => isAdminConfigured && !!adminDb;
 
 const DIR = path.join(os.tmpdir(), "taledge-talent");

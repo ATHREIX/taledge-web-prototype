@@ -16,19 +16,38 @@ import { z } from "zod";
  *  schemas, so the type and the validator can never drift apart.
  */
 
-// ── Collection names ─────────────────────────────────────────────────────────
+// ── Collection names — THE single source of truth ────────────────────────────
+// Every collection actually written in production is listed here exactly once,
+// and every store sources its name from this map (lib/talent-store COL, the
+// session/scoring-audit/dnla/coaching/rate-limit stores). Do NOT hard-code a
+// collection string anywhere else and do NOT keep a second list — that is how
+// two registries drift apart. The STRING VALUES are load-bearing (they are the
+// live Firestore collection ids); never change a value without a data migration.
 export const COLLECTIONS = {
   users: "users",
   candidates: "candidates",
   examAspirants: "examAspirants",
   institutes: "institutes",
+  recruiterJobs: "recruiterJobs",
+  recruiterInvites: "recruiterInvites",
+  recruiterShortlists: "recruiterShortlists",
+  shareLinks: "shareLinks",
+  interventions: "interventions",
+  coachingSessions: "coachingSessions",
+  dnlaSessions: "dnlaSessions",
+  interviewSessions: "interviewSessions",
+  scoringAudits: "scoringAudits",
+  rateLimits: "rateLimits",
+
+  // ── Reserved: SEEDED by scripts/seed.ts for demo data, but NOT read by the
+  //    current app (no runtime .collection() access). Kept so the seed script
+  //    stays typed and the list is honest about what exists in the database;
+  //    do not build new reads against these without a decision to make them
+  //    first-class. (`reports` was removed — it was never written OR read.)
+  organisations: "organisations",
   recruiters: "recruiters",
   coaches: "coaches",
-  organisations: "organisations",
   recruiterPool: "recruiterPool",
-  coachingSessions: "coachingSessions",
-  interviewSessions: "interviewSessions",
-  reports: "reports",
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];

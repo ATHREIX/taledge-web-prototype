@@ -14,6 +14,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { adminDb, isAdminConfigured } from "@/lib/firebase-admin";
+import { COLLECTIONS } from "@/lib/firestore/schema";
 import { logger } from "@/lib/logger";
 
 export interface TranscriptEntry {
@@ -61,7 +62,7 @@ export interface SessionState {
 }
 
 const TTL_MS = 6 * 60 * 60 * 1000; // 6h
-const COLLECTION = "interviewSessions";
+const COLLECTION = COLLECTIONS.interviewSessions;
 /** Proctoring: a candidate is blocked once violations REACH this count. Owned
  *  server-side so it stays consistent with the atomic increment path below. */
 export const MAX_PROCTOR_VIOLATIONS = 3;

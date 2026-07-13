@@ -1,5 +1,6 @@
 import { adminDb, isAdminConfigured } from "./firebase-admin";
 import { logger } from "./logger";
+import { COLLECTIONS } from "./firestore/schema";
 
 /**
  * Scoring audit ledger — one document per Fit Score generation.
@@ -17,7 +18,7 @@ import { logger } from "./logger";
  * evidence-grounded sub-scores, i.e. the rubric prompt needs retuning.
  */
 
-const COLLECTION = "scoringAudits";
+const COLLECTION = COLLECTIONS.scoringAudits;
 
 /** Bump when the fit-score prompt/rubric changes materially, so audits are
  *  comparable only within the same prompt generation. */

@@ -15,6 +15,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { adminDb, isAdminConfigured } from "@/lib/firebase-admin";
+import { COLLECTIONS } from "@/lib/firestore/schema";
 import { logger } from "@/lib/logger";
 import type { NormalizedDnla } from "@/lib/dnla-mapping";
 
@@ -43,7 +44,7 @@ export interface DnlaSession {
 }
 
 const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-const COLLECTION = "dnlaSessions";
+const COLLECTION = COLLECTIONS.dnlaSessions;
 const DIR = path.join(os.tmpdir(), "taledge-dnla");
 const FILE = path.join(DIR, "dnla.json");
 

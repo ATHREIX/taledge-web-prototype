@@ -20,6 +20,7 @@ import path from "path";
 import crypto from "crypto";
 import { adminDb, isAdminConfigured } from "@/lib/firebase-admin";
 import { logger } from "@/lib/logger";
+import { COLLECTIONS } from "@/lib/firestore/schema";
 import {
   students as seedStudents,
   institutes as seedInstitutes,
@@ -154,15 +155,19 @@ export type Intervention = {
 
 /* ------------------------------ backend --------------------------------- */
 
+// Sourced from the single COLLECTIONS registry (lib/firestore/schema) so the
+// name of every collection lives in exactly one place. The short keys here
+// (jobs/invites/shortlists) are the local call-site names; the VALUES are the
+// canonical strings from the registry — identical to before, no data change.
 const COL = {
-  candidates: "candidates",
-  institutes: "institutes",
-  examAspirants: "examAspirants",
-  jobs: "recruiterJobs",
-  shortlists: "recruiterShortlists",
-  shareLinks: "shareLinks",
-  interventions: "interventions",
-  invites: "recruiterInvites",
+  candidates: COLLECTIONS.candidates,
+  institutes: COLLECTIONS.institutes,
+  examAspirants: COLLECTIONS.examAspirants,
+  jobs: COLLECTIONS.recruiterJobs,
+  shortlists: COLLECTIONS.recruiterShortlists,
+  shareLinks: COLLECTIONS.shareLinks,
+  interventions: COLLECTIONS.interventions,
+  invites: COLLECTIONS.recruiterInvites,
 } as const;
 
 const useFirestore = () => isAdminConfigured && !!adminDb;
