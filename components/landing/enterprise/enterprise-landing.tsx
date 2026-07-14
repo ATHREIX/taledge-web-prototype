@@ -113,28 +113,19 @@ const MODULES = [
 
 const ARCHITECTURE = [
   {
-    n: "01",
-    title: "AI technical interview",
-    body: "Upload a résumé or job description, then a proctored voice AI runs an adaptive technical interview grounded in the candidate's skills, projects and target role - transcribed and rubric-scored live.",
-    chips: ["Résumé / JD", "Adaptive", "Proctored"],
+    n: "1",
+    title: "Give your interview",
+    body: "A live voice AI runs your technical & behavioural rounds.",
   },
   {
-    n: "02",
-    title: "DNLA psychometrics",
-    body: "The candidate completes the DNLA questionnaire (administered by our licensed partner in Germany), mapping behavioural competencies across achievement, interpersonal, execution and resilience.",
-    chips: ["Motivation", "Resilience", "Execution"],
+    n: "2",
+    title: "Take the DNLA test",
+    body: "A quick psychometric check of how you work.",
   },
   {
-    n: "03",
-    title: "AI behavioural interview",
-    body: "A second AI round, tailored to the DNLA report, probes the candidate's development areas with situational and adversarial follow-ups - again transcribed and scored.",
-    chips: ["Behavioural", "DNLA-targeted", "Scored"],
-  },
-  {
-    n: "04",
-    title: "The Fit Score, crystallised",
-    body: "Interview evidence, DNLA and résumé signals fuse into one defensible Fit Score and success probability - then fan out to recruiters on consent.",
-    chips: ["Fit Score", "Success %", "Published"],
+    n: "3",
+    title: "Get your Fit Score",
+    body: "One clear number, plus a plan to improve.",
   },
 ];
 
@@ -230,56 +221,50 @@ const FAQ = [
 
 const STAKEHOLDERS = [
   {
-    tag: "For candidates & students",
-    title: "Prove what you can do — and see exactly how to improve.",
-    body: "You are the centre of Taledge. Take AI voice interviews and a DNLA psychometric assessment, get one honest Fit Score built from your own answers, and receive a step-by-step plan to close every gap. Your evidence is yours — recruiters only see it when you choose to publish.",
-    points: [
-      "Adaptive AI voice interviews — technical + behavioural",
-      "A DNLA profile of how you actually work",
-      "One Fit Score with a full, quotable evidence trail",
-      "A personalised coaching pathway for every gap",
-      "Publish to recruiters only when you decide to",
-    ],
-    cta: { href: "/register", label: "Start free as a candidate" },
+    tag: "For candidates",
+    title: "Prove what you can do.",
+    body: "Take the interview + DNLA test, get one honest Fit Score and a plan to improve.",
+    points: ["AI voice interviews", "DNLA profile", "Your Fit Score + plan", "You control who sees it"],
+    cta: { href: "/register", label: "Start free" },
   },
   {
     tag: "For recruiters",
-    title: "Shortlist on evidence, not résumé keywords.",
-    body: "Browse a role-matched pool of candidates who have already been interviewed and psychometrically profiled. Every candidate carries verified technical, behavioural and success-probability signals — published to you only with the candidate's consent.",
-    points: ["Role-matched, pre-assessed candidate pool", "Verified interview + psychometric evidence", "Success-probability ranking", "Consent-based, shareable reports"],
+    title: "Shortlist on proof.",
+    body: "A pool of pre-assessed candidates, ranked by real evidence — shared only with consent.",
+    points: ["Pre-assessed pool", "Verified evidence", "Success-probability ranking"],
   },
   {
-    tag: "For institutes & universities",
-    title: "See your whole cohort's readiness at a glance.",
-    body: "Track every student's assessment progress, spot at-risk learners early with readiness heatmaps, plan targeted interventions, and share shortlisted, consented candidates with your recruiter partners.",
-    points: ["Cohort readiness heatmaps", "Early-warning at-risk lists", "Intervention planning + impact tracking", "Consent-scoped recruiter sharing"],
+    tag: "For institutes",
+    title: "See your whole cohort.",
+    body: "Track readiness, spot at-risk students early, plan interventions, share with recruiters.",
+    points: ["Readiness heatmaps", "At-risk alerts", "Recruiter sharing"],
   },
   {
     tag: "For coaches",
-    title: "Coach against real, measured gaps.",
-    body: "Every coaching sprint is anchored to a candidate's actual Fit Score gaps and DNLA development areas — so sessions target what genuinely moves the number, and progress is measurable over time.",
-    points: ["Gap-anchored coaching sessions", "DNLA development areas surfaced", "Risk-ranked priorities", "Measurable progress over time"],
+    title: "Coach the real gaps.",
+    body: "Every session targets a candidate's actual score gaps — with measurable progress.",
+    points: ["Gap-anchored sessions", "Clear priorities", "Progress over time"],
   },
 ];
 
 /* ---- AI interview deep-dive ---- */
 
 const INTERVIEW_FEATURES = [
-  { title: "Adaptive, never scripted", body: "Each question builds on the candidate's last answer and climbs in difficulty as they succeed. A struggling candidate is met where they are, not piled on." },
-  { title: "Two focused rounds", body: "A technical / skills round grounded in the résumé and target role, then a behavioural round tuned to the candidate's DNLA profile." },
-  { title: "Real, run-it-live coding", body: "For technical roles the candidate writes and executes code in an in-browser compiler; whether it compiles and produces correct output feeds the score." },
-  { title: "Live-proctored throughout", body: "Face verification and environment checks run for the whole session, so every result is defensible and consistent for everyone." },
-  { title: "Scored on quoted evidence", body: "Every answer is rated against a rubric with the candidate's own words as proof; headline numbers are recomputed by fixed code, never guessed by the AI." },
-  { title: "~10–15 minutes", body: "Adaptive length — long enough for genuine signal, short enough to finish comfortably in one sitting." },
+  { title: "Adaptive", body: "Questions build on your last answer." },
+  { title: "Two rounds", body: "Technical, then behavioural." },
+  { title: "Live coding", body: "Write & run code in the browser." },
+  { title: "Proctored", body: "Face + environment checks throughout." },
+  { title: "Evidence-scored", body: "Rated on your own words, not guesses." },
+  { title: "~10–15 min", body: "Long enough to matter, short to finish." },
 ];
 
 /* ---- DNLA assessment deep-dive ---- */
 
 const DNLA_GROUPS = [
-  { group: "Achievement Dynamics", blurb: "Drive, intrinsic motivation and self-confidence — the engine behind getting things finished.", items: ["Drive for Results", "Initiative"] },
-  { group: "Interpersonal Skills", blurb: "Collaboration, empathy and how feedback lands — how a person works with others.", items: ["Collaboration", "Feedback Reception"] },
-  { group: "Execution", blurb: "Turning intent into finished, correct work under real-world constraints.", items: ["Problem Solving", "Attention to Detail"] },
-  { group: "Stress & Resilience", blurb: "Composure under pressure and adaptability when the ground shifts.", items: ["Composure", "Adaptability"] },
+  { group: "Achievement", blurb: "Drive & motivation.", items: ["Drive for Results", "Initiative"] },
+  { group: "Interpersonal", blurb: "How you work with others.", items: ["Collaboration", "Feedback"] },
+  { group: "Execution", blurb: "Getting things done right.", items: ["Problem Solving", "Attention to Detail"] },
+  { group: "Resilience", blurb: "Composure under pressure.", items: ["Composure", "Adaptability"] },
 ];
 
 /* ------------------------------- nav ------------------------------ */
@@ -678,39 +663,23 @@ function Credibility() {
 function Architecture() {
   return (
     <section id="how" className="scroll-mt-24 bg-white">
-      <div className="mx-auto max-w-[80rem] px-5 py-24 sm:px-8">
-        <Reveal className="max-w-2xl">
+      <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
+        <Reveal className="mx-auto max-w-2xl text-center">
           <SectionLabel>How it works</SectionLabel>
-          <h2 className="mt-4 text-[2.1rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[2.6rem]">
-            From résumé to Fit Score in four steps
+          <h2 className="mt-4 text-[2.4rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[3rem]">
+            Three simple steps
           </h2>
-          <p className="mt-4 text-[1.05rem] leading-relaxed text-slate-600">
-            A new candidate goes through four sequential stages. Each one produces real
-            evidence — and feeds the next — so the final Fit Score is earned, not guessed.
-          </p>
         </Reveal>
 
-        <div className="mt-14 grid gap-5 lg:grid-cols-4">
+        <div className="mt-16 grid gap-6 lg:grid-cols-3">
           {ARCHITECTURE.map((a, i) => (
-            <Reveal key={a.n} delay={i * 0.06}>
-              <div className="group relative flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-6 transition-all hover:border-[#0057FF]/40 hover:shadow-[0_20px_50px_-30px_rgba(8,26,58,0.4)]">
-                <div className="flex items-center justify-between">
-                  <span className="grid h-11 w-11 place-items-center rounded-lg bg-[#0057FF] text-[15px] font-extrabold text-white">
-                    {a.n}
-                  </span>
-                  {i < ARCHITECTURE.length - 1 && (
-                    <Arrow className="hidden text-slate-300 transition-colors group-hover:text-[#0057FF] lg:block" />
-                  )}
-                </div>
-                <h3 className="mt-5 text-[1.05rem] font-bold text-[#081A3A]">{a.title}</h3>
-                <p className="mt-2 flex-1 text-[13.5px] leading-relaxed text-slate-500">{a.body}</p>
-                <div className="mt-4 flex flex-wrap gap-1.5">
-                  {a.chips.map((c) => (
-                    <span key={c} className="rounded-full bg-[#0057FF]/[0.07] px-2.5 py-1 text-[11px] font-semibold text-[#0057FF]">
-                      {c}
-                    </span>
-                  ))}
-                </div>
+            <Reveal key={a.n} delay={i * 0.08}>
+              <div className="flex h-full flex-col items-center rounded-2xl border border-slate-200 bg-white p-9 text-center transition-all hover:border-[#0057FF]/40 hover:shadow-[0_24px_60px_-34px_rgba(8,26,58,0.45)]">
+                <span className="grid h-16 w-16 place-items-center rounded-2xl bg-[#0057FF] text-[28px] font-extrabold text-white">
+                  {a.n}
+                </span>
+                <h3 className="mt-6 text-[1.5rem] font-extrabold text-[#081A3A]">{a.title}</h3>
+                <p className="mt-3 text-[1.05rem] font-medium leading-relaxed text-slate-500">{a.body}</p>
               </div>
             </Reveal>
           ))}
@@ -723,7 +692,7 @@ function Architecture() {
 function Modules() {
   return (
     <section id="modules" className="scroll-mt-24 border-y border-slate-200/70 bg-slate-50/60">
-      <div className="mx-auto max-w-[80rem] px-5 py-24 sm:px-8">
+      <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
         <Reveal className="max-w-2xl">
           <SectionLabel>Platform modules</SectionLabel>
           <h2 className="mt-4 text-[2.1rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[2.6rem]">
@@ -762,44 +731,39 @@ function Stakeholders() {
   const [primary, ...rest] = STAKEHOLDERS;
   return (
     <section id="who" className="scroll-mt-24 bg-white">
-      <div className="mx-auto max-w-[80rem] px-5 py-24 sm:px-8">
-        <Reveal className="max-w-2xl">
+      <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
+        <Reveal className="mx-auto max-w-2xl text-center">
           <SectionLabel>Who it&apos;s for</SectionLabel>
-          <h2 className="mt-4 text-[2.1rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[2.6rem]">
-            One platform, built around the candidate
+          <h2 className="mt-4 text-[2.4rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[3rem]">
+            Built around you
           </h2>
-          <p className="mt-4 text-[1.05rem] leading-relaxed text-slate-600">
-            Everything starts with the person being assessed. Recruiters, institutes and
-            coaches all act on the evidence the candidate produces — and only ever with
-            the candidate&apos;s consent.
-          </p>
         </Reveal>
 
-        {/* Primary: candidate — full-width feature card */}
+        {/* Primary: candidate */}
         <Reveal delay={0.06}>
-          <div className="mt-12 grid gap-8 overflow-hidden rounded-2xl border border-[#0057FF]/20 bg-[#0057FF]/[0.03] p-8 sm:p-10 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="mt-14 grid items-center gap-8 overflow-hidden rounded-3xl border border-[#0057FF]/20 bg-[#0057FF]/[0.04] p-9 sm:p-12 lg:grid-cols-[1fr_1fr]">
             <div>
-              <span className="inline-flex items-center gap-2 rounded-full bg-[#0057FF] px-3 py-1 text-[12px] font-semibold text-white">
-                <span className="h-1.5 w-1.5 rounded-full bg-white" /> {primary.tag}
+              <span className="inline-flex items-center gap-2 rounded-full bg-[#0057FF] px-4 py-1.5 text-[14px] font-bold text-white">
+                {primary.tag}
               </span>
-              <h3 className="mt-5 text-[1.6rem] font-extrabold leading-tight tracking-[-0.01em] text-[#081A3A] sm:text-[1.9rem]">
+              <h3 className="mt-6 text-[2rem] font-extrabold leading-tight tracking-[-0.01em] text-[#081A3A] sm:text-[2.5rem]">
                 {primary.title}
               </h3>
-              <p className="mt-4 max-w-xl text-[1rem] leading-relaxed text-slate-600">{primary.body}</p>
+              <p className="mt-4 text-[1.2rem] font-medium leading-relaxed text-slate-600">{primary.body}</p>
               {primary.cta && (
                 <Link
                   href={primary.cta.href}
-                  className="group mt-7 inline-flex items-center gap-2 rounded-md bg-[#0057FF] px-6 py-3.5 text-[15px] font-semibold text-white shadow-sm transition-all hover:bg-[#0F4CFF] hover:shadow-lg"
+                  className="group mt-8 inline-flex items-center gap-2 rounded-lg bg-[#0057FF] px-8 py-4 text-[17px] font-bold text-white shadow-sm transition-all hover:bg-[#0F4CFF] hover:shadow-lg"
                 >
                   {primary.cta.label}
                   <Arrow className="transition-transform group-hover:translate-x-1" />
                 </Link>
               )}
             </div>
-            <ul className="grid content-start gap-3">
+            <ul className="grid gap-3 sm:grid-cols-2">
               {primary.points.map((p) => (
-                <li key={p} className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 text-[14px] font-medium text-slate-700">
-                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#0057FF]/[0.08] text-[#0057FF]"><Check /></span>
+                <li key={p} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-5 text-[16px] font-bold text-[#081A3A]">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#0057FF] text-white"><Check /></span>
                   {p}
                 </li>
               ))}
@@ -807,22 +771,14 @@ function Stakeholders() {
           </div>
         </Reveal>
 
-        {/* Supporting stakeholders */}
+        {/* Supporting stakeholders — one bold line each */}
         <div className="mt-6 grid gap-5 lg:grid-cols-3">
           {rest.map((s, i) => (
             <Reveal key={s.tag} delay={i * 0.06}>
-              <article className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-7">
-                <p className="text-[12px] font-semibold uppercase tracking-wide text-[#0057FF]">{s.tag}</p>
-                <h3 className="mt-2 text-[1.2rem] font-bold leading-snug text-[#081A3A]">{s.title}</h3>
-                <p className="mt-2 text-[13.5px] leading-relaxed text-slate-500">{s.body}</p>
-                <ul className="mt-5 grid gap-2.5 border-t border-slate-100 pt-5">
-                  {s.points.map((p) => (
-                    <li key={p} className="flex items-start gap-2.5 text-[13px] font-medium text-slate-700">
-                      <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[#0057FF]/[0.08] text-[#0057FF]"><Check className="h-2.5 w-2.5" /></span>
-                      {p}
-                    </li>
-                  ))}
-                </ul>
+              <article className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-8">
+                <p className="text-[14px] font-bold uppercase tracking-wide text-[#0057FF]">{s.tag}</p>
+                <h3 className="mt-2 text-[1.5rem] font-extrabold leading-tight text-[#081A3A]">{s.title}</h3>
+                <p className="mt-3 text-[1.05rem] font-medium leading-relaxed text-slate-500">{s.body}</p>
               </article>
             </Reveal>
           ))}
@@ -835,32 +791,27 @@ function Stakeholders() {
 function AiInterview() {
   return (
     <section id="interview" className="scroll-mt-24 border-y border-slate-200/70 bg-slate-50/60">
-      <div className="mx-auto max-w-[80rem] px-5 py-24 sm:px-8">
-        <Reveal className="max-w-2xl">
-          <SectionLabel>The Taledge AI interview</SectionLabel>
-          <h2 className="mt-4 text-[2.1rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[2.6rem]">
-            A real interview, run by a live voice AI
+      <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
+        <Reveal className="mx-auto max-w-2xl text-center">
+          <SectionLabel>The AI interview</SectionLabel>
+          <h2 className="mt-4 text-[2.4rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[3rem]">
+            A real interview. Live voice AI.
           </h2>
-          <p className="mt-4 text-[1.05rem] leading-relaxed text-slate-600">
-            Not a multiple-choice test. A spoken, adaptive interview that listens to each
-            answer, follows up like a seasoned interviewer, and turns the whole
-            conversation into scored, quotable evidence.
+          <p className="mt-4 text-[1.2rem] font-medium text-slate-600">
+            It listens, follows up, and scores every answer.
           </p>
         </Reveal>
 
-        <div className="mt-14 grid items-start gap-12 lg:grid-cols-2">
+        <div className="mt-16 grid items-center gap-12 lg:grid-cols-2">
           <Reveal y={34}>
             <InterviewMock />
-            <p className="mt-3 text-center text-[11px] font-medium uppercase tracking-wider text-slate-400">
-              Representative interview surface
-            </p>
           </Reveal>
           <div className="grid gap-4 sm:grid-cols-2">
             {INTERVIEW_FEATURES.map((f, i) => (
               <Reveal key={f.title} delay={(i % 2) * 0.06}>
-                <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-6">
-                  <h3 className="text-[1rem] font-bold text-[#081A3A]">{f.title}</h3>
-                  <p className="mt-1.5 text-[13.5px] leading-relaxed text-slate-500">{f.body}</p>
+                <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-7">
+                  <h3 className="text-[1.35rem] font-extrabold text-[#081A3A]">{f.title}</h3>
+                  <p className="mt-1.5 text-[1rem] font-medium leading-snug text-slate-500">{f.body}</p>
                 </div>
               </Reveal>
             ))}
@@ -874,59 +825,40 @@ function AiInterview() {
 function DnlaDeepDive() {
   return (
     <section id="dnla" className="scroll-mt-24 bg-white">
-      <div className="mx-auto max-w-[80rem] px-5 py-24 sm:px-8">
-        <div className="grid items-start gap-12 lg:grid-cols-[0.95fr_1.05fr]">
-          <Reveal>
-            <SectionLabel>The DNLA assessment</SectionLabel>
-            <h2 className="mt-4 text-[2.1rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[2.6rem]">
-              Not just what you know — how you actually work
-            </h2>
-            <p className="mt-4 text-[1.05rem] leading-relaxed text-slate-600">
-              DNLA (Discovering Natural Latent Abilities) is a validated psychometric
-              framework from established European assessment science. Where the interview
-              measures skill, DNLA measures the human competencies that decide whether
-              someone thrives in a real team — motivation, collaboration, execution and
-              resilience.
-            </p>
-            <div className="mt-6 grid gap-3">
-              {[
-                ["Benchmarked, not absolute", "Each competency is scored on a 1–7 scale against a top-performer benchmark, so a result means something concrete."],
-                ["Feeds the behavioural round", "Your DNLA development areas steer the AI behavioural interview, so it probes exactly what matters for you."],
-                ["Private by design", "Sensitive competency data stays owner-scoped and is never shared without explicit consent."],
-              ].map(([t, b]) => (
-                <div key={t} className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#0057FF]/[0.08] text-[#0057FF]"><Check /></span>
-                  <p className="text-[13.5px] leading-relaxed text-slate-600"><span className="font-bold text-[#081A3A]">{t}.</span> {b}</p>
+      <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
+        <Reveal className="mx-auto max-w-3xl text-center">
+          <span className="inline-flex items-center gap-2 rounded-full border border-[#0057FF]/20 bg-[#0057FF]/[0.06] px-4 py-1.5 text-[14px] font-bold text-[#0057FF]">
+            🇩🇪 World-class · from Germany
+          </span>
+          <h2 className="mt-6 text-[2.4rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[3rem]">
+            The DNLA test
+          </h2>
+          <p className="mt-4 text-[1.3rem] font-semibold text-slate-600">
+            The interview shows what you know.<br className="hidden sm:block" /> DNLA shows <span className="text-[#0057FF]">how you actually work.</span>
+          </p>
+        </Reveal>
+
+        <Reveal delay={0.08}>
+          <div className="mt-14 grid items-center gap-10 rounded-3xl border border-slate-200 bg-slate-50/60 p-8 sm:p-12 lg:grid-cols-[0.8fr_1.2fr]">
+            <div className="flex flex-col items-center">
+              <DnlaRadar size={220} />
+              <span className="mt-4 rounded-full bg-[#0057FF] px-4 py-1.5 text-[14px] font-bold text-white">Scored 1–7 vs top performers</span>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {DNLA_GROUPS.map((g) => (
+                <div key={g.group} className="rounded-2xl border border-slate-200 bg-white p-6">
+                  <p className="text-[1.4rem] font-extrabold text-[#081A3A]">{g.group}</p>
+                  <p className="mt-1 text-[1rem] font-medium text-slate-500">{g.blurb}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {g.items.map((it) => (
+                      <span key={it} className="rounded-full bg-[#0057FF]/[0.08] px-3 py-1 text-[13px] font-bold text-[#0057FF]">{it}</span>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
-          </Reveal>
-
-          <Reveal delay={0.08} y={30}>
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_30px_80px_-46px_rgba(8,26,58,0.45)] sm:p-8">
-              <div className="flex items-center justify-between">
-                <p className="text-[12px] font-semibold uppercase tracking-wide text-slate-400">Four competency groups</p>
-                <span className="rounded-full bg-[#0057FF]/[0.07] px-2.5 py-1 text-[11px] font-semibold text-[#0057FF]">Scored 1–7 vs benchmark</span>
-              </div>
-              <div className="mt-4 flex justify-center">
-                <DnlaRadar />
-              </div>
-              <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                {DNLA_GROUPS.map((g) => (
-                  <div key={g.group} className="rounded-xl border border-slate-200 p-4">
-                    <p className="text-[13.5px] font-bold text-[#081A3A]">{g.group}</p>
-                    <p className="mt-1 text-[12px] leading-relaxed text-slate-500">{g.blurb}</p>
-                    <div className="mt-2.5 flex flex-wrap gap-1.5">
-                      {g.items.map((it) => (
-                        <span key={it} className="rounded-full bg-[#0057FF]/[0.07] px-2 py-0.5 text-[11px] font-semibold text-[#0057FF]">{it}</span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Reveal>
-        </div>
+          </div>
+        </Reveal>
       </div>
     </section>
   );
@@ -935,7 +867,7 @@ function DnlaDeepDive() {
 function WhyTaledge() {
   return (
     <section className="border-y border-slate-200/70 bg-[#081A3A]">
-      <div className="mx-auto max-w-[80rem] px-5 py-24 sm:px-8">
+      <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
         <Reveal className="max-w-2xl">
           <span className="inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#7DA3FF]">
             <span aria-hidden className="h-px w-6 bg-[#7DA3FF]/60" /> Why Taledge
@@ -979,7 +911,7 @@ function WhyTaledge() {
 function Security() {
   return (
     <section id="security" className="scroll-mt-24 bg-white">
-      <div className="mx-auto max-w-[80rem] px-5 py-24 sm:px-8">
+      <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
         <div className="grid gap-12 lg:grid-cols-[0.9fr_1.1fr]">
           <Reveal>
             <SectionLabel>Trust &amp; governance</SectionLabel>
@@ -1026,7 +958,7 @@ function FaqSection() {
   const [open, setOpen] = useState<number | null>(0);
   return (
     <section id="faq" className="scroll-mt-24 border-t border-slate-200/70 bg-slate-50/60">
-      <div className="mx-auto max-w-3xl px-5 py-24 sm:px-8">
+      <div className="mx-auto max-w-3xl px-5 py-16 sm:px-8">
         <Reveal className="text-center">
           <SectionLabel>Questions</SectionLabel>
           <h2 className="mt-4 text-[2.1rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[2.6rem]">
@@ -1081,7 +1013,7 @@ function FaqSection() {
 function FinalCta() {
   return (
     <section className="bg-white">
-      <div className="mx-auto max-w-[80rem] px-5 py-24 sm:px-8">
+      <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
         <Reveal>
           <div className="relative overflow-hidden rounded-3xl bg-[#081A3A] px-8 py-16 text-center sm:px-16 sm:py-20">
             <div aria-hidden className="pointer-events-none absolute inset-0">
