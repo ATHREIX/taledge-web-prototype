@@ -75,7 +75,8 @@ function liveCaptionUsable(): boolean {
 //
 // LIVE_MIN_MINUTES     - never wrap before this many minutes (a substance floor).
 // LIVE_MIN_ANSWERS     - also require at least this many real answers before wrap.
-// LIVE_MAX_MINUTES      - hard time backstop; always ends by here (< the ~10-min cap).
+// LIVE_MAX_MINUTES      - hard time backstop; the round always ends by here (crosses
+// the ~10-min Live socket cap once, surviving via auto-reconnect).
 // LIVE_HARD_CAP_ASKED  - absolute backstop on questions asked.
 // ADAPTIVE length: the round ends when the interviewer has gathered enough signal
 // (its natural close), bounded by a substance floor and a hard ceiling — NOT a
@@ -93,6 +94,13 @@ const LIVE_MIN_MINUTES = 10;
 const LIVE_MIN_ANSWERS = 10;
 const LIVE_MAX_MINUTES = 15;
 const LIVE_HARD_CAP_ASKED = 40;
+// ABSOLUTE never-exceed ceiling. When a hard cap (time or question count) is
+// reached while the interviewer's last turn is still an UNANSWERED question, we
+// do NOT cut the candidate off — we signal [WRAP_UP] and give a bounded grace
+// so the round ends on a closing line or a completed answer, never on a naked
+// dangling question. This ceiling caps that grace so the round still can't run
+// away (15-min target + 2-min max grace).
+const LIVE_ABSOLUTE_MAX_MINUTES = 17;
 // Private director signals (never shown in the transcript; the system prompt
 // tells the model these are control messages, not the candidate).
 const LIVE_WRAP_UP_MSG = "[WRAP_UP]";
@@ -359,8 +367,8 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const liveMsgsRef = useRef<{ role: string; text: string }[]>([]);
   const wrapFallbackCountRef = useRef(0);
   // Wall-clock start of the live interview (set when the session goes live).
-  // Drives the time-based pacing so the round always runs a full ~30 min and is
-  // hard-capped at ~45 min, independent of how many questions have been asked.
+  // Drives the time-based pacing so the round runs its ~10-15 min adaptive window
+  // and is hard-capped at LIVE_MAX_MINUTES, independent of how many questions asked.
   const liveStartedAtRef = useRef(0);
   // Mirror the Live transcript into the page (drives the chat UI + the existing
   // localStorage persistence that the Fit Score report reads). Strip any
@@ -2405,8 +2413,8 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   };
 
   // CLIENT-DIRECTED ending. The Live model is instructed NEVER to conclude on its
-  // own; the client governs the whole lifecycle here so the round always runs a
-  // full ~30 minutes and can never end early, abruptly, or mid-answer:
+  // own; the client governs the whole lifecycle here so the round runs its
+  // ~10-15 min adaptive window and can never end early, abruptly, or mid-answer:
   //   1) hard backstops on time AND questions asked, so it can never run away;
   //   2) ONLY once at least LIVE_MIN_MINUTES have elapsed AND enough real answers
   //      exist, privately signal [WRAP_UP] so the interviewer gives its single
@@ -2476,8 +2484,31 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
       /\b(what|how|why|when|where|which|who|can you|could you|would you|tell me|walk me|describe|explain|give me)\b/i.test(beforeClose);
     const cleanClose = isClosing && !asksQuestion;
 
-    // 1) Absolute backstops - never let the round run away (time OR question count).
-    if (liveMinutes >= LIVE_MAX_MINUTES || aiTurns.length >= LIVE_HARD_CAP_ASKED) { gracefulEndLive(); return; }
+    // 1) Hard caps — never let the round run away, but never cut the candidate
+    //    off mid-question either. When a cap is reached while the interviewer's
+    //    LAST turn is still an unanswered question, signal [WRAP_UP] (so it
+    //    closes with a line instead of a dangling question) and let
+    //    armWrapFallback give a bounded grace for the candidate to finish + the
+    //    model to close. Only force-cut once past the ABSOLUTE ceiling, or when
+    //    nothing is hanging (last turn isn't an unanswered question).
+    const lastMsg = live.messages[live.messages.length - 1];
+    const lastIsUnansweredQuestion =
+      !!lastMsg && lastMsg.role === "ai" && /\?/.test(lastMsg.text) && !isClosing;
+    const capReached = liveMinutes >= LIVE_MAX_MINUTES || aiTurns.length >= LIVE_HARD_CAP_ASKED;
+    if (capReached) {
+      if (liveMinutes >= LIVE_ABSOLUTE_MAX_MINUTES || !lastIsUnansweredQuestion) {
+        gracefulEndLive();
+        return;
+      }
+      // At the cap with a question still hanging: ask the model to close, hold
+      // the end for the bounded grace window instead of cutting the candidate off.
+      if (!wrapUpSentRef.current) {
+        wrapUpSentRef.current = true;
+        try { live.sendControl(LIVE_WRAP_UP_MSG); } catch {}
+      }
+      armWrapFallback();
+      return;
+    }
 
     // 2) Full interview delivered → privately ask the interviewer to wrap up (once).
     if (!wrapUpSentRef.current && readyToWrap) {
@@ -2509,14 +2540,35 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
 
   // Time-driven backstop. The effect above is message-driven, so if the
   // conversation stalls (candidate goes quiet near the end) it might not re-run.
-  // This independent ticker guarantees the round still wraps at ~30 min and is
-  // always force-ended by ~45 min, even with no new messages arriving.
+  // This independent ticker guarantees the round still wraps at LIVE_MAX_MINUTES
+  // (grace to LIVE_ABSOLUTE_MAX_MINUTES for a hanging question), even with no new
+  // messages arriving.
   useEffect(() => {
     if (!liveActive) return;
     const tick = setInterval(() => {
       if (liveEndedRef.current || !liveStartedAtRef.current) return;
       const liveMinutes = (performance.now() - liveStartedAtRef.current) / 60000;
-      if (liveMinutes >= LIVE_MAX_MINUTES) { gracefulEndLive(); return; }
+      if (liveMinutes >= LIVE_MAX_MINUTES) {
+        // Same protection as the message-driven path: at the hard cap, don't cut
+        // off a still-pending question — signal a close and give bounded grace,
+        // force-ending only past the absolute ceiling or when nothing hangs.
+        const lastMsg = live.messages[live.messages.length - 1];
+        const lastIsUnansweredQuestion =
+          !!lastMsg &&
+          lastMsg.role === "ai" &&
+          /\?/.test(lastMsg.text) &&
+          !/this interview is now complete|concludes (our|the|this)/i.test(lastMsg.text);
+        if (liveMinutes >= LIVE_ABSOLUTE_MAX_MINUTES || !lastIsUnansweredQuestion) {
+          gracefulEndLive();
+          return;
+        }
+        if (!wrapUpSentRef.current) {
+          wrapUpSentRef.current = true;
+          try { live.sendControl(LIVE_WRAP_UP_MSG); } catch {}
+        }
+        armWrapFallback();
+        return;
+      }
       const answered = live.messages.filter((m) => m.role === "user").length;
       if (!wrapUpSentRef.current && liveMinutes >= LIVE_MIN_MINUTES && answered >= LIVE_MIN_ANSWERS) {
         wrapUpSentRef.current = true;
