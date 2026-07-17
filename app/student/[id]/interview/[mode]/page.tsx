@@ -12,6 +12,7 @@ import { useGeminiLive } from "@/hooks/useGeminiLive";
 import { CodeRunner, type RunResult, type TestSummary } from "@/components/code/code-runner";
 import { DEFAULT_LANGUAGE_ID, getCodeLanguage } from "@/lib/code-languages";
 import { type Difficulty, DIFFICULTY_OPTIONS, DEFAULT_DIFFICULTY, normalizeDifficulty } from "@/lib/interview-difficulty";
+import { isTechnicalRole } from "@/lib/role-classification";
 
 // STT routing switch.
 //
@@ -323,7 +324,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
     dnla: "Behavioural",
     // "final" never reaches here — it is aliased to "behavioural" above.
   };
-  const modeLabel = MODE_LABEL[mode] ?? "Assessment";
+  // `modeLabel` for round 1 is ROLE-AWARE (set after `profile` loads, below):
+  // "Technical" for a technical role, "Skills" for a non-technical one (MBA, BA,
+  // BCom, sales, etc.). Other rounds use the static map.
 
   // Guided AI-interview funnel, per the PRD: exactly TWO interviews — Technical
   // (Vector A / Matrix 1) → Behavioural (Vector D / Matrix 4) → Fit Score. The DNLA
@@ -408,6 +411,17 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   const [done, setDone] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [profile, setProfile] = useState<CandidateProfile | null>(null);
+  // Role-aware round-1 identity. A technical role runs a Technical interview
+  // (with the coding tool); a non-technical role (MBA/BA/BCom/sales/finance/…)
+  // runs a Skills interview and NEVER sees a coding task.
+  const roundIsTechnical = isTechnicalRole(profile?.targetRole);
+  const modeLabel =
+    mode === "technical"
+      ? roundIsTechnical
+        ? "Technical"
+        : "Skills"
+      : MODE_LABEL[mode] ?? "Assessment";
+  const showCodeTool = isTechRound && track === "placement" && roundIsTechnical;
   
   const [warnings, setWarnings] = useState(0);
   const [webcamEnabled, setWebcamEnabled] = useState(false);
@@ -2265,7 +2279,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             setVerificationResult({
               status: "success",
               unavailable: true,
-              message: "Verification is temporarily unavailable — proceeding, session flagged for review.",
+              message: "Verification is temporarily unavailable. Proceeding, session flagged for review.",
             });
           } else {
             // GENUINE reject (no face / multiple faces / etc.) → hard fail, keep the
@@ -3475,7 +3489,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                     <div className="mb-3 flex items-start gap-2.5 rounded-md border border-amber-200 bg-amber-50 p-3" role="status" aria-live="polite">
                       <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                       <p className="text-[12.5px] font-semibold text-amber-700">
-                        Identity verification is temporarily unavailable. You may proceed — this session is flagged for manual review.
+                        Identity verification is temporarily unavailable. You may proceed. This session is flagged for manual review.
                       </p>
                     </div>
                   )}
@@ -3487,7 +3501,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                     className={`w-full ${verificationResult.unavailable ? "bg-amber-600 hover:bg-amber-700 focus-visible:ring-amber-500/40" : "bg-emerald-600 hover:bg-emerald-700 focus-visible:ring-emerald-500/40"}`}
                   >
                     {verificationResult.unavailable ? (
-                      <><ShieldAlert className="h-4 w-4" aria-hidden /> Proceed — verification unavailable <ArrowRight className="h-4 w-4" aria-hidden /></>
+                      <><ShieldAlert className="h-4 w-4" aria-hidden /> Proceed, verification unavailable <ArrowRight className="h-4 w-4" aria-hidden /></>
                     ) : (
                       <><BadgeCheck className="h-4 w-4" aria-hidden /> Identity verified - Start interview <ArrowRight className="h-4 w-4" aria-hidden /></>
                     )}
@@ -3928,7 +3942,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                     <p className="text-[11px] font-semibold text-amber-600 text-center" role="alert">{micError} You can type your answer in the box below.</p>
                   )}
 
-                  {isTechRound && track === "placement" && !isCodingMode && (
+                  {showCodeTool && !isCodingMode && (
                     <div className="flex items-center justify-center gap-1.5" role="group" aria-label="Response mode">
                       <button type="button" aria-pressed={!isCodingMode} onClick={() => setIsCodingMode(false)} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${!isCodingMode ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200/60'}`}>Voice / Text</button>
                       <button type="button" aria-pressed={isCodingMode} onClick={enterCodingMode} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${isCodingMode ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200/60'}`}><FileText aria-hidden className="w-3 h-3 inline mr-1" />Code</button>
@@ -4031,7 +4045,7 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
                     </div>
                     <div className="flex items-center gap-1.5" role="group" aria-label="Response input mode">
                       <button type="button" aria-pressed={!isCodingMode} onClick={() => setIsCodingMode(false)} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${!isCodingMode ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200/60'}`}>Voice / Text</button>
-                      {isTechRound && track === "placement" && <button type="button" aria-pressed={isCodingMode} onClick={enterCodingMode} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${isCodingMode ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200/60'}`}><FileText aria-hidden className="w-3 h-3 inline mr-1" />Code</button>}
+                      {showCodeTool && <button type="button" aria-pressed={isCodingMode} onClick={enterCodingMode} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${isCodingMode ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200 border border-ink-200/60'}`}><FileText aria-hidden className="w-3 h-3 inline mr-1" />Code</button>}
                     </div>
                   </div>
                   )}

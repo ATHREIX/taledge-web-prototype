@@ -29,6 +29,11 @@ export function ScoreRing({
       ? `${label ? `${label}: ` : ""}score pending`
       : `${label ? `${label}: ` : ""}${Math.round(value)} percent${sub ? `, ${sub}` : ""}`;
 
+  // Scale the center number to the ring size so small rings (e.g. a 56px avatar
+  // ring in a list) don't overflow with the fixed text-xl. Capped at 20px, so
+  // the large dashboard rings look exactly as before.
+  const numFontPx = Math.min(20, Math.round(size * 0.32));
+
   return (
     <div className="relative inline-flex flex-col items-center">
       <svg width={size} height={size} className="-rotate-90" role="img" aria-label={ariaLabel}>
@@ -54,13 +59,16 @@ export function ScoreRing({
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <div className="font-sans text-xl font-semibold leading-none text-ink-900">
+        <div
+          className="font-sans font-semibold leading-none text-ink-900"
+          style={{ fontSize: value === -1 ? Math.min(13, numFontPx) : numFontPx }}
+        >
           {value === -1 ? (
             "Pending"
           ) : (
             <>
               {Math.round(value)}
-              <span className="ml-0.5 text-xs text-ink-500">%</span>
+              <span className="ml-0.5 text-ink-500" style={{ fontSize: Math.round(numFontPx * 0.55) }}>%</span>
             </>
           )}
         </div>

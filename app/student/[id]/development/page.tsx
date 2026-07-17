@@ -47,7 +47,7 @@ export default async function Development({
         }
         description="Personalized learning pathway synthesized from DNLA + AI interviews. Coach-matched, sprint-structured, longitudinally tracked."
         actions={
-          <WorkspaceBack id={s.id} />
+          <WorkspaceBack id={s.id} href="/dashboard" label="Back to Dashboard" />
         }
       />
 
@@ -163,7 +163,7 @@ export default async function Development({
             <p className="mt-2 max-w-2xl text-sm text-ink-500">
               A short lesson for each of the 17 Social-Competency factors DNLA
               measures. Work on any factor your profile scored below its
-              benchmark — the videos load only when you press play.
+              benchmark. The videos load only when you press play.
             </p>
           </div>
           <Badge tone="warn">In German</Badge>

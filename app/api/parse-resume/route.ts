@@ -58,6 +58,8 @@ type Parsed = {
   summary?: string;
   skills?: string[];
   projects?: { title: string; stack: string[]; impact: string }[];
+  cgpa?: string;
+  experience?: string;
 };
 
 /** PDF files begin with the ASCII magic marker "%PDF" (0x25 0x50 0x44 0x46). */
@@ -134,6 +136,19 @@ async function localParseFallback(bytes: Uint8Array, filename: string, sizeKb: n
       year_cohort = [yr ? yr[1] : "", degree ? degree[0].trim() : ""].filter(Boolean).join(" · ").slice(0, 60);
     }
 
+    // CGPA / SGPA / GPA / percentage — best-effort, only if explicitly present.
+    let cgpa = "";
+    const cgpaMatch =
+      flat.match(/\b(?:C?GPA|SGPA)\s*[:\-]?\s*(\d{1,2}(?:\.\d{1,2})?(?:\s*\/\s*\d{1,2}(?:\.\d{1,2})?)?)/i) ||
+      flat.match(/(\d{1,2}\.\d{1,2})\s*(?:C?GPA|SGPA)\b/i) ||
+      flat.match(/\b(\d{2}(?:\.\d{1,2})?)\s*%/);
+    if (cgpaMatch) cgpa = cgpaMatch[0].trim().slice(0, 24);
+
+    // Total experience — "X years/months of experience" if stated.
+    let experience = "";
+    const expMatch = flat.match(/(\d{1,2}(?:\.\d)?\+?\s*(?:years?|yrs?|months?)\b(?:\s+of\s+experience)?)/i);
+    if (expMatch) experience = expMatch[1].trim().slice(0, 24);
+
     if (!email && !full_name && !institution && skills.length === 0) {
       return NextResponse.json(
         {
@@ -161,6 +176,8 @@ async function localParseFallback(bytes: Uint8Array, filename: string, sizeKb: n
         summary: "",
         skills,
         projects: [],
+        cgpa,
+        experience,
       },
       source: "local-extraction",
       filename,
@@ -285,6 +302,8 @@ If the document IS a resume or can be parsed as a candidate profile, return EXAC
   "year_cohort": "string (e.g., 'Final Year · B.Tech CS' or '2nd Year · MBA'; infer from education section)",
   "target_role": "string (best-guess target role from the resume's headline, objective, or most senior experience)",
   "summary": "string (2-sentence professional summary)",
+  "cgpa": "string (the CGPA / SGPA / GPA / percentage exactly as written, e.g. '8.6 CGPA', '3.8/4.0 GPA', '82%'; empty string if none on the resume — never invent one)",
+  "experience": "string (total professional/work experience, e.g. '3 years', '18 months', or 'Fresher' if a student with no full-time experience; empty string if not stated)",
   "skills": ["array of 6-10 key technical or professional skills"],
   "projects": [
     {

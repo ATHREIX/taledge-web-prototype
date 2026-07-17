@@ -24,7 +24,7 @@ import {
 
 /* ------------------------------- data ----------------------------- */
 
-const STEPS = ["Welcome", "Platform", "Organization", "Assessments", "Done"];
+const STEPS = ["Welcome", "Platform", "Organization"];
 
 const INDUSTRIES = ["Technology", "Education", "Financial Services", "Healthcare", "Manufacturing", "Public Sector"];
 const TEAM_SIZES = ["1–50", "51–200", "201–1,000", "1,000+"];
@@ -283,7 +283,7 @@ export default function RegisterPage() {
     email.trim()
   );
   const isCandidate = platformRole === "candidate";
-  // Step order: 0 Welcome · 1 Platform · 2 Organization · 3 Assessments.
+  // Step order: 0 Welcome · 1 Platform · 2 Organization.
   const stepValid = [
     name.trim().length > 1 && emailValid && password.length >= 6,
     !!platformRole,
@@ -292,18 +292,22 @@ export default function RegisterPage() {
   ];
   // Candidates have no organization, so step 2 is skipped for them. In SSO setup
   // the credentials step (0) is dropped - the user is already authenticated.
+  // Step order: 0 Welcome · 1 Platform · 2 Organization. (The former
+  // "Assessments" module step was removed - its selection was never consumed
+  // anywhere, so it collected preferences that had no effect.)
   const flow = isSetup
     ? isCandidate
-      ? [1, 3]
-      : [1, 2, 3]
+      ? [1]
+      : [1, 2]
     : isCandidate
-      ? [0, 1, 3]
-      : [0, 1, 2, 3];
+      ? [0, 1]
+      : [0, 1, 2];
   const firstStep = flow[0];
+  const lastStep = flow[flow.length - 1];
   const total = flow.length;
   const pos = Math.max(0, flow.indexOf(step)) + 1;
-  const nextOf = (s: number) => (s === 1 && isCandidate ? 3 : s + 1);
-  const prevOf = (s: number) => (s === 3 && isCandidate ? 1 : s - 1);
+  const nextOf = (s: number) => s + 1;
+  const prevOf = (s: number) => s - 1;
   const stepErrors = [
     "Enter your full name, a valid work email, and a password with at least 6 characters.",
     "Select how you'll use Taledge.",
@@ -317,13 +321,9 @@ export default function RegisterPage() {
     setStep(next);
   };
 
-  const togglePref = (key: string) =>
-    setPrefs((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]));
-
   const selectedRole = PLATFORM_ROLES.find((r) => r.key === platformRole);
   const persona = (platformRole || "recruiter") as PersonaKey;
   const cfg2 = STEP2[(persona === "candidate" ? "recruiter" : persona) as Exclude<PersonaKey, "candidate">];
-  const cfg3 = MODULES[persona];
   // Positional binding of the three org-field selections to their state setters,
   // so the role-aware step can render whichever labels/options cfg2 defines.
   const orgFields = [
@@ -504,7 +504,7 @@ export default function RegisterPage() {
               <motion.div
                 className="h-full rounded-full bg-brand-600"
                 initial={false}
-                animate={{ width: `${((pos - 1) / (total - 1)) * 100}%` }}
+                animate={{ width: `${total > 1 ? ((pos - 1) / (total - 1)) * 100 : 100}%` }}
                 transition={{ duration: 0.5, ease: EASE }}
               />
             </div>
@@ -597,26 +597,7 @@ export default function RegisterPage() {
                 </div>
               )}
 
-              {/* ---------- STEP 4 - MODULES (role-aware) ---------- */}
-              {step === 3 && (
-                <div>
-                  <StepHeading kicker={`Step ${pos} of ${total}`} title={cfg3.title} sub={cfg3.sub} />
-                  <div className="mt-7 grid gap-3 sm:grid-cols-2">
-                    {cfg3.items.map((a) => (
-                      <OptionCard
-                        key={a.key}
-                        selected={prefs.includes(a.key)}
-                        onClick={() => togglePref(a.key)}
-                        title={a.label}
-                        desc={a.desc}
-                        path={a.path}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* ---------- STEP 5 - SUCCESS ---------- */}
+              {/* ---------- SUCCESS ---------- */}
               {step === 4 && (
                 <div className="py-6 text-center">
                   <motion.div
@@ -684,7 +665,7 @@ export default function RegisterPage() {
               <Arrow className="rotate-180" /> Back
             </button>
 
-            {step < 3 ? (
+            {step !== lastStep ? (
               <button
                 type="button"
                 onClick={() => (stepValid[step] ? go(nextOf(step)) : setError(stepErrors[step]))}
@@ -695,7 +676,7 @@ export default function RegisterPage() {
             ) : (
               <button
                 type="button"
-                onClick={() => (stepValid[3] ? createAccount() : setError(stepErrors[3]))}
+                onClick={() => (stepValid[step] ? createAccount() : setError(stepErrors[step]))}
                 disabled={loading}
                 aria-busy={loading}
                 className="group inline-flex items-center gap-2 rounded-lg bg-brand-600 px-7 py-3.5 text-[15px] font-semibold text-white shadow-sm transition-all hover:bg-brand-700 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-70"

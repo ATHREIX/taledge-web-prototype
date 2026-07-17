@@ -315,74 +315,6 @@ export default function DnlaClient({ student }: { student: Student }) {
     });
   }, [id]);
 
-  // The six-stage flow shown as a guided stepper at the top of this page.
-  const stages: Array<{
-    key: string;
-    title: string;
-    desc: string;
-    href: string;
-    cta: string;
-    done: boolean;
-    sample?: boolean;
-  }> = [
-    {
-      key: "resume",
-      title: "Resume analysis",
-      desc: "Upload your résumé - it's parsed for skills, projects and target role and used to tailor every later stage.",
-      href: "/onboarding",
-      cta: journey.resume ? "Re-upload résumé" : "Upload résumé",
-      done: journey.resume,
-    },
-    {
-      key: "ai",
-      title: "AI interview",
-      desc: "Adaptive, proctored AI interview grounded in your résumé and target role.",
-      href: `${flowBase}/${id}/interview/technical`,
-      cta: journey.ai ? "Retake AI interview" : "Start AI interview",
-      done: journey.ai,
-    },
-    {
-      key: "dnla-profile",
-      title: "DNLA psychometric profile",
-      desc: "Your behavioural competency profile from the licensed DNLA framework - achievement drive, interpersonal skills, execution and resilience under pressure. Shown at the top of this page.",
-      href: `${flowBase}/${id}/dnla#dnla-profile`,
-      cta: "View DNLA profile",
-      done: false,
-      // Not a gated to-do and NOT "Complete" (the candidate hasn't sat a real
-      // questionnaire — it's the pilot sample until the licensed provider is
-      // activated). Rendered with a neutral "Sample" badge and skipped by the
-      // next-step pointer so it never blocks or falsely reads as done.
-      sample: true,
-    },
-    {
-      key: "behavioural",
-      title: "Behavioural interview",
-      desc: "A conversational round validating your behavioural competencies - achievement drive, interpersonal skills, execution and resilience under pressure - against your profile.",
-      href: `${flowBase}/${id}/interview/behavioural`,
-      cta: journey.behavioural ? "Retake behavioural interview" : "Start behavioural interview",
-      done: journey.behavioural,
-    },
-    {
-      key: "reports",
-      title: "Interview report",
-      desc: "A standalone, evidence-grounded report for your AI interview.",
-      href: `${flowBase}/${id}/report/ai`,
-      cta: "View AI interview report",
-      done: journey.reports,
-    },
-    {
-      key: "comparison",
-      title: "Comparison report",
-      desc: "Side-by-side diff of both interviews with cross-round consistency checks.",
-      href: `${flowBase}/${id}/comparison`,
-      cta: "View comparison report",
-      done: journey.reports,
-    },
-  ];
-  // The "next up" stage = first stage that is neither done nor an always-available
-  // sample (the DNLA profile must never become the blocking next step).
-  const activeIndex = stages.findIndex((st) => !st.done && !st.sample);
-
   // ── Live vs sample data source ────────────────────────────────────────────
   // When the partner result is in, render the candidate's REAL profile; the
   // normalized scores are 0–100, so map them onto the 1–7 scale this view uses.
@@ -478,7 +410,7 @@ export default function DnlaClient({ student }: { student: Student }) {
       <PageHeader
         eyebrow="DNLA · Social & Emotional Competence"
         title="Your DNLA psychometric profile"
-        description={`${s.name}'s behavioural competency profile across the four DNLA axes - achievement drive, interpersonal skills, execution, and resilience under pressure. Your full assessment journey (résumé, interviews, reports) follows below the profile.`}
+        description={`${s.name}'s behavioural competency profile across the four DNLA axes - achievement drive, interpersonal skills, execution, and resilience under pressure. Your résumé, interviews and reports live in your workspace.`}
         actions={
           <div className="flex items-center gap-3">
             {live.phase === "complete" ? (
@@ -501,67 +433,10 @@ export default function DnlaClient({ student }: { student: Student }) {
         }
       />
 
-      {/* The DNLA profile leads this page; the assessment stepper follows it
-          (order-last) so /dnla reads as "your DNLA profile", not a second dashboard. */}
+      {/* This page is the standalone DNLA report — the profile and its live
+          status only. The guided assessment stepper lives in the workspace /
+          dashboard, not here, so /dnla is not a second dashboard. */}
       <div className="flex flex-col gap-8">
-      {/* ── Guided assessment stepper ─────────────────────────────────────── */}
-      <section className="order-last">
-        <div className="grid gap-3">
-          {stages.map((st, i) => {
-            const isActive = i === activeIndex;
-            const state = st.sample ? "sample" : st.done ? "done" : isActive ? "active" : "upcoming";
-            return (
-              <Card
-                key={st.key}
-                variant="default"
-                className={cn(
-                  "rounded-xl2 p-5 transition-colors",
-                  state === "done" && "border-emerald-200 bg-emerald-50/40",
-                  state === "active" && "border-brand-300 bg-brand-50/40 ring-1 ring-brand-200",
-                  state === "sample" && "border-amber-200 bg-amber-50/30",
-                  state === "upcoming" && "opacity-90"
-                )}
-              >
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-start gap-4">
-                    <span
-                      aria-hidden
-                      className={cn(
-                        "grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-bold",
-                        state === "done" && "bg-emerald-500 text-white",
-                        state === "active" && "bg-brand-600 text-white",
-                        state === "sample" && "bg-amber-100 text-amber-700",
-                        state === "upcoming" && "bg-ink-100 text-ink-500"
-                      )}
-                    >
-                      {st.done ? "✓" : i + 1}
-                    </span>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Label>{st.title}</Label>
-                        <Badge tone={state === "done" ? "success" : state === "active" ? "brand" : state === "sample" ? "warn" : "neutral"}>
-                          {state === "done" ? "Complete" : state === "active" ? "Next up" : state === "sample" ? "Sample" : "Upcoming"}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 max-w-2xl text-sm text-ink-500">{st.desc}</p>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-                    <ButtonLink
-                      href={st.href}
-                      variant={state === "active" ? "primary" : "ghost"}
-                      size="sm"
-                    >
-                      {st.cta}
-                    </ButtonLink>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      </section>
-
       {/* ── Live DNLA status / start control ──────────────────────────────── */}
       {dnlaEnabled && <DnlaLivePanel live={live} onStart={handleStart} onOpen={openQuestionnaire} />}
 
@@ -763,30 +638,6 @@ export default function DnlaClient({ student }: { student: Student }) {
       </div>
       )}
       </div>
-
-      {/* CTA: jump to the next stage in the assessment journey. */}
-      <Card className="mb-5 border-brand-200/70 bg-brand-50/40">
-        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <Eyebrow>Continue your assessment</Eyebrow>
-            <Heading as="h2" className="mt-1 text-lg sm:text-xl">
-              {activeIndex === -1 ? "All stages complete" : stages[activeIndex].title}
-            </Heading>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-ink-600">
-              {activeIndex === -1
-                ? `Every stage is done for ${s.name}. Open the comparison report to see both interviews side by side.`
-                : `Pick up where you left off: ${stages[activeIndex].desc}`}
-            </p>
-          </div>
-          <ButtonLink
-            href={activeIndex === -1 ? `${flowBase}/${id}/comparison` : stages[activeIndex].href}
-            size="lg"
-            className="w-full shrink-0 sm:w-auto"
-          >
-            {activeIndex === -1 ? "View comparison report" : stages[activeIndex].cta}
-          </ButtonLink>
-        </CardHeader>
-      </Card>
 
       {/* Disclaimer */}
       <p className="text-xs leading-5 text-ink-400">

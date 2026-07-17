@@ -22,7 +22,7 @@ const COLLECTION = COLLECTIONS.scoringAudits;
 
 /** Bump when the fit-score prompt/rubric changes materially, so audits are
  *  comparable only within the same prompt generation. */
-export const SCORING_PROMPT_VERSION = 6;
+export const SCORING_PROMPT_VERSION = 7;
 
 type Msg = { role: "assistant" | "user"; content: string };
 

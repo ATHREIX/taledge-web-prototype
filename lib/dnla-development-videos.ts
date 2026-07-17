@@ -51,7 +51,7 @@ export const DNLA_DEV_VIDEOS: DnlaDevVideo[] = [
     de: "Auftreten",
     en: "Presence & Impact",
     axis: "interpersonal",
-    blurb: "How you come across to others — poise, presence and the impression you make.",
+    blurb: "How you come across to others: poise, presence and the impression you make.",
     url: `${BASE}/Auftreten.mp4`,
   },
   {

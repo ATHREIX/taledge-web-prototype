@@ -409,6 +409,7 @@ CRITICAL GROUNDING RULES:
 7quater. RESUME ROW EVIDENCE: For EVERY row you score in resume_breakdown, you MUST also emit one entry in "resume_row_evidence" quoting the exact resume/JD/transcript text that grounds that row's score. If the resume context above says "(not provided)" for summary, skills AND projects, you have NO basis to score the resume component: still return the resume_breakdown shape but score every row -1 (not 0 — 0 means "assessed and terrible", -1 means "not assessed" and is excluded from the average per rule 9) and state "no resume provided" as each row's evidence. The server drops the resume component from the composite in that case.
 7quinquies. RESUME vs INTERVIEW CONSISTENCY: Compare the project(s) the candidate actually discussed in the transcripts against the "Resume projects" list above. Two DISTINCT cases — never conflate them: (a) MISMATCH — the candidate discussed a project and it does not correspond to any provided resume project: include a cross_flags entry { "label": "Resume vs Interview project mismatch", "tone": "warn" } (tone "danger" if the resume claims materially exceed what the interview demonstrated) and cap "Complexity vs Claim alignment" at 50, stating the mismatch in that row's evidence. (b) NOT DISCUSSED — no project came up in the interview at all: this is NOT a mismatch and alignment is UNASSESSABLE — set "Complexity vs Claim alignment" to -1 (excluded from the component average per rule 9; no placeholder number, no cap, no penalty) with evidence a user can understand: "Not assessed — no project was discussed in the interview, so the resume's project claims were neither verified nor contradicted."
 7. If a transcript section says "(no responses)", it means that interview stage has not been started yet. You MUST set its corresponding headline score (technical_score or behavioural_score) to -1. Compute the overall fit_score and success_probability composites based ONLY on the completed interview stages (do not include the -1 stage in calculations). Keep the breakdown subscores for the missing stage as 0.
+7septies. INTERVIEW-GROUNDING GATE: The Fit Score is a placement-READINESS headline and must rest on DEMONSTRATED evidence (an interview), never on a self-reported résumé alone. If BOTH the technical AND the behavioural transcripts are "(no responses)"/pending — i.e. the candidate has completed NO interview — you MUST set fit_score AND success_probability to -1 (pending) EVEN IF a résumé is present. A résumé is a claim, not evidence of readiness, so it cannot by itself produce a headline score. Set "verdict" to "Pending — complete an interview to generate your Fit Score" in that case.
 7sexies. GRAMMAR: "Grammar & language accuracy" scores the candidate's OWN language quality — sentence construction, word choice, agreement errors, repeated broken phrasing (e.g. doubled words, fragments that obscure meaning). These are SPOKEN answers captured via speech-to-text: do NOT penalize missing punctuation, casing, or obvious transcription artifacts; judge the language the candidate actually produced. Fluent-but-imperfect conversational English in the 60-75 band; frequent errors that impede clarity below 50; polished professional language above 80.
 9. ABSENCE HANDLING — never score a dimension on missing data. If the grounding data a row REQUIRES is entirely absent, set that row's value to -1 (the server excludes -1 rows from all averages) and write evidence a candidate can understand: "not assessed — no <data> was provided". Apply this to: Academic Trajectory rows when the resume contains no academic information; the "Advanced Psychometrics (DNLA)" group when no DNLA report is provided (even if the behavioural transcript exists); any resume row whose source field says "(not provided)". NEVER award a mid-band score (40-60) as a placeholder for missing data — mid-band means "assessed and found average", which is a false statement about an unassessed dimension. Distinguish carefully: data present but WEAK → low score (that is assessment); data absent → -1 (that is exclusion). Where absence IS itself evidence, score it as such: "Hint dependency penalty" with ZERO scaffolding events means the candidate needed no help → score HIGH (80-95), not low; a technical-role candidate who was asked to code and refused → low Applied Competence (refusal is evidence).
 10. CROSS-FLAG EVIDENCE RULE — a warn/danger cross-flag requires POSITIVE evidence of a gap (the candidate claimed X and demonstrated not-X). If a check cannot be assessed because a stage is pending or data is absent on one side, the tone MUST be "ok" and the verdict "Not assessable yet — <which data is missing>". Absence of evidence is never itself a red flag; flags exist to catch contradictions, not incompleteness (incompleteness is already priced in by the stage weights).
@@ -724,7 +725,16 @@ Strictly valid JSON. No prose before or after.`;
     generated.technical_score = techAvg != null ? (clamp(techAvg) as number) : -1;
     generated.behavioural_score = behavAvg != null ? (clamp(behavAvg) as number) : -1;
 
-    if (wsum > 0) {
+    // INTERVIEW-GROUNDING GATE: the Fit Score is a placement-READINESS headline,
+    // and readiness must be grounded in DEMONSTRATED evidence (an interview), not
+    // a self-reported résumé. With both interview stages pending, renormalizing
+    // over the résumé alone made the résumé score (20% signal) masquerade as the
+    // whole composite — a candidate who did nothing in either interview scored 69
+    // purely off their résumé. Require ≥1 completed interview stage before any
+    // headline Fit/Success number ships; résumé-only stays pending.
+    const interviewDone = techAvg != null || behavAvg != null;
+
+    if (wsum > 0 && interviewDone) {
       const computedFit = clamp(components.reduce((a, [v, w]) => a + v * w, 0) / wsum);
       const dangerCount = generated.cross_flags.filter((f: { tone: string }) => f.tone === "danger").length;
       const warnCount = generated.cross_flags.filter((f: { tone: string }) => f.tone === "warn").length;
@@ -743,13 +753,23 @@ Strictly valid JSON. No prose before or after.`;
         logger.warn("fit-score: large LLM/computed divergence", { uid, studentId: body.studentId, llmFit, computedFit, llmSuccess, computedSuccess });
       }
     } else {
-      // Degenerate output: no component produced a single valid sub-score. The
-      // raw LLM headline numbers must NOT ship as if they were server-computed
-      // — mark everything pending instead (technical/behavioural already forced
-      // to -1 above).
-      logger.warn("fit-score: no valid sub-scores in any component; marking headline pending", { uid, studentId: body.studentId });
+      // Headline is pending because either (a) no component produced a single
+      // valid sub-score, or (b) only the résumé is present and no interview has
+      // been completed (INTERVIEW-GROUNDING GATE above). Either way the raw LLM
+      // headline must NOT ship as if it were server-computed.
+      logger.warn("fit-score: headline pending (no completed interview / no valid sub-scores)", {
+        uid,
+        studentId: body.studentId,
+        interviewDone,
+        hasResume,
+      });
       generated.fit_score = -1;
       generated.success_probability = -1;
+      // Don't leave the LLM's optimistic verdict ("Develop further", etc.) next
+      // to a Pending score — state plainly that an interview is still required.
+      generated.verdict = resumeAvg != null && !interviewDone
+        ? "Pending — complete an interview to generate your Fit Score"
+        : "Pending — assessment incomplete";
     }
 
     // ── Durable scoring-audit ledger ─────────────────────────────────────────

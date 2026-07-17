@@ -6,6 +6,7 @@ import { enforceRateLimit } from "@/lib/rate-limit";
 import { DEMO_MODE } from "@/lib/flags";
 import { normalizeDifficulty, difficultyDirective } from "@/lib/interview-difficulty";
 import { questionBankDirective } from "@/lib/interview-question-bank";
+import { isTechnicalRole } from "@/lib/role-classification";
 
 export const runtime = "nodejs";
 
@@ -83,6 +84,26 @@ Get to real technical depth FAST: after the brief human opening, do not linger o
 
 STILL EXACTLY ONE QUESTION PER TURN — depth does NOT mean more questions at once. Everything above describes what to probe ACROSS MANY turns; the technologies, trade-offs, mechanisms, edge cases and stressors listed are a MENU to pick from ONE AT A TIME. NEVER bundle them: "how does the index work, what are the trade-offs, and why did you pick it?" is THREE questions — choose the single sharpest one and save the rest for later turns. When you compound with a stressor, that stressor IS the one question; do not also tack on the original. Before you speak, count your question marks — if more than one, delete all but the single most important and ask it alone, then STOP and wait.`;
 
+// Round-1 rigor for a NON-TECHNICAL role (MBA, BA, BCom, sales, marketing, HR,
+// finance, design, operations, product, etc.). Same relentless, ceiling-finding
+// standard as TECHNICAL_DEPTH, but the craft is the role's real domain judgment
+// — NOT software or code. Splices in for the skills round when the role reads as
+// non-technical, so an MBA/BCom candidate gets a genuinely hard, role-true
+// interview instead of engineering questions.
+const NON_TECHNICAL_DEPTH = `ROLE-CRAFT RIGOR — YOU ARE A DEMANDING, TOP-TIER INTERVIEWER for the target role — a senior hiring leader in THIS field (not software). Warm with the person, uncompromising on substance. Your job is to find the true CEILING of this candidate's real competence in their field, not to have a pleasant chat. This is NOT a technical, coding, or software interview — NEVER ask for code, algorithms, data structures, or system design. A generic or soft interview is a FAILURE.
+
+INTERROGATE THEIR ACTUAL DOMAIN. The résumé below lists their real roles, projects, tools and results. Build questions on THOSE exact things — ask what you could ONLY ask someone who genuinely did that work. Go past the label to the SUBSTANCE for their field: for business/MBA/consulting — structure a problem, size a market, defend a recommendation, read the numbers; for finance/commerce/BCom — valuation, unit economics, financial reasoning, risk and controls; for sales/marketing — pipeline, positioning, metrics, a real campaign's results and what they'd change; for product — prioritisation, trade-offs, a metric that moved; for design — process, critique, why a decision; for operations/HR — process design, stakeholder conflict, a hard call under constraints. Make them defend the decisions in their own projects.
+
+JUDGMENT UNDER CONSTRAINT. When an answer is fluent AND correct, do NOT move on — compound it with a realistic stressor from THEIR field and make them reason live: a shrinking budget, a hostile stakeholder, a missed target, bad or missing data, a competitor's move, a tight deadline, an ethical grey area. "That works when the numbers cooperate — now the budget is cut 40% mid-quarter and the target is unchanged; what do you drop and why?" Keep escalating on the SAME thread until you find the edge of their judgment.
+
+SUBSTANCE, NOT BUZZWORDS. Reject framework name-dropping and jargon ("synergy", "data-driven", "best practice", "growth hacking") by demanding the concrete reasoning, real numbers, and trade-offs underneath. Ask "how exactly", "why", "what would you do when", and "what's the trade-off" far more than "what is". Make them quantify and defend every claim.
+
+REAL CASE / SCENARIO. Include at least one realistic case or scenario from THEIR domain (a business case, a market-entry or pricing call, a campaign plan, a valuation, a prioritisation decision) and attack it with constraints, missing information, and second-order effects.
+
+Get to real depth FAST: after the brief human opening, do not linger on soft background — spend the bulk of the interview on hard, specific, role-true probing that a weak candidate could not fake.
+
+STILL EXACTLY ONE QUESTION PER TURN — depth does NOT mean more questions at once. The topics above are a MENU to pick from ONE AT A TIME; never bundle. When you compound with a stressor, that stressor IS the one question. Before you speak, count your question marks — if more than one, keep only the single most important and ask it alone, then STOP and wait.`;
+
 const ENDING_RULE = `HOW THE INTERVIEW ENDS — STRICT, READ CAREFULLY. YOU DO NOT DECIDE WHEN TO END.
 
 1. You keep conducting the interview — one question at a time, always building on the candidate's last answer and climbing difficulty — for as long as it takes. The interview system, not you, decides when it is time to close, and it will tell you with a private control message: the token [WRAP_UP].
@@ -105,15 +126,19 @@ function buildSystemInstruction(b: Body): string {
   const rawMode = b.mode || "technical";
   const mode = rawMode === "final" ? "behavioural" : rawMode;
   const difficulty = normalizeDifficulty(b.difficulty);
+  // Is round 1 a TECHNICAL interview for this role, or a non-technical
+  // role-craft (skills) interview? Drives the persona, the depth block, and the
+  // coding task below so an MBA/BA/BCom candidate never gets an engineering grill.
+  const technical = isTechnicalRole(role);
 
   const roleLine =
     track === "exam"
       ? `You are a warm but rigorous mentor and examiner conducting a spoken readiness interview for the ${role} competitive exam.`
-      : mode === "dnla"
-      ? `You are a warm behavioural assessor conducting a spoken DNLA-style competency interview (Achievement Dynamics, Interpersonal Skills, Execution, Stress & Resilience) for a candidate targeting the ${role} role.`
-      : mode === "behavioural"
-      ? `You are a sharp, perceptive behavioural interviewer — a senior HR director with 15 years of experience — conducting a spoken behavioural interview for a candidate targeting the ${role} role. You assess how they ACTUALLY operate: ownership vs blame when discussing failures (listen for "I" vs "the team" vs "them"), conflict handling, resilience under pressure, empathy for stakeholders, and how they respond to hard feedback. Ask for REAL past situations, then challenge rehearsed or generic narratives — probe what THEY specifically did, what went wrong, and what they would do differently. Do NOT ask technical, coding, or domain-knowledge questions; that is a separate round.`
-      : `You are a demanding, principal-level technical interviewer for the ${role} role — a top-tier engineering bar-raiser conducting a rigorous spoken technical interview. Warm with the person, relentless on technical substance.`;
+      : mode === "dnla" || mode === "behavioural"
+      ? `You are a sharp, perceptive behavioural assessor — a senior HR director with 15 years of experience — conducting a spoken DNLA competency interview for a candidate targeting the ${role} role. This round is framed on the DNLA report ONLY: you probe the DNLA social-competence factors (Achievement Dynamics, Interpersonal, Will to Succeed, Stress Capacity — and, for leadership candidates, Entrepreneurial thinking and Cooperation). You assess how they ACTUALLY operate: ownership vs blame when discussing failures (listen for "I" vs "the team" vs "them"), how they open up and build contact, conflict handling, resilience and composure under pressure, empathy for the unspoken, and how they react to hard feedback in the moment. Ask for REAL past situations, then challenge rehearsed or generic narratives — probe what THEY specifically did, what went wrong, and what they would do differently. Do NOT ask technical, coding, skills, or domain-knowledge questions; that is a separate round.`
+      : technical
+      ? `You are a demanding, principal-level technical interviewer for the ${role} role — a top-tier engineering bar-raiser conducting a rigorous spoken technical interview. Warm with the person, relentless on technical substance.`
+      : `You are a demanding, top-tier interviewer for the ${role} role — a senior hiring leader in THIS field conducting a rigorous spoken role-competency interview. Warm with the person, uncompromising on the real craft and judgment the role demands. This is NOT a coding or software interview: probe the domain knowledge, decisions, frameworks and hands-on experience that actually matter for ${role}, and never ask for code.`;
 
   const resume = cap(b.resumeSummary, 6000);
   const dnla = cap(b.dnlaSummary, 4000);
@@ -136,14 +161,21 @@ function buildSystemInstruction(b: Body): string {
     difficultyDirective(difficulty),
     // Seed bank of strong, big-company-style questions for this role/round —
     // inspiration only; tailor and follow up adaptively.
-    questionBankDirective(role, mode, track),
-    // Technical-round rigor: interrogate the candidate's ACTUAL stack + adversarial
-    // cognitive-load probing. Placement technical round only (behavioural/final/
-    // dnla rounds never grill technically).
-    mode === "technical" && track === "placement" ? TECHNICAL_DEPTH : "",
-    // Drive a real coding task for technical placement interviews.
+    questionBankDirective(role, mode, track, dnla),
+    // Round-1 rigor, role-aware: a TECHNICAL role gets adversarial technical /
+    // cognitive-load probing of its actual stack; a NON-technical role (MBA, BA,
+    // BCom, sales, finance, design…) gets an equally hard role-CRAFT interview
+    // (domain judgment, cases, no code). Placement round 1 only — behavioural /
+    // final / dnla rounds never grill on either axis.
     mode === "technical" && track === "placement"
-      ? `CODING TASK: For a technical role (software / data / ML / engineering), include at least ONE hands-on coding task: ask the candidate to implement a specific function or algorithm and tell them to write and RUN it in the on-screen "Code" tab (a multi-language compiler with a Run button). They will submit it as a typed answer marked "[Coding answer · <language>]" with its execution output — then critique its correctness, efficiency, and edge cases out loud, and follow up on it.`
+      ? technical
+        ? TECHNICAL_DEPTH
+        : NON_TECHNICAL_DEPTH
+      : "",
+    // Drive a real coding task ONLY for a technical placement round-1 interview.
+    // A non-technical role must NEVER be asked to write code.
+    mode === "technical" && track === "placement" && technical
+      ? `CODING TASK: Include at least ONE hands-on coding task: ask the candidate to implement a specific function or algorithm and tell them to write and RUN it in the on-screen "Code" tab (a multi-language compiler with a Run button). They will submit it as a typed answer marked "[Coding answer · <language>]" with its execution output — then critique its correctness, efficiency, and edge cases out loud, and follow up on it.`
       : "",
     resume ? `\nCandidate resume context (reference, not to read aloud):\n${resume}` : "",
     dnla ? `\nDNLA competency report (probe sub-benchmark areas; do not read aloud):\n${dnla}` : "",

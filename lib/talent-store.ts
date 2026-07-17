@@ -761,7 +761,7 @@ export async function ensureOwnInstituteForAdmin(uid: string): Promise<Institute
     cohort: 0,
     interviewReady: 0,
     avgFit: 0,
-    topGap: "—",
+    topGap: "-",
     insights: [],
     batches: [],
   };

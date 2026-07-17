@@ -73,7 +73,7 @@ export function HeaderActions({
       </Button>
       {!isExam ? (
         <Button type="button" variant="primary" size="lg" onClick={generateShareLink} disabled={sharing}>
-          {sharing ? "Generating…" : "Generate recruiter link"}
+          {sharing ? "Generating…" : "Share with a recruiter"}
           <IconArrow />
         </Button>
       ) : (

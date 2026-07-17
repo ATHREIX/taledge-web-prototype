@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion, useInView, useMotionValue, animate, useScroll, useSpring, useTransform } from "framer-motion";
 import { Logo } from "@/components/logo";
 import { SmoothScroll } from "./smooth-scroll";
 
@@ -34,10 +34,10 @@ function Reveal({
   const reduce = useReducedMotion();
   return (
     <motion.div
-      initial={reduce ? false : { opacity: 0, y }}
-      whileInView={{ opacity: 1, y: 0 }}
+      initial={reduce ? false : { opacity: 0, y, scale: 0.98 }}
+      whileInView={{ opacity: 1, y: 0, scale: 1 }}
       viewport={{ once: true, margin: "-80px" }}
-      transition={{ duration: 0.7, ease: EASE, delay }}
+      transition={{ duration: 0.75, ease: EASE, delay }}
       className={className}
     >
       {children}
@@ -68,6 +68,38 @@ function Check({ className = "" }: { className?: string }) {
       <polyline points="20 6 9 17 4 12" />
     </svg>
   );
+}
+
+/** Thin gradient bar pinned to the top that fills with scroll progress. */
+function ScrollProgress() {
+  const { scrollYProgress } = useScroll();
+  const scaleX = useSpring(scrollYProgress, { stiffness: 120, damping: 30, mass: 0.4 });
+  return (
+    <motion.div
+      aria-hidden
+      style={{ scaleX }}
+      className="fixed inset-x-0 top-0 z-[60] h-[3px] origin-left bg-gradient-to-r from-[#0057FF] via-[#3B82F6] to-[#0F4CFF]"
+    />
+  );
+}
+
+/** Counts from 0 up to `value` once it scrolls into view. */
+function AnimatedNumber({ value, className = "" }: { value: number; className?: string }) {
+  const reduce = useReducedMotion();
+  const ref = useRef<HTMLSpanElement>(null);
+  const inView = useInView(ref, { once: true, margin: "-60px" });
+  const mv = useMotionValue(0);
+  const [display, setDisplay] = useState(reduce ? value : 0);
+  useEffect(() => {
+    if (!inView || reduce) { setDisplay(value); return; }
+    const controls = animate(mv, value, {
+      duration: 1.2,
+      ease: [0.16, 1, 0.3, 1],
+      onUpdate: (v) => setDisplay(Math.round(v)),
+    });
+    return () => controls.stop();
+  }, [inView, value, reduce, mv]);
+  return <span ref={ref} className={className}>{display}</span>;
 }
 
 /* ------------------------------- data ----------------------------- */
@@ -230,7 +262,7 @@ const STAKEHOLDERS = [
   {
     tag: "For recruiters",
     title: "Shortlist on proof.",
-    body: "A pool of pre-assessed candidates, ranked by real evidence — shared only with consent.",
+    body: "A pool of pre-assessed candidates, ranked by real evidence, shared only with consent.",
     points: ["Pre-assessed pool", "Verified evidence", "Success-probability ranking"],
   },
   {
@@ -242,7 +274,7 @@ const STAKEHOLDERS = [
   {
     tag: "For coaches",
     title: "Coach the real gaps.",
-    body: "Every session targets a candidate's actual score gaps — with measurable progress.",
+    body: "Every session targets a candidate's actual score gaps, with measurable progress.",
     points: ["Gap-anchored sessions", "Clear priorities", "Progress over time"],
   },
 ];
@@ -281,7 +313,7 @@ function EntNav() {
   const [open, setOpen] = useState(false);
   return (
     <div className="sticky top-0 z-50 px-3 pt-3 sm:px-5">
-      <header className="relative mx-auto flex h-14 max-w-[80rem] items-center justify-between gap-6 rounded-full border border-slate-200/70 bg-white/85 px-3 shadow-[0_10px_34px_-18px_rgba(16,24,40,0.18)] backdrop-blur-xl transition-all duration-300 sm:px-4">
+      <header className="relative mx-auto flex h-14 max-w-[88rem] items-center justify-between gap-6 rounded-full shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)]/70 bg-white/85 px-3 shadow-[0_10px_34px_-18px_rgba(16,24,40,0.18)] backdrop-blur-xl transition-all duration-300 sm:px-4">
         <Link href="/" aria-label="Taledge home" className="shrink-0 pl-1.5">
           <Logo />
         </Link>
@@ -318,7 +350,7 @@ function EntNav() {
             onClick={() => setOpen((v) => !v)}
             aria-label={open ? "Close menu" : "Open menu"}
             aria-expanded={open}
-            className="grid h-9 w-9 place-items-center rounded-md border border-slate-200 text-[#081A3A] lg:hidden"
+            className="grid h-9 w-9 place-items-center rounded-md shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)] text-[#081A3A] lg:hidden"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
               {open ? <path d="M6 6l12 12M18 6L6 18" /> : <><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></>}
@@ -327,7 +359,7 @@ function EntNav() {
         </div>
       </header>
       {open && (
-        <div className="mx-auto mt-2 max-w-[80rem] rounded-2xl border border-slate-200/70 bg-white/95 p-2 shadow-lg backdrop-blur-xl lg:hidden">
+        <div className="mx-auto mt-2 max-w-[88rem] rounded-2xl shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)]/70 bg-white/95 p-2 shadow-lg backdrop-blur-xl lg:hidden">
           {NAV_LINKS.map((l) => (
             <a
               key={l.href}
@@ -350,14 +382,24 @@ function EntNav() {
 /* ---------------------- product visualization --------------------- */
 
 function FitScoreGauge({ value = 82, size = 132 }: { value?: number; size?: number }) {
+  const reduce = useReducedMotion();
   const stroke = 11;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const dash = (value / 100) * c;
+  const ref = useRef<SVGSVGElement>(null);
+  const inView = useInView(ref, { once: true, margin: "-60px" });
+  const [num, setNum] = useState(reduce ? value : 0);
+  useEffect(() => {
+    if (reduce) { setNum(value); return; }
+    if (!inView) return;
+    const controls = animate(0, value, { duration: 1.3, ease: [0.16, 1, 0.3, 1], onUpdate: (v) => setNum(Math.round(v)) });
+    return () => controls.stop();
+  }, [inView, value, reduce]);
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
+    <svg ref={ref} width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#E2E8F5" strokeWidth={stroke} />
-      <circle
+      <motion.circle
         cx={size / 2}
         cy={size / 2}
         r={r}
@@ -365,7 +407,10 @@ function FitScoreGauge({ value = 82, size = 132 }: { value?: number; size?: numb
         stroke="url(#fsg)"
         strokeWidth={stroke}
         strokeLinecap="round"
-        strokeDasharray={`${dash} ${c}`}
+        strokeDasharray={c}
+        initial={reduce ? { strokeDashoffset: c - dash } : { strokeDashoffset: c }}
+        animate={inView || reduce ? { strokeDashoffset: c - dash } : {}}
+        transition={{ duration: 1.3, ease: [0.16, 1, 0.3, 1] }}
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
       />
       <defs>
@@ -375,7 +420,7 @@ function FitScoreGauge({ value = 82, size = 132 }: { value?: number; size?: numb
         </linearGradient>
       </defs>
       <text x="50%" y="48%" textAnchor="middle" dominantBaseline="middle" fontSize="30" fontWeight="800" fill="#081A3A">
-        {value}
+        {num}
       </text>
       <text x="50%" y="64%" textAnchor="middle" dominantBaseline="middle" fontSize="10.5" fontWeight="600" fill="#64748B">
         FIT SCORE
@@ -395,8 +440,12 @@ function DnlaRadar({ values = [0.82, 0.64, 0.74, 0.58], size = 180 }: { values?:
   const ring = (scale: number) =>
     [0, 1, 2, 3].map((i) => pt(i, scale).join(",")).join(" ");
   const shape = values.map((v, i) => pt(i, v).join(",")).join(" ");
+  const reduce = useReducedMotion();
+  const ref = useRef<SVGSVGElement>(null);
+  const inView = useInView(ref, { once: true, margin: "-60px" });
+  const show = inView || reduce;
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
+    <svg ref={ref} width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
       {[0.4, 0.7, 1].map((s) => (
         <polygon key={s} points={ring(s)} fill="none" stroke="#E2E8F5" strokeWidth="1" />
       ))}
@@ -404,10 +453,31 @@ function DnlaRadar({ values = [0.82, 0.64, 0.74, 0.58], size = 180 }: { values?:
         const [x, y] = pt(i, 1);
         return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="#E2E8F5" strokeWidth="1" />;
       })}
-      <polygon points={shape} fill="rgba(0,87,255,0.14)" stroke="#0057FF" strokeWidth="2" />
+      <motion.polygon
+        points={shape}
+        fill="rgba(0,87,255,0.14)"
+        stroke="#0057FF"
+        strokeWidth="2"
+        style={{ transformOrigin: `${cx}px ${cy}px` }}
+        initial={reduce ? { scale: 1, opacity: 1 } : { scale: 0, opacity: 0 }}
+        animate={show ? { scale: 1, opacity: 1 } : {}}
+        transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+      />
       {values.map((v, i) => {
         const [x, y] = pt(i, v);
-        return <circle key={i} cx={x} cy={y} r="3.2" fill="#0057FF" />;
+        return (
+          <motion.circle
+            key={i}
+            cx={x}
+            cy={y}
+            r="3.6"
+            fill="#0057FF"
+            initial={reduce ? { scale: 1, opacity: 1 } : { scale: 0, opacity: 0 }}
+            animate={show ? { scale: 1, opacity: 1 } : {}}
+            transition={{ duration: 0.4, delay: 0.5 + i * 0.1, ease: [0.16, 1, 0.3, 1] }}
+            style={{ transformOrigin: `${x}px ${y}px` }}
+          />
+        );
       })}
     </svg>
   );
@@ -421,7 +491,7 @@ function DashboardMock() {
     { label: "Fit Score published", done: false },
   ];
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_30px_80px_-40px_rgba(8,26,58,0.45)]">
+    <div className="overflow-hidden rounded-2xl shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)] bg-white shadow-[0_30px_80px_-40px_rgba(8,26,58,0.45)]">
       {/* window chrome */}
       <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-3">
         <span className="h-3 w-3 rounded-full bg-slate-200" />
@@ -431,7 +501,7 @@ function DashboardMock() {
       </div>
       <div className="grid gap-4 p-4 sm:grid-cols-2 sm:p-6">
         {/* Fit score */}
-        <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-5">
+        <div className="flex items-center gap-4 rounded-xl shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)] bg-white p-5">
           <FitScoreGauge />
           <div>
             <p className="text-[12px] font-semibold uppercase tracking-wide text-slate-400">Success probability</p>
@@ -442,7 +512,7 @@ function DashboardMock() {
           </div>
         </div>
         {/* DNLA radar */}
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="rounded-xl shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)] bg-white p-5">
           <p className="text-[12px] font-semibold uppercase tracking-wide text-slate-400">DNLA competencies</p>
           <div className="mt-1 flex items-center justify-center">
             <DnlaRadar />
@@ -454,11 +524,11 @@ function DashboardMock() {
           </div>
         </div>
         {/* Pipeline */}
-        <div className="rounded-xl border border-slate-200 bg-white p-5 sm:col-span-2">
+        <div className="rounded-xl shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)] bg-white p-5 sm:col-span-2">
           <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-slate-400">Assessment pipeline</p>
           <div className="grid gap-3 sm:grid-cols-4">
             {pipeline.map((s) => (
-              <div key={s.label} className="rounded-lg border border-slate-200 p-3">
+              <div key={s.label} className="rounded-lg shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)] p-3">
                 <span
                   className={
                     "grid h-6 w-6 place-items-center rounded-full " +
@@ -486,7 +556,7 @@ function DashboardMock() {
 function InterviewMock() {
   const checks = ["Face visible", "No second device", "Tab focused", "Quiet environment"];
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_30px_80px_-40px_rgba(8,26,58,0.45)]">
+    <div className="overflow-hidden rounded-2xl shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)] bg-white shadow-[0_30px_80px_-40px_rgba(8,26,58,0.45)]">
       {/* window chrome */}
       <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-3">
         <span className="h-3 w-3 rounded-full bg-slate-200" />
@@ -500,7 +570,7 @@ function InterviewMock() {
       </div>
       <div className="space-y-4 p-4 sm:p-6">
         {/* AI question */}
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="rounded-xl shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)] bg-white p-4">
           <p className="text-[10px] font-bold uppercase tracking-wide text-[#0057FF]">AI interviewer</p>
           <p className="mt-1.5 text-[13.5px] leading-relaxed text-[#081A3A]">
             Walk me through how you&apos;d design a rate limiter for a high-traffic API.
@@ -522,7 +592,7 @@ function InterviewMock() {
           </p>
         </div>
         {/* live integrity checks */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+        <div className="rounded-xl shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)] bg-slate-50/60 p-4">
           <p className="mb-3 text-[10px] font-bold uppercase tracking-wide text-slate-400">Live security checks</p>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
             {checks.map((c) => (
@@ -545,13 +615,28 @@ function InterviewMock() {
 function Hero() {
   return (
     <section className="relative overflow-hidden border-b border-slate-200/70 bg-white">
-      {/* faint enterprise grid + soft blue wash, no heavy gradients */}
-      <div aria-hidden className="pointer-events-none absolute inset-0">
+      {/* Ambient aurora — slow drifting gradient blobs give a living, video-like
+          backdrop without a real video asset. Grid stays for enterprise texture. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(8,26,58,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(8,26,58,0.04)_1px,transparent_1px)] bg-[size:56px_56px] [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]" />
-        <div className="absolute -right-40 -top-40 h-[34rem] w-[34rem] rounded-full bg-[#0057FF]/5 blur-3xl" />
+        <motion.div
+          className="absolute -right-32 -top-40 h-[36rem] w-[36rem] rounded-full bg-[#0057FF]/10 blur-[110px]"
+          animate={{ x: [0, 40, 0], y: [0, 30, 0], scale: [1, 1.12, 1] }}
+          transition={{ duration: 14, ease: "easeInOut", repeat: Infinity }}
+        />
+        <motion.div
+          className="absolute -left-40 top-24 h-[30rem] w-[30rem] rounded-full bg-[#3B82F6]/10 blur-[120px]"
+          animate={{ x: [0, -30, 0], y: [0, 40, 0], scale: [1.1, 1, 1.1] }}
+          transition={{ duration: 18, ease: "easeInOut", repeat: Infinity }}
+        />
+        <motion.div
+          className="absolute bottom-0 left-1/3 h-[24rem] w-[24rem] rounded-full bg-[#0F4CFF]/[0.07] blur-[120px]"
+          animate={{ x: [0, 30, 0], y: [0, -24, 0] }}
+          transition={{ duration: 16, ease: "easeInOut", repeat: Infinity }}
+        />
       </div>
 
-      <div className="relative mx-auto grid max-w-[80rem] items-start gap-14 px-5 pt-10 pb-16 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:pt-14 lg:pb-24">
+      <div className="relative mx-auto grid max-w-[88rem] items-start gap-14 px-5 pt-10 pb-16 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:pt-14 lg:pb-24">
         <div>
           <Reveal>
             <div className="flex flex-wrap items-center gap-3">
@@ -602,12 +687,14 @@ function Hero() {
           <Reveal delay={0.24}>
             <dl className="mt-12 grid max-w-lg grid-cols-3 gap-6 border-t border-slate-200 pt-7">
               {[
-                { v: "2", l: "Tracks", s: "Placement · Exam" },
-                { v: "4", l: "Stakeholders", s: "Candidate → Institute" },
-                { v: "4", l: "DNLA axes", s: "Competency groups" },
+                { v: 2, l: "Tracks", s: "Placement · Exam" },
+                { v: 4, l: "Stakeholders", s: "Candidate → Institute" },
+                { v: 4, l: "DNLA axes", s: "Competency groups" },
               ].map((s) => (
                 <div key={s.l}>
-                  <dt className="text-3xl font-extrabold tracking-tight text-[#081A3A]">{s.v}</dt>
+                  <dt className="text-3xl font-extrabold tracking-tight text-[#081A3A]">
+                    <AnimatedNumber value={s.v} />
+                  </dt>
                   <dd className="mt-1 text-[13px] font-semibold text-[#0057FF]">{s.l}</dd>
                   <dd className="text-[12px] text-slate-500">{s.s}</dd>
                 </div>
@@ -617,12 +704,16 @@ function Hero() {
         </div>
 
         <Reveal delay={0.16} y={36}>
-          <div className="relative">
+          <motion.div
+            className="relative"
+            animate={{ y: [0, -10, 0] }}
+            transition={{ duration: 6, ease: "easeInOut", repeat: Infinity }}
+          >
             <DashboardMock />
             <p className="mt-3 text-center text-[11px] font-medium uppercase tracking-wider text-slate-400">
               Representative product preview
             </p>
-          </div>
+          </motion.div>
         </Reveal>
       </div>
     </section>
@@ -638,13 +729,13 @@ function Credibility() {
   ];
   return (
     <section className="border-b border-slate-200/70 bg-slate-50/60">
-      <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
+      <div className="mx-auto max-w-[88rem] px-6 py-16 sm:px-10 lg:px-14">
         <Reveal>
           <p className="text-center text-[13px] font-semibold uppercase tracking-[0.16em] text-slate-400">
             Built for placement and competitive-exam success - UPSC, JEE, NEET and CAT
           </p>
         </Reveal>
-        <div className="mt-10 grid gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-10 grid gap-px overflow-hidden rounded-2xl shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)] bg-slate-200 sm:grid-cols-2 lg:grid-cols-4">
           {items.map((it, i) => (
             <Reveal key={it.k} delay={i * 0.05}>
               <div className="h-full bg-white p-6">
@@ -663,7 +754,7 @@ function Credibility() {
 function Architecture() {
   return (
     <section id="how" className="scroll-mt-24 bg-white">
-      <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
+      <div className="mx-auto max-w-[88rem] px-6 py-16 sm:px-10 lg:px-14">
         <Reveal className="mx-auto max-w-2xl text-center">
           <SectionLabel>How it works</SectionLabel>
           <h2 className="mt-4 text-[2.4rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[3rem]">
@@ -671,15 +762,15 @@ function Architecture() {
           </h2>
         </Reveal>
 
-        <div className="mt-16 grid gap-6 lg:grid-cols-3">
+        <div className="mt-16 grid gap-10 lg:grid-cols-3">
           {ARCHITECTURE.map((a, i) => (
-            <Reveal key={a.n} delay={i * 0.08}>
-              <div className="flex h-full flex-col items-center rounded-2xl border border-slate-200 bg-white p-9 text-center transition-all hover:border-[#0057FF]/40 hover:shadow-[0_24px_60px_-34px_rgba(8,26,58,0.45)]">
-                <span className="grid h-16 w-16 place-items-center rounded-2xl bg-[#0057FF] text-[28px] font-extrabold text-white">
+            <Reveal key={a.n} delay={i * 0.12}>
+              <div className="flex h-full flex-col items-center px-6 text-center">
+                <span data-parallax="26" className="inline-block bg-gradient-to-b from-[#0057FF] to-[#0F4CFF] bg-clip-text text-[5.5rem] font-extrabold leading-none text-transparent">
                   {a.n}
                 </span>
-                <h3 className="mt-6 text-[1.5rem] font-extrabold text-[#081A3A]">{a.title}</h3>
-                <p className="mt-3 text-[1.05rem] font-medium leading-relaxed text-slate-500">{a.body}</p>
+                <h3 className="mt-4 text-[1.6rem] font-extrabold text-[#081A3A]">{a.title}</h3>
+                <p className="mt-3 text-[1.1rem] font-medium leading-relaxed text-slate-500">{a.body}</p>
               </div>
             </Reveal>
           ))}
@@ -692,7 +783,7 @@ function Architecture() {
 function Modules() {
   return (
     <section id="modules" className="scroll-mt-24 border-y border-slate-200/70 bg-slate-50/60">
-      <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
+      <div className="mx-auto max-w-[88rem] px-6 py-16 sm:px-10 lg:px-14">
         <Reveal className="max-w-2xl">
           <SectionLabel>Platform modules</SectionLabel>
           <h2 className="mt-4 text-[2.1rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[2.6rem]">
@@ -707,8 +798,8 @@ function Modules() {
         <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {MODULES.map((m, i) => (
             <Reveal key={m.title} delay={(i % 3) * 0.06}>
-              <article className="group flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-7 transition-all hover:-translate-y-1 hover:border-[#0057FF]/40 hover:shadow-[0_24px_60px_-34px_rgba(8,26,58,0.45)]">
-                <span className="grid h-12 w-12 place-items-center rounded-xl border border-[#0057FF]/15 bg-[#0057FF]/[0.06] text-[#0057FF] transition-colors group-hover:bg-[#0057FF] group-hover:text-white">
+              <article className="group flex h-full flex-col rounded-2xl shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)] bg-white p-7 transition-all hover:-translate-y-1 hover:border-[#0057FF]/40 hover:shadow-[0_24px_60px_-34px_rgba(8,26,58,0.45)]">
+                <span className="text-[#0057FF]">
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d={m.path} />
                   </svg>
@@ -731,7 +822,7 @@ function Stakeholders() {
   const [primary, ...rest] = STAKEHOLDERS;
   return (
     <section id="who" className="scroll-mt-24 bg-white">
-      <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
+      <div className="mx-auto max-w-[88rem] px-6 py-16 sm:px-10 lg:px-14">
         <Reveal className="mx-auto max-w-2xl text-center">
           <SectionLabel>Who it&apos;s for</SectionLabel>
           <h2 className="mt-4 text-[2.4rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[3rem]">
@@ -762,8 +853,8 @@ function Stakeholders() {
             </div>
             <ul className="grid gap-3 sm:grid-cols-2">
               {primary.points.map((p) => (
-                <li key={p} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-5 text-[16px] font-bold text-[#081A3A]">
-                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#0057FF] text-white"><Check /></span>
+                <li key={p} className="flex items-center gap-3 rounded-2xl shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)] bg-white p-5 text-[16px] font-bold text-[#081A3A]">
+                  <span className="shrink-0 text-[#0057FF]"><Check className="h-5 w-5" /></span>
                   {p}
                 </li>
               ))}
@@ -775,7 +866,7 @@ function Stakeholders() {
         <div className="mt-6 grid gap-5 lg:grid-cols-3">
           {rest.map((s, i) => (
             <Reveal key={s.tag} delay={i * 0.06}>
-              <article className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-8">
+              <article className="flex h-full flex-col rounded-2xl shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)] bg-white p-8 transition-all hover:-translate-y-1 hover:border-[#0057FF]/40 hover:shadow-[0_18px_44px_-28px_rgba(8,26,58,0.45)]">
                 <p className="text-[14px] font-bold uppercase tracking-wide text-[#0057FF]">{s.tag}</p>
                 <h3 className="mt-2 text-[1.5rem] font-extrabold leading-tight text-[#081A3A]">{s.title}</h3>
                 <p className="mt-3 text-[1.05rem] font-medium leading-relaxed text-slate-500">{s.body}</p>
@@ -791,7 +882,7 @@ function Stakeholders() {
 function AiInterview() {
   return (
     <section id="interview" className="scroll-mt-24 border-y border-slate-200/70 bg-slate-50/60">
-      <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
+      <div className="mx-auto max-w-[88rem] px-6 py-16 sm:px-10 lg:px-14">
         <Reveal className="mx-auto max-w-2xl text-center">
           <SectionLabel>The AI interview</SectionLabel>
           <h2 className="mt-4 text-[2.4rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[3rem]">
@@ -809,7 +900,7 @@ function AiInterview() {
           <div className="grid gap-4 sm:grid-cols-2">
             {INTERVIEW_FEATURES.map((f, i) => (
               <Reveal key={f.title} delay={(i % 2) * 0.06}>
-                <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-7">
+                <div className="flex h-full flex-col rounded-2xl shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)] bg-white p-7 transition-all hover:-translate-y-1 hover:border-[#0057FF]/40 hover:shadow-[0_18px_44px_-28px_rgba(8,26,58,0.45)]">
                   <h3 className="text-[1.35rem] font-extrabold text-[#081A3A]">{f.title}</h3>
                   <p className="mt-1.5 text-[1rem] font-medium leading-snug text-slate-500">{f.body}</p>
                 </div>
@@ -825,7 +916,7 @@ function AiInterview() {
 function DnlaDeepDive() {
   return (
     <section id="dnla" className="scroll-mt-24 bg-white">
-      <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
+      <div className="mx-auto max-w-[88rem] px-6 py-16 sm:px-10 lg:px-14">
         <Reveal className="mx-auto max-w-3xl text-center">
           <span className="inline-flex items-center gap-2 rounded-full border border-[#0057FF]/20 bg-[#0057FF]/[0.06] px-4 py-1.5 text-[14px] font-bold text-[#0057FF]">
             🇩🇪 World-class · from Germany
@@ -839,14 +930,14 @@ function DnlaDeepDive() {
         </Reveal>
 
         <Reveal delay={0.08}>
-          <div className="mt-14 grid items-center gap-10 rounded-3xl border border-slate-200 bg-slate-50/60 p-8 sm:p-12 lg:grid-cols-[0.8fr_1.2fr]">
+          <div className="mt-14 grid items-center gap-10 rounded-3xl shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)] bg-slate-50/60 p-8 sm:p-12 lg:grid-cols-[0.8fr_1.2fr]">
             <div className="flex flex-col items-center">
               <DnlaRadar size={220} />
               <span className="mt-4 rounded-full bg-[#0057FF] px-4 py-1.5 text-[14px] font-bold text-white">Scored 1–7 vs top performers</span>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               {DNLA_GROUPS.map((g) => (
-                <div key={g.group} className="rounded-2xl border border-slate-200 bg-white p-6">
+                <div key={g.group} className="rounded-2xl shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)] bg-white p-6 transition-all hover:-translate-y-1 hover:border-[#0057FF]/40 hover:shadow-[0_18px_44px_-28px_rgba(8,26,58,0.45)]">
                   <p className="text-[1.4rem] font-extrabold text-[#081A3A]">{g.group}</p>
                   <p className="mt-1 text-[1rem] font-medium text-slate-500">{g.blurb}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -867,7 +958,7 @@ function DnlaDeepDive() {
 function WhyTaledge() {
   return (
     <section className="border-y border-slate-200/70 bg-[#081A3A]">
-      <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
+      <div className="mx-auto max-w-[88rem] px-6 py-16 sm:px-10 lg:px-14">
         <Reveal className="max-w-2xl">
           <span className="inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#7DA3FF]">
             <span aria-hidden className="h-px w-6 bg-[#7DA3FF]/60" /> Why Taledge
@@ -896,7 +987,7 @@ function WhyTaledge() {
                   {r.traditional}
                 </div>
                 <div className="flex items-start gap-2.5 px-6 py-5 text-[13.5px] font-medium text-white">
-                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#0057FF] text-white"><Check /></span>
+                  <span className="mt-0.5 shrink-0 text-[#0057FF]"><Check className="h-4 w-4" /></span>
                   {r.taledge}
                 </div>
               </div>
@@ -911,7 +1002,7 @@ function WhyTaledge() {
 function Security() {
   return (
     <section id="security" className="scroll-mt-24 bg-white">
-      <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
+      <div className="mx-auto max-w-[88rem] px-6 py-16 sm:px-10 lg:px-14">
         <div className="grid gap-12 lg:grid-cols-[0.9fr_1.1fr]">
           <Reveal>
             <SectionLabel>Trust &amp; governance</SectionLabel>
@@ -936,8 +1027,8 @@ function Security() {
           <div className="grid gap-4 sm:grid-cols-2">
             {GOVERNANCE.map((g, i) => (
               <Reveal key={g.title} delay={(i % 2) * 0.06}>
-                <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-6">
-                  <span className="grid h-11 w-11 place-items-center rounded-lg bg-[#0057FF]/[0.06] text-[#0057FF]">
+                <div className="flex h-full flex-col rounded-2xl shadow-[0_1px_2px_rgba(8,26,58,0.04),0_18px_44px_-30px_rgba(8,26,58,0.30)] bg-white p-6">
+                  <span className="text-[#0057FF]">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <path d={g.path} />
                     </svg>
@@ -958,35 +1049,33 @@ function FaqSection() {
   const [open, setOpen] = useState<number | null>(0);
   return (
     <section id="faq" className="scroll-mt-24 border-t border-slate-200/70 bg-slate-50/60">
-      <div className="mx-auto max-w-3xl px-5 py-16 sm:px-8">
+      <div className="mx-auto max-w-[88rem] px-6 py-16 sm:px-10 lg:px-14">
         <Reveal className="text-center">
           <SectionLabel>Questions</SectionLabel>
-          <h2 className="mt-4 text-[2.1rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[2.6rem]">
+          <h2 className="mt-4 text-[2.4rem] font-extrabold tracking-[-0.02em] text-[#081A3A] sm:text-[3rem]">
             Frequently asked
           </h2>
         </Reveal>
-        <div className="mt-12 space-y-3">
+        <div className="mx-auto mt-14 max-w-6xl gap-4 md:columns-2 [&>*]:mb-4 [&>*]:break-inside-avoid">
           {FAQ.map((item, i) => {
             const isOpen = open === i;
             return (
-              <Reveal key={item.q} delay={i * 0.03}>
-                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <Reveal key={item.q} delay={(i % 2) * 0.05}>
+                <div className={"overflow-hidden rounded-2xl bg-white transition-all " + (isOpen ? "shadow-[0_18px_44px_-24px_rgba(8,26,58,0.5)] ring-1 ring-[#0057FF]/30" : "shadow-[0_1px_2px_rgba(8,26,58,0.04),0_14px_36px_-30px_rgba(8,26,58,0.28)]")}>
                   <button
                     type="button"
                     onClick={() => setOpen(isOpen ? null : i)}
                     aria-expanded={isOpen}
-                    className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left"
+                    className="flex w-full items-center justify-between gap-4 px-7 py-6 text-left"
                   >
-                    <span className="text-[15px] font-semibold text-[#081A3A]">{item.q}</span>
-                    <span
+                    <span className="text-[18px] font-bold text-[#081A3A]">{item.q}</span>
+                    <svg
                       aria-hidden
-                      className={
-                        "grid h-7 w-7 shrink-0 place-items-center rounded-full transition-all " +
-                        (isOpen ? "rotate-45 bg-[#0057FF] text-white" : "bg-slate-100 text-slate-500")
-                      }
+                      width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                      className={"shrink-0 transition-transform duration-300 " + (isOpen ? "rotate-180 text-[#0057FF]" : "text-slate-400")}
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
-                    </span>
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
                   </button>
                   <AnimatePresence initial={false}>
                     {isOpen && (
@@ -996,7 +1085,7 @@ function FaqSection() {
                         exit={{ height: 0, opacity: 0 }}
                         transition={{ duration: 0.3, ease: EASE }}
                       >
-                        <p className="px-6 pb-6 text-[14px] leading-relaxed text-slate-600">{item.a}</p>
+                        <p className="px-7 pb-7 text-[16px] leading-relaxed text-slate-600">{item.a}</p>
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -1013,12 +1102,12 @@ function FaqSection() {
 function FinalCta() {
   return (
     <section className="bg-white">
-      <div className="mx-auto max-w-[80rem] px-5 py-16 sm:px-8">
+      <div className="mx-auto max-w-[88rem] px-6 py-16 sm:px-10 lg:px-14">
         <Reveal>
           <div className="relative overflow-hidden rounded-3xl bg-[#081A3A] px-8 py-16 text-center sm:px-16 sm:py-20">
             <div aria-hidden className="pointer-events-none absolute inset-0">
               <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_72%)]" />
-              <div className="absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full bg-[#0057FF]/30 blur-[120px]" />
+              <div data-parallax="50" className="absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full bg-[#0057FF]/30 blur-[120px]" />
             </div>
             <div className="relative">
               <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[12px] font-semibold text-[#7DA3FF]">
@@ -1086,7 +1175,7 @@ const FOOTER_COLS = [
 function EntFooter() {
   return (
     <footer className="border-t border-slate-200 bg-white">
-      <div className="mx-auto grid max-w-[80rem] gap-10 px-5 py-16 sm:px-8 md:grid-cols-[1.5fr_1fr_1fr_1fr]">
+      <div className="mx-auto grid max-w-[88rem] gap-10 px-6 py-16 sm:px-10 lg:px-14 md:grid-cols-[1.5fr_1fr_1fr_1fr]">
         <div>
           <Logo />
           <p className="mt-4 max-w-xs text-[14px] leading-relaxed text-slate-500">
@@ -1110,7 +1199,7 @@ function EntFooter() {
         ))}
       </div>
       <div className="border-t border-slate-200">
-        <div className="mx-auto flex max-w-[80rem] flex-col items-center justify-between gap-3 px-5 py-6 text-[12.5px] text-slate-400 sm:flex-row sm:px-8">
+        <div className="mx-auto flex max-w-[88rem] flex-col items-center justify-between gap-3 px-5 py-6 text-[12.5px] text-slate-400 sm:flex-row sm:px-8">
           <span>© 2026 Taledge · Talent Intelligence &amp; Success Platform</span>
           <span className="flex gap-5">
             <Link href="/login" className="hover:text-slate-700">Privacy</Link>
@@ -1125,13 +1214,70 @@ function EntFooter() {
 
 /* ------------------------------- root ----------------------------- */
 
+/**
+ * GSAP ScrollTrigger layer. Scroll-SCRUBBED motion (tied directly to scroll
+ * position, not just a one-shot on-enter) that framer-motion doesn't do as
+ * cleanly: parallax drift on [data-parallax] elements and a scrub reveal on
+ * [data-gsap-rise] elements. Respects reduced-motion and cleans up on unmount.
+ */
+function useGsapScroll() {
+  const reduce = useReducedMotion();
+  useEffect(() => {
+    if (reduce) return;
+    let ctx: { revert: () => void } | null = null;
+    let cancelled = false;
+    (async () => {
+      const gsapMod = await import("gsap");
+      const stMod = await import("gsap/ScrollTrigger");
+      if (cancelled) return;
+      const gsap = gsapMod.default ?? gsapMod;
+      const ScrollTrigger = stMod.ScrollTrigger ?? stMod.default;
+      gsap.registerPlugin(ScrollTrigger);
+      ctx = gsap.context(() => {
+        // Parallax: element drifts by its data-parallax amount across its scroll span.
+        gsap.utils.toArray<HTMLElement>("[data-parallax]").forEach((el) => {
+          const amount = parseFloat(el.dataset.parallax || "60");
+          gsap.fromTo(
+            el,
+            { y: -amount },
+            {
+              y: amount,
+              ease: "none",
+              scrollTrigger: { trigger: el, start: "top bottom", end: "bottom top", scrub: 0.6 },
+            }
+          );
+        });
+        // Scrub rise+fade for decorative headers marked data-gsap-rise.
+        gsap.utils.toArray<HTMLElement>("[data-gsap-rise]").forEach((el) => {
+          gsap.fromTo(
+            el,
+            { y: 40, opacity: 0.35 },
+            {
+              y: 0,
+              opacity: 1,
+              ease: "none",
+              scrollTrigger: { trigger: el, start: "top 92%", end: "top 55%", scrub: 0.5 },
+            }
+          );
+        });
+      });
+    })();
+    return () => {
+      cancelled = true;
+      if (ctx) ctx.revert();
+    };
+  }, [reduce]);
+}
+
 export function EnterpriseLanding() {
+  useGsapScroll();
   return (
     <SmoothScroll>
       <div
         style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}
         className="min-h-screen bg-white text-[#081A3A] antialiased"
       >
+        <ScrollProgress />
         <EntNav />
         <main>
           <Hero />

@@ -193,7 +193,8 @@ export default function ProfilePage() {
 
   return (
     <PageShell width="default">
-      {/* Top row: back link + page title + primary save action */}
+      {/* Top row: back link only. The single Save action lives in the form
+          footer (below the fields), so there is exactly one save button. */}
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <Link
           href="/dashboard"
@@ -201,9 +202,6 @@ export default function ProfilePage() {
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back to Dashboard
         </Link>
-        <Button onClick={save} disabled={state === "saving"} aria-busy={state === "saving"} size="lg">
-          {state === "saving" ? <Loader2 className="h-5 w-5 animate-spin" aria-label="Saving" /> : "Save changes"}
-        </Button>
       </div>
 
       <div className="mb-8">

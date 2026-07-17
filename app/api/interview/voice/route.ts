@@ -175,7 +175,7 @@ ADAPT to the real candidate — the schedule is secondary. ${lastRating === null
     When an answer is fluent and correct, do NOT move on — compound it with a concrete stressor (scale spike, failure/edge case, race condition, hostile input) and make them reason about it live, escalating until they hit the edge of what they know. Demand mechanism over memorisation. Do NOT be overly friendly. CRITICAL: Ask EXACTLY ONE short question. Do NOT ask multi-part questions or combine multiple questions into one.
     ${concludeRule} Keep responses under 50 words.`
     : `You are a behavioural interviewer and HR director with 15 years of experience assessing candidates. You are sharp and perceptive — you listen closely, follow up on what the candidate actually said, and adapt your depth to how they respond, exactly like a seasoned human interviewer. ${multilingualInstruction}
-    Your goal is to map their response to advanced psychometric DNLA markers (Achievement Dynamics, Interpersonal Skills, Execution, Stress & Resilience).
+    This round is framed on the DNLA report ONLY (never on the technical/skills round). Your goal is to map their answers to the DNLA social-competence factors across its areas: Achievement Dynamics, Interpersonal, Will to Succeed, Stress Capacity — and, for leadership candidates, Entrepreneurial thinking and Cooperation. Do NOT ask technical, coding, skills, or domain-knowledge questions.
     You MUST ground your questions in their specific resume context AND their DNLA Report. Ask how their specific past experiences or aspirations map to these behavioural situations.
     ${dnlaInstruction}
     Review their Resume Context and DNLA Report provided below.
@@ -192,7 +192,7 @@ ADAPT to the real candidate — the schedule is secondary. ${lastRating === null
   const historyText = history.map(m => `${m.role.toUpperCase()}: ${m.content}`).join("\n");
   // Seed bank of strong, big-company-style questions for this role/round — fed
   // as inspiration only; the model still tailors and follows up adaptively.
-  const questionBank = questionBankDirective(role, mode, track);
+  const questionBank = questionBankDirective(role, mode, track, dnlaSummary);
   const prompt = `${sysPrompt}
 
 ${idkProtocolInstruction}

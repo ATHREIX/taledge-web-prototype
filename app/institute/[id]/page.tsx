@@ -100,10 +100,13 @@ type Intervention = {
 
 export default async function InstitutePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ track?: string }>;
 }) {
   const { id } = await params;
+  const { track: trackParam } = await searchParams;
   // `id` may be an institute doc-id (demo) or a logged-in user's uid (enforced
   // mode routes nav to /institute/<uid>). Resolve to the actual institute and use
   // ITS id for every downstream query - otherwise a uid would query empty cohorts.
@@ -145,22 +148,39 @@ export default async function InstitutePage({
 
   const isExam = inst.kind === "exam";
   // Durable data from the talent store (seed today; live candidate results once
-  // they complete the interview flow). A placement institute sees its own cohort;
-  // the exam institute sees its aspirant base.
-  const candidates = !isExam ? await listCandidatesByInstitute(instituteId) : [];
+  // they complete the interview flow). We load BOTH cohorts for every institute:
+  // an institute can run placement AND competitive-exam prep, and the dashboard
+  // ALWAYS splits them into two tabs (Placement / Exam) so they're never mixed.
+  const candidates = await listCandidatesByInstitute(instituteId);
   // SCOPE to THIS institute — listExamAspirants() returns the whole collection, so
   // rendering/exporting it unfiltered leaked every institute's aspirants (the
   // "Export cohort CSV" cross-tenant PII leak). Match the same key the exam
   // analytics use (institute display name) plus a stored instituteId when present.
-  const aspirants = isExam
-    ? (await listExamAspirants()).filter(
-        (a) => a.institute === inst.name || (a as { instituteId?: string }).instituteId === instituteId
-      )
-    : [];
-  const placementAnalytics = !isExam ? buildPlacementAnalytics(inst, candidates) : null;
-  const examAnalytics = isExam ? buildExamAnalytics(inst, aspirants) : null;
+  const aspirants = (await listExamAspirants()).filter(
+    (a) => a.institute === inst.name || (a as { instituteId?: string }).instituteId === instituteId
+  );
+
+  const hasPlacement = candidates.length > 0;
+  const hasExam = aspirants.length > 0;
+  // Which single track this page shows. The Home dashboard's Placement / Exam
+  // cards link here with ?track=…; without it, fall back to the institute's own
+  // kind (or whichever side actually has learners). No on-page tab switcher —
+  // the Home cards ARE the switch.
+  let activeTrack: "placement" | "exam" =
+    trackParam === "exam" || trackParam === "placement"
+      ? trackParam
+      : isExam
+        ? "exam"
+        : "placement";
+  if (activeTrack === "placement" && !hasPlacement && hasExam) activeTrack = "exam";
+  if (activeTrack === "exam" && !hasExam && hasPlacement) activeTrack = "placement";
+
+  // Analytics only for a track that has data (the build fns divide by cohort
+  // size — an empty cohort shows a guidance empty state instead).
+  const placementAnalytics = hasPlacement ? buildPlacementAnalytics(inst, candidates) : null;
+  const examAnalytics = hasExam ? buildExamAnalytics(inst, aspirants) : null;
   const interventions = await listInterventions(instituteId);
-  // CSV-ready cohort rows for the "Export cohort CSV" action.
+  // CSV-ready cohort rows for the "Export cohort CSV" action (primary track).
   const cohortRows: Record<string, unknown>[] = isExam
     ? aspirants.map((a) => ({
         Name: a.name, Exam: a.exam, Attempt: a.attempt, "Months preparing": a.monthsPreparing,
@@ -175,7 +195,7 @@ export default async function InstitutePage({
 
   // Serialisable cohort list for the interactive CohortManager (students list +
   // 20-60-20 distribution + filters + drill-down + upload).
-  const cohortStudents: CohortStudent[] = isExam
+  const cohortStudents: CohortStudent[] = !hasPlacement
     ? []
     : candidates.map((c) => ({
         id: c.id,
@@ -190,6 +210,105 @@ export default async function InstitutePage({
         targetRole: c.targetRole ?? "",
       }));
 
+  // ── Track section trees (server-rendered, toggled by the tab island) ──
+  const placementSections = placementAnalytics ? (
+    <>
+      <PlacementKpis inst={inst} analytics={placementAnalytics} />
+      <Section className="mt-12">
+        <SlideUp delay={0.3} className="mb-5">
+          <Eyebrow className="inline-flex items-center gap-2">
+            <IconInstitute /> Cohort Management
+          </Eyebrow>
+          <Heading className="mt-2">Students, distribution & intake</Heading>
+          <p className="mt-1 text-sm text-ink-500">
+            Complete cohort list with a 20·60·20 performance split, filtering, drill-down, and bulk/manual student upload.
+          </p>
+        </SlideUp>
+        <CohortManager
+          instituteId={inst.id}
+          students={cohortStudents}
+          // campusDrives is static, code-defined reference data - read it from
+          // lib/data, NOT the persisted store record (which may predate the field).
+          campusDrives={getInstitute(inst.id)?.campusDrives ?? inst.campusDrives ?? []}
+        />
+      </Section>
+      <PlacementDashboard inst={inst} analytics={placementAnalytics} cohort={candidates} />
+    </>
+  ) : (
+    <Section className="mt-4">
+      <EmptyState
+        icon={<IconInstitute />}
+        title="No placement candidates yet"
+        description="Invite students or upload a cohort to start tracking placement readiness and share it with recruiters."
+      />
+    </Section>
+  );
+
+  const examSections = examAnalytics ? (
+    <>
+      <ExamKpis inst={inst} analytics={examAnalytics} />
+      <ExamDashboard inst={inst} analytics={examAnalytics} aspirants={aspirants} />
+    </>
+  ) : (
+    <Section className="mt-4">
+      <EmptyState
+        icon={<IconSparkles />}
+        title="No exam aspirants yet"
+        description="Once competitive-exam aspirants join this institute and complete their assessment, their success-potential dashboard appears here."
+      />
+    </Section>
+  );
+
+  // Institute-level signals + interventions are shared across both tracks.
+  const sharedSections = (
+    <>
+      <Section className="mt-12">
+        <SlideUp delay={0.3} className="mb-5">
+          <Eyebrow className="inline-flex items-center gap-2">
+            <IconSparkles /> Cohort Signals
+          </Eyebrow>
+          <Heading className="mt-4 text-gradient-brand">
+            Decision Queue
+          </Heading>
+        </SlideUp>
+        {inst.insights?.length ? (
+          <StaggerContainer delay={0.4} className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {inst.insights.map((insight, index) => (
+              <StaggerItem key={insight.label}>
+                <MotionDiv whileHover={{ scale: 1.02, y: -5 }} className={`h-full rounded-xl2 border p-5 sm:p-6 transition-all ${
+                    insight.severity === "danger"
+                      ? "border-rose-200 bg-rose-50"
+                      : insight.severity === "warn"
+                        ? "border-amber-200 bg-amber-50"
+                        : "border-ink-200/70 bg-white shadow-panel"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <Badge tone={severityTone(insight.severity)}>
+                      {insight.severity === "danger" ? "Escalate" : insight.severity === "warn" ? "Review" : "Monitor"}
+                    </Badge>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-ink-400">Signal {String(index + 1).padStart(2, "0")}</span>
+                  </div>
+                  <p className="mt-4 text-base font-semibold leading-snug text-ink-900">{insight.label}</p>
+                </MotionDiv>
+              </StaggerItem>
+            ))}
+          </StaggerContainer>
+        ) : (
+          <EmptyState
+            icon={<IconSparkles />}
+            title="No cohort signals to review"
+            description="New signals appear here as assessments are processed."
+          />
+        )}
+      </Section>
+
+      <div id="interventions" className="mt-12 scroll-mt-24 sm:mt-16">
+        <InterventionsPanel instituteId={inst.id} isExam={isExam} initial={interventions} />
+      </div>
+    </>
+  );
+
   return (
     <PageShell>
       {/* Unified compact dashboard header - matches the other three dashboards.
@@ -198,98 +317,16 @@ export default async function InstitutePage({
           four-line gradient hero). */}
       <FadeIn delay={0.1}>
         <DashboardHeader
-          eyebrow={isExam ? "Competitive Exam Institute" : "Placement Institute"}
+          eyebrow={activeTrack === "exam" ? "Institute · Exam" : "Institute · Placement"}
           title={inst.name}
-          description={
-            <>
-              {isExam ? "Aspirant Success Command Center" : "Placement Readiness Command Center"} — production view for{" "}
-              <span className="font-semibold text-ink-900">{isExam ? inst.cohort : (placementAnalytics?.cohortSize ?? inst.cohort)}</span> learners across{" "}
-              <span className="font-semibold text-ink-900">{inst.batches.length}</span> active groups. Current priority:{" "}
-              <span className="font-semibold text-ink-900">{inst.topGap}</span>.
-            </>
-          }
           actions={<HeaderActions isExam={isExam} cohort={placementAnalytics?.cohortSize ?? inst.cohort} instituteId={inst.id} cohortRows={cohortRows} />}
         />
       </FadeIn>
 
       <div>
-        {!isExam && placementAnalytics && (
-          <PlacementKpis inst={inst} analytics={placementAnalytics} />
-        )}
-        {isExam && examAnalytics && <ExamKpis inst={inst} analytics={examAnalytics} />}
+        {activeTrack === "exam" ? examSections : placementSections}
 
-        {!isExam && (
-          <Section className="mt-12">
-            <SlideUp delay={0.3} className="mb-5">
-              <Eyebrow className="inline-flex items-center gap-2">
-                <IconInstitute /> Cohort Management
-              </Eyebrow>
-              <Heading className="mt-2">Students, distribution & intake</Heading>
-              <p className="mt-1 text-sm text-ink-500">
-                Complete cohort list with a 20·60·20 performance split, filtering, drill-down, and bulk/manual student upload.
-              </p>
-            </SlideUp>
-            <CohortManager
-              instituteId={inst.id}
-              students={cohortStudents}
-              // campusDrives is static, code-defined reference data - read it from
-              // lib/data, NOT the persisted store record (which may predate the field).
-              campusDrives={getInstitute(inst.id)?.campusDrives ?? inst.campusDrives ?? []}
-            />
-          </Section>
-        )}
-
-        <Section className="mt-12">
-          <SlideUp delay={0.3} className="mb-5">
-            <Eyebrow className="inline-flex items-center gap-2">
-              <IconSparkles /> Cohort Signals
-            </Eyebrow>
-            <Heading className="mt-4 text-gradient-brand">
-              Decision Queue
-            </Heading>
-          </SlideUp>
-          {inst.insights?.length ? (
-            <StaggerContainer delay={0.4} className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              {inst.insights.map((insight, index) => (
-                <StaggerItem key={insight.label}>
-                  <MotionDiv whileHover={{ scale: 1.02, y: -5 }} className={`h-full rounded-xl2 border p-5 sm:p-6 transition-all ${
-                      insight.severity === "danger"
-                        ? "border-rose-200 bg-rose-50"
-                        : insight.severity === "warn"
-                          ? "border-amber-200 bg-amber-50"
-                          : "border-ink-200/70 bg-white shadow-panel"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <Badge tone={severityTone(insight.severity)}>
-                        {insight.severity === "danger" ? "Escalate" : insight.severity === "warn" ? "Review" : "Monitor"}
-                      </Badge>
-                      <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-ink-400">Signal {String(index + 1).padStart(2, "0")}</span>
-                    </div>
-                    <p className="mt-4 text-base font-semibold leading-snug text-ink-900">{insight.label}</p>
-                  </MotionDiv>
-                </StaggerItem>
-              ))}
-            </StaggerContainer>
-          ) : (
-            <EmptyState
-              icon={<IconSparkles />}
-              title="No cohort signals to review"
-              description="New signals appear here as assessments are processed."
-            />
-          )}
-        </Section>
-
-        {!isExam && placementAnalytics && (
-          <PlacementDashboard inst={inst} analytics={placementAnalytics} cohort={candidates} />
-        )}
-        {isExam && examAnalytics && (
-          <ExamDashboard inst={inst} analytics={examAnalytics} aspirants={aspirants} />
-        )}
-
-        <div id="interventions" className="mt-12 scroll-mt-24 sm:mt-16">
-          <InterventionsPanel instituteId={inst.id} isExam={isExam} initial={interventions} />
-        </div>
+        {sharedSections}
       </div>
     </PageShell>
   );

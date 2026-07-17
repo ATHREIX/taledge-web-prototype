@@ -6,6 +6,7 @@ import { getPrincipal, unauthorized } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { isProd } from "@/lib/flags";
+import { isTechnicalRole } from "@/lib/role-classification";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -54,7 +55,7 @@ async function generateFirstQuestion(apiKey: string, mode: Body["mode"], role: s
       });
       if (provider?.question) return provider.question;
     }
-    const dnlaPrompt = `You are a warm behavioural assessor running a DNLA-style competency interview (Achievement Dynamics, Interpersonal Skills, Execution, Stress & Resilience). The candidate's name is ${nameToUse}${track === "exam" ? `, an aspirant for the ${role} exam` : role && role !== "Candidate" ? `, applying for the ${role} role` : ""}.
+    const dnlaPrompt = `You are a warm behavioural assessor running a DNLA competency interview framed on the DNLA report ONLY (its areas: Achievement Dynamics, Interpersonal, Will to Succeed, Stress Capacity). The candidate's name is ${nameToUse}${track === "exam" ? `, an aspirant for the ${role} exam` : role && role !== "Candidate" ? `, applying for the ${role} role` : ""}.
 Generate a simple, welcoming opening question. Greet them by name (Hello ${nameToUse}), tell them this is a short behavioural round, and ask them to briefly describe a recent situation where they had to stay motivated or organised under pressure. Keep it to 2 sentences. Ask EXACTLY ONE short question.${dnlaNote}`;
     if (apiKey) {
       try {
@@ -110,7 +111,7 @@ Generate a simple, welcoming opening question about their target role. For examp
 Generate a simple, welcoming opening question about their target role. For example, ask them to briefly introduce themselves and explain why they are interested in the ${role} position. Do NOT ask a complex behavioural question or ask about their past projects/resume yet. CRITICAL: You MUST explicitly greet them by their name (Hello ${nameToUse}) and welcome them to the interview for the ${role} position. Keep it to 2 sentences. Ask EXACTLY ONE short question.${dnlaNote}`;
 
   if (!apiKey) {
-    return `Hello! Welcome to your TalEdge ${mode === "technical" ? "Technical" : "Behavioural"} Assessment for the ${role} position. To start, please state your full name and introduce yourself briefly based on your resume.`;
+    return `Hello! Welcome to your TalEdge ${mode === "technical" ? (isTechnicalRole(role) ? "Technical" : "Skills") : "Behavioural"} Assessment for the ${role} position. To start, please state your full name and introduce yourself briefly based on your resume.`;
   }
 
   try {
@@ -119,7 +120,7 @@ Generate a simple, welcoming opening question about their target role. For examp
   } catch (e) {
     logger.error("interview-start: failed to generate first question via LLM, falling back", { err: String(e) });
   }
-  return `Hello! Welcome to your TalEdge ${mode === "technical" ? "Technical" : "Behavioural"} Assessment for the ${role} position. To start, please state your full name and introduce yourself briefly based on your resume.`;
+  return `Hello! Welcome to your TalEdge ${mode === "technical" ? (isTechnicalRole(role) ? "Technical" : "Skills") : "Behavioural"} Assessment for the ${role} position. To start, please state your full name and introduce yourself briefly based on your resume.`;
 }
 
 export async function POST(req: NextRequest) {

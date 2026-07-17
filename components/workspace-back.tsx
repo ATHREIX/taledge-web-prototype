@@ -9,11 +9,12 @@ import { ButtonLink } from "@/components/ui";
  * hard-coded /student/... back link dropped exam aspirants into the wrong
  * namespace. Derives /exam vs /student from the live pathname.
  */
-export function WorkspaceBack({ id, label = "Back" }: { id: string; label?: string }) {
+export function WorkspaceBack({ id, label = "Back", href }: { id: string; label?: string; href?: string }) {
   const pathname = usePathname();
   const base = pathname?.startsWith("/exam") ? "/exam" : "/student";
+  const target = href ?? `${base}/${id}`;
   return (
-    <ButtonLink href={`${base}/${id}`} variant="ghost" size="sm">
+    <ButtonLink href={target} variant="ghost" size="sm">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <path d="M19 12H5M12 19l-7-7 7-7" />
       </svg>

@@ -44,7 +44,7 @@ export async function sendInviteEmail(opts: { to: string; name: string; link: st
       body: JSON.stringify({
         from,
         to: [opts.to],
-        subject: `You're invited to complete your Taledge assessment${opts.role ? ` — ${opts.role}` : ""}`,
+        subject: `You're invited to complete your Taledge assessment${opts.role ? ` · ${opts.role}` : ""}`,
         html: inviteHtml(opts),
       }),
       signal: AbortSignal.timeout(15_000),
@@ -67,7 +67,7 @@ function shareHtml(opts: { instituteName: string; link: string; count: number })
         <p style="font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#0057FF;margin:0 0 12px;">Taledge</p>
         <h1 style="font-size:22px;color:#081A3A;margin:0 0 12px;">${opts.instituteName} shared a shortlist with you</h1>
         <p style="font-size:15px;line-height:1.6;color:#475467;margin:0 0 24px;">
-          ${opts.instituteName} has shared <strong>${opts.count} consented candidate${opts.count === 1 ? "" : "s"}</strong> with you on Taledge — each with a Fit Score, interview summary, and competency signals. The link is scoped to just these profiles and expires automatically.
+          ${opts.instituteName} has shared <strong>${opts.count} consented candidate${opts.count === 1 ? "" : "s"}</strong> with you on Taledge. Each has a Fit Score, interview summary, and competency signals. The link is scoped to just these profiles and expires automatically.
         </p>
         <a href="${opts.link}" style="display:inline-block;background:#081A3A;color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:13px 26px;border-radius:12px;">View shortlisted candidates →</a>
         <p style="font-size:12px;color:#98a2b3;margin:24px 0 0;word-break:break-all;">Or paste this link: ${opts.link}</p>

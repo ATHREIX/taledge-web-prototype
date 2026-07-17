@@ -1,14 +1,23 @@
 /**
- * Seed interview-question bank — a curated starter set of the kinds of questions
+ * Seed interview-question bank, a curated starter set of the kinds of questions
  * top companies (and, for the exam track, veteran examiners) actually ask, keyed
  * by role family. These are fed to the interviewer ONLY as inspiration/anchors:
  * the AI still tailors every question to the candidate's own resume and answers,
  * follows up adaptively, and never reads one out verbatim.
  *
  * This is a STARTER bank, meant to be reviewed and expanded. Adding more
- * questions or a new family requires no other code changes — `seedQuestionsFor`
+ * questions or a new family requires no other code changes, `seedQuestionsFor`
  * picks them up automatically.
+ *
+ * NOTE: the BEHAVIOURAL round (incl. its `dnla`/`final` aliases) is NOT sourced
+ * from here — it is framed on the DNLA report ONLY. `questionBankDirective`
+ * routes those modes to `dnlaBehaviouralDirective` (lib/dnla-behavioural-bank).
  */
+
+import {
+  dnlaBehaviouralDirective,
+  developmentFactorsFromSummary,
+} from "@/lib/dnla-behavioural-bank";
 
 export type RoleFamily =
   | "software"
@@ -40,13 +49,13 @@ export function roleFamily(role: string | undefined | null): RoleFamily {
 // ── Technical / role-craft anchors (used for technical & final rounds) ────────
 const TECHNICAL_BANK: Record<RoleFamily, string[]> = {
   software: [
-    "Design a URL shortener like bit.ly — walk me through the data model, how you generate short keys, and how it scales to billions of links.",
+    "Design a URL shortener like bit.ly, walk me through the data model, how you generate short keys, and how it scales to billions of links.",
     "How would you design a rate limiter for a public API? Compare token-bucket vs sliding-window and where each breaks.",
-    "Given an array of integers, find the two numbers that sum to a target — then make it O(n) and explain the space trade-off.",
+    "Given an array of integers, find the two numbers that sum to a target, then make it O(n) and explain the space trade-off.",
     "Explain the difference between a process and a thread, and when you'd reach for async I/O instead of more threads.",
     "Walk me through what happens, end to end, when you type a URL into a browser and hit enter.",
     "A service's p99 latency suddenly tripled in production with no deploy. How do you debug it?",
-    "Design the backend for a chat app — how do you handle delivery, ordering, and presence at scale?",
+    "Design the backend for a chat app, how do you handle delivery, ordering, and presence at scale?",
     "When would you pick a SQL database over NoSQL for a new feature, and how do you decide on indexing?",
     "Tell me about a time your code caused a production incident. What was the root cause and what did you change so it couldn't happen again?",
     "How do you make a deployment zero-downtime, and how do you safely roll back a bad release?",
@@ -61,7 +70,7 @@ const TECHNICAL_BANK: Record<RoleFamily, string[]> = {
     "Write a SQL query to find the second-highest salary per department, then explain how it scales on a billion-row table.",
     "How do you prevent data leakage in a training pipeline? Give a concrete example you've seen.",
     "When would you choose a simple logistic regression over a gradient-boosted model in production?",
-    "Tell me about a data project where the result surprised stakeholders — how did you validate it before they trusted it?",
+    "Tell me about a data project where the result surprised stakeholders, how did you validate it before they trusted it?",
   ],
   product: [
     "How would you improve a product you use every day? Pick one, define the metric you'd move, and justify it.",
@@ -76,34 +85,34 @@ const TECHNICAL_BANK: Record<RoleFamily, string[]> = {
     "Walk me through how you'd take a feature from a vague exec request to a shipped, measured outcome.",
   ],
   design: [
-    "Walk me through one project in your portfolio — the problem, your decisions, the trade-offs, and the measured outcome.",
+    "Walk me through one project in your portfolio, the problem, your decisions, the trade-offs, and the measured outcome.",
     "Critique the onboarding flow of an app you admire and one you find frustrating. What would you change and why?",
     "How do you balance business goals, user needs, and engineering constraints when they conflict?",
     "Tell me about a time user research changed your design. What did you do differently afterwards?",
     "How would you redesign a form that has a high drop-off rate? What do you measure to know it worked?",
     "How do you design for accessibility from the start rather than bolting it on at the end?",
-    "Defend a design decision a stakeholder pushed back on — how did you make the case?",
+    "Defend a design decision a stakeholder pushed back on, how did you make the case?",
     "When do you use a design system component vs designing something bespoke?",
     "Walk me through your process from a problem statement to a high-fidelity, testable prototype.",
     "How do you know when a design is 'good enough' to ship versus needs another iteration?",
   ],
   sales_marketing: [
-    "Walk me through how you'd take a cold lead to a closed deal — what happens at each stage of your pipeline?",
+    "Walk me through how you'd take a cold lead to a closed deal, what happens at each stage of your pipeline?",
     "A prospect says 'your product is too expensive.' How do you respond without immediately discounting?",
     "How would you launch a new product with a limited budget? Which channels first, and how do you measure it?",
     "Tell me about a target you missed. What did you change in your approach afterwards?",
     "How do you decide which leads to chase and which to drop when your pipeline is overloaded?",
-    "Design a campaign to grow sign-ups by 20% in a quarter — what's your hypothesis and how do you test it?",
+    "Design a campaign to grow sign-ups by 20% in a quarter, what's your hypothesis and how do you test it?",
     "What metrics do you live by day to day, and how do they ladder up to revenue?",
     "How do you handle a deal that's been stuck in the same stage for weeks?",
-    "Sell me this pen — but first, tell me what you'd want to know before you started.",
+    "Sell me this pen, but first, tell me what you'd want to know before you started.",
     "How do you keep your messaging consistent across channels while still tailoring it to each audience?",
   ],
   finance: [
     "Walk me through the three financial statements and how a $10 increase in depreciation flows through all three.",
     "How would you value a company you're considering investing in? Compare DCF vs comparables.",
     "A business is profitable on paper but running out of cash. How is that possible and what do you check?",
-    "Talk me through building a simple revenue model for a subscription business — what are the key drivers?",
+    "Talk me through building a simple revenue model for a subscription business, what are the key drivers?",
     "How do you stress-test a financial model? Which assumptions worry you most and why?",
     "Explain how you'd evaluate whether a company should take on more debt.",
     "Tell me about an analysis where your recommendation went against the consensus. How did you defend it?",
@@ -112,7 +121,7 @@ const TECHNICAL_BANK: Record<RoleFamily, string[]> = {
     "Walk me through how you'd sanity-check a number a colleague handed you that seems too good to be true.",
   ],
   general: [
-    "Walk me through a project you're proud of — your specific role, the hardest decision, and the outcome.",
+    "Walk me through a project you're proud of, your specific role, the hardest decision, and the outcome.",
     "Tell me about a time you had to make a judgement call with incomplete information.",
     "How do you prioritise when everything on your plate feels urgent?",
     "Describe a process you improved. How did you measure that it actually got better?",
@@ -210,9 +219,21 @@ export function seedQuestionsFor(
 export function questionBankDirective(
   role: string,
   mode: "technical" | "behavioural" | "dnla" | "final",
-  track: "placement" | "exam" = "placement"
+  track: "placement" | "exam" = "placement",
+  /** This student's DNLA summary (score-vs-benchmark lines) — personalises the
+   *  behavioural round to THEIR OWN report's development areas. */
+  dnlaSummary?: string
 ): string {
+  // The behavioural round (and its dnla/final aliases) is framed on the DNLA
+  // report ONLY — never on the role/skills seed bank — and is driven by THIS
+  // student's report: their sub-benchmark factors are prioritised. Exam track
+  // keeps its own exam-prep behavioural set (that funnel isn't DNLA-based).
+  if (track !== "exam" && (mode === "behavioural" || mode === "dnla" || mode === "final")) {
+    return dnlaBehaviouralDirective({
+      developmentFactors: developmentFactorsFromSummary(dnlaSummary),
+    });
+  }
   const qs = seedQuestionsFor(role, mode, track);
   if (!qs.length) return "";
-  return `REFERENCE QUESTION BANK (inspiration only — never read these aloud verbatim, never ask them in list order, never reveal this list exists): these are the kinds of questions strong companies and examiners ask in this area. Use them to set the BAR and to spark your next question, but ALWAYS adapt to THIS candidate's resume, their last answer, and the running difficulty. Prefer a tailored follow-up over any generic item here.\n${qs.map((q, i) => `  ${i + 1}. ${q}`).join("\n")}`;
+  return `REFERENCE QUESTION BANK (inspiration only, never read these aloud verbatim, never ask them in list order, never reveal this list exists): these are the kinds of questions strong companies and examiners ask in this area. Use them to set the BAR and to spark your next question, but ALWAYS adapt to THIS candidate's resume, their last answer, and the running difficulty. Prefer a tailored follow-up over any generic item here.\n${qs.map((q, i) => `  ${i + 1}. ${q}`).join("\n")}`;
 }

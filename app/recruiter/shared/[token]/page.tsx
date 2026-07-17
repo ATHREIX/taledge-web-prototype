@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { PageShell, Card, Heading, Eyebrow, Badge, Stat, ButtonLink } from "@/components/ui";
+import { PageShell, Card, Heading, Eyebrow, Badge, ButtonLink } from "@/components/ui";
 import { ScoreRing } from "@/components/score-ring";
 import { useAuth } from "@/components/AuthProvider";
 
@@ -116,63 +116,97 @@ export default function SharedRecruiterView({ params }: { params: Promise<{ toke
 
   return (
     <PageShell>
-      <Card variant="frosted" className="rounded-xl3 p-6 sm:p-8 mb-8">
-        <div className="flex flex-wrap items-end justify-between gap-6">
-          <div>
-            <Badge tone="brand" className="uppercase tracking-widest">Shared recruiter access</Badge>
-            <Heading as="h1" className="mt-3 text-2xl sm:text-3xl">{institute?.name ?? "Candidate pool"}</Heading>
-            <p className="mt-2 text-sm text-ink-500">
-              A scoped, read-only view shared by the institute. {institute?.kind === "exam" ? "Competitive-exam cohort." : "Placement cohort."}
-            </p>
-          </div>
-          <div className="grid grid-cols-3 gap-6">
-            <Stat label="Candidates" value={`${rows.length}`} />
-            <Stat label="Avg Fit" value={`${avgFit}`} />
-            <Stat label="Shortlist-ready" value={`${ready}`} />
-          </div>
-        </div>
-      </Card>
+      {/* ── Header ── */}
+      <div className="mb-8">
+        <Badge tone="brand" className="uppercase tracking-widest">Shared recruiter access</Badge>
+        <Heading as="h1" className="mt-3 text-3xl sm:text-4xl">{institute?.name ?? "Candidate pool"}</Heading>
+        <p className="mt-2 max-w-2xl text-sm text-ink-500">
+          A scoped, read-only view shared by the institute. {institute?.kind === "exam" ? "Competitive-exam cohort." : "Placement cohort."} Open any candidate to read their full, evidence-grounded Fit Score report.
+        </p>
+      </div>
 
-      <Card variant="frosted" className="rounded-xl3 overflow-hidden">
-        <div className="border-b border-ink-200/60 px-6 py-4">
-          <Eyebrow>Candidate pool</Eyebrow>
-        </div>
-        {sorted.length === 0 ? (
-          <div className="p-10 text-center text-sm text-ink-500">No candidates have completed assessments in this cohort yet.</div>
-        ) : (
-          <div className="divide-y divide-ink-200/50">
-            <div className="hidden grid-cols-12 gap-2 px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-ink-400 md:grid">
-              <div className="col-span-4">Candidate</div>
-              <div className="col-span-2">Role</div>
-              <div className="col-span-1 text-center">Fit</div>
-              <div className="col-span-1 text-center">Tech</div>
-              <div className="col-span-1 text-center">Behav</div>
-              <div className="col-span-1 text-center">Success</div>
-              <div className="col-span-2 text-center">DNLA</div>
-            </div>
-            {sorted.map((r) => (
-              <div key={r.studentId} className="grid grid-cols-2 items-center gap-2 px-6 py-4 md:grid-cols-12">
-                <div className="col-span-2 flex items-center gap-3 md:col-span-4">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-ink-900 text-xs font-bold text-white">{r.avatar}</span>
+      {/* ── Summary stats ── */}
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Card className="p-5">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ink-500">Candidates</p>
+          <p className="mt-2 text-3xl font-extrabold tracking-tight text-ink-900">{rows.length}</p>
+          <p className="mt-0.5 text-[12px] text-ink-500">Consented &amp; assessed</p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ink-500">Average Fit</p>
+          <p className="mt-2 text-3xl font-extrabold tracking-tight text-ink-900">{avgFit}<span className="text-lg text-ink-400">%</span></p>
+          <p className="mt-0.5 text-[12px] text-ink-500">Across this cohort</p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ink-500">Shortlist-ready</p>
+          <p className="mt-2 text-3xl font-extrabold tracking-tight text-emerald-600">{ready}</p>
+          <p className="mt-0.5 text-[12px] text-ink-500">Fit 72+ · Success 70+</p>
+        </Card>
+      </div>
+
+      {/* ── Candidate cards ── */}
+      <div className="mb-3 flex items-center justify-between">
+        <Eyebrow>Candidate pool</Eyebrow>
+        <span className="text-xs text-ink-400">Ranked by Fit Score</span>
+      </div>
+
+      {sorted.length === 0 ? (
+        <Card className="p-12 text-center text-sm text-ink-500">No candidates have completed assessments in this cohort yet.</Card>
+      ) : (
+        <div className="grid gap-4">
+          {sorted.map((r) => (
+            <Card key={r.studentId} className="p-5 transition-shadow hover:shadow-panel-hover">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                {/* Identity */}
+                <div className="flex items-center gap-4">
+                  <ScoreRing value={r.fit} size={60} stroke={6} tone={r.fit >= 72 ? "success" : r.fit >= 55 ? "warn" : "danger"} />
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-bold text-ink-900">{r.name}</div>
-                    <div className="truncate text-xs text-ink-500">{r.college}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-base font-bold text-ink-900">{r.name}</span>
+                      <Badge tone={r.dnlaReady ? "success" : "neutral"}>{r.dnlaReady ? "DNLA ready" : "DNLA pending"}</Badge>
+                    </div>
+                    <div className="mt-0.5 truncate text-sm text-ink-500">{r.role} · {r.college}</div>
+                    {r.flags?.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {r.flags.slice(0, 3).map((f) => (
+                          <span key={f} className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">{f}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div className="hidden truncate text-sm text-ink-600 md:col-span-2 md:block">{r.role}</div>
-                <div className="md:col-span-1 md:flex md:justify-center"><ScoreRing value={r.fit} size={40} /></div>
-                <div className="hidden text-center text-sm font-semibold text-ink-700 md:col-span-1 md:block">{r.tech}</div>
-                <div className="hidden text-center text-sm font-semibold text-ink-700 md:col-span-1 md:block">{r.behav}</div>
-                <div className="hidden text-center text-sm font-semibold text-ink-700 md:col-span-1 md:block">{r.success}%</div>
-                <div className="hidden md:col-span-2 md:flex md:justify-center">
-                  <Badge tone={r.dnlaReady ? "success" : "neutral"}>{r.dnlaReady ? "Available" : "Pending"}</Badge>
+
+                {/* Scores + action */}
+                <div className="flex flex-wrap items-center gap-5 lg:justify-end">
+                  <ScoreCell label="Fit" value={`${r.fit}%`} strong />
+                  <ScoreCell label="Technical" value={`${r.tech}%`} />
+                  <ScoreCell label="Behavioural" value={`${r.behav}%`} />
+                  <ScoreCell label="Success" value={`${r.success}%`} />
+                  <ButtonLink
+                    href={`/student/${r.studentId}/fit-score?view=recruiter`}
+                    variant="primary"
+                    size="sm"
+                    className="shrink-0"
+                  >
+                    View full report
+                  </ButtonLink>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </Card>
-      <p className="mt-4 text-center text-xs text-ink-400">Shared securely by the institute · access expires automatically.</p>
+            </Card>
+          ))}
+        </div>
+      )}
+      <p className="mt-6 text-center text-xs text-ink-400">Shared securely by the institute · access expires automatically.</p>
     </PageShell>
+  );
+}
+
+// Compact labelled score used in each candidate card's score strip.
+function ScoreCell({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className="text-center">
+      <div className={strong ? "text-lg font-extrabold text-ink-900" : "text-base font-bold text-ink-700"}>{value}</div>
+      <div className="text-[10px] font-bold uppercase tracking-wide text-ink-400">{label}</div>
+    </div>
   );
 }

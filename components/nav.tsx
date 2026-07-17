@@ -8,7 +8,6 @@ import {
   Building2,
   Briefcase,
   GraduationCap,
-  Sparkles,
   LogOut,
   LayoutDashboard,
   UserRound,
@@ -49,7 +48,7 @@ function roleNav(role: Role, uid?: string | null): NavLink[] {
         { href: "/dashboard", label: "Home", icon: LayoutDashboard },
         { href: `/student/${id}`, label: "My Workspace", icon: UserRound },
         { href: `/student/${id}/fit-score`, label: "Fit Score", icon: Gauge },
-        { href: `/student/${id}/development`, label: "Development", icon: Sparkles },
+        { href: `/student/${id}/development`, label: "Development", icon: GraduationCap },
       ];
     case "recruiter":
       return [
@@ -214,7 +213,7 @@ export function Nav() {
   const isActive = (href: string) => href === activeHref;
 
   return (
-    <div className="sticky top-0 z-50 px-3 pt-3 sm:px-5 print:hidden">
+    <div className="sticky top-0 z-50 px-3 pt-3 pb-2 sm:px-5 print:hidden before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:-z-10 before:h-full before:bg-gradient-to-b before:from-canvas before:via-canvas/95 before:to-transparent">
       <header
         className={cn(
           "relative mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 rounded-full border px-3 backdrop-blur-xl transition-all duration-300 sm:px-4",
@@ -280,10 +279,8 @@ export function Nav() {
                 <div role="menu" onKeyDown={onMenuKeyDown} className="absolute right-0 mt-2 w-64 overflow-hidden rounded-xl2 border border-ink-200/70 bg-white py-1.5 shadow-panel">
                   <div className="border-b border-ink-100 px-4 py-2.5">
                     <p className="truncate text-sm font-bold text-ink-900">{user.displayName || "Your account"}</p>
-                    <p className="truncate text-xs text-ink-500">
-                      {user.email}
-                      {role ? <span className="ml-1 capitalize text-brand-600">· {role}</span> : null}
-                    </p>
+                    <p className="truncate text-xs text-ink-500" title={user.email || undefined}>{user.email}</p>
+                    {role ? <p className="mt-0.5 text-xs font-semibold capitalize text-brand-600">{role}</p> : null}
                   </div>
                   <Link href="/dashboard" role="menuitem" className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-semibold text-ink-700 hover:bg-ink-50 hover:text-ink-900">
                     <LayoutDashboard className="h-4 w-4 text-ink-400" aria-hidden /> Dashboard

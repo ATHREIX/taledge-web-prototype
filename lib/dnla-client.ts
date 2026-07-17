@@ -91,20 +91,23 @@ export async function createTan(params: {
   const key = getDnlaApiKey();
   if (!key) throw new DnlaError("DNLA is not configured (DNLA_API_KEY missing).", 503);
 
-  const body = {
-    api_key: key, // the spec accepts api_key in the body OR query; send in body here
-    area: params.area || getDnlaArea(),
-    ...(params.email ? { email: params.email } : {}),
-    ...(params.firstname ? { firstname: params.firstname } : {}),
-    ...(params.lastname ? { lastname: params.lastname } : {}),
-    ...(params.jobId ? { job_id: params.jobId } : {}),
-    ...(params.jobAreaId ? { job_area_id: params.jobAreaId } : {}),
-  };
+  // DNLA's partner API expects multipart/form-data for tan/create (confirmed by
+  // DNLA 2026-07-16 — a JSON body was accepted too, but form-data is the spec'd
+  // and supported shape). Do NOT set Content-Type manually: fetch derives the
+  // multipart boundary from the FormData instance.
+  const form = new FormData();
+  form.set("api_key", key);
+  form.set("area", params.area || getDnlaArea());
+  if (params.email) form.set("email", params.email);
+  if (params.firstname) form.set("firstname", params.firstname);
+  if (params.lastname) form.set("lastname", params.lastname);
+  if (params.jobId) form.set("job_id", params.jobId);
+  if (params.jobAreaId) form.set("job_area_id", params.jobAreaId);
 
   const res = await fetch(`${getDnlaBase()}/partner-api/tan/create`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(body),
+    headers: { Accept: "application/json" },
+    body: form,
     signal: AbortSignal.timeout(15000),
   });
 

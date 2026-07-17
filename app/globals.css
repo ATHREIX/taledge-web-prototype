@@ -146,3 +146,59 @@ h3 {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.2);
 }
+
+/* ── Print / Save-as-PDF: the Fit Score report (.fs-print-report) ──────────
+   Without this the report printed as raw on-screen UI: ambient background,
+   heavy shadows, cards split across page breaks, and — worst — framer-motion
+   sections that were still in their hidden (opacity:0 / translated) state
+   printed BLANK. These rules make the printed page a clean document. */
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  /* Print score colours, badge tones and rings faithfully. */
+  .fs-print-report,
+  .fs-print-report * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Force EVERY element visible — override framer-motion's inline
+     opacity/transform so no animated-in section prints blank. */
+  .fs-print-report * {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+    animation: none !important;
+    transition: none !important;
+  }
+
+  /* Flatten heavy chrome that muddies a printed page. */
+  .fs-print-report [class*="shadow"] {
+    box-shadow: none !important;
+  }
+  .fs-print-report [class*="backdrop-blur"] {
+    backdrop-filter: none !important;
+  }
+
+  /* Use the full printable width. */
+  .fs-print-report {
+    max-width: 100% !important;
+  }
+
+  /* Keep cards, stat tiles and sections from splitting across pages. */
+  .fs-print-report .rounded-xl2,
+  .fs-print-report .rounded-xl3,
+  .fs-print-report section,
+  .fs-print-report article,
+  .fs-print-report table {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

@@ -9,6 +9,7 @@ import { PageShell, Card, Button, ButtonLink, Badge, Heading } from "@/component
 import { authedFetch } from "@/lib/api-client";
 import { useAuth } from "@/components/AuthProvider";
 import { workspaceId } from "@/lib/roles";
+import { isTechnicalRole } from "@/lib/role-classification";
 import { cn } from "@/lib/utils";
 
 const steps = ["Profile", "Goal", "Context", "Done"];
@@ -59,6 +60,8 @@ type ParsedResume = {
   summary?: string;
   skills?: string[];
   projects?: { title: string; stack: string[]; impact: string }[];
+  cgpa?: string;
+  experience?: string;
 };
 
 type ResumeStatus = "idle" | "uploading" | "parsing" | "parsed" | "manual" | "error";
@@ -113,6 +116,8 @@ export default function Onboarding() {
     projects: { title: string; stack: string[]; impact: string }[];
     summary: string;
     target_role: string;
+    cgpa: string;
+    experience: string;
   } | null>(null);
 
   // Off-campus invite context. When a candidate opens a recruiter's link
@@ -281,6 +286,8 @@ export default function Onboarding() {
         projects: p.projects || [],
         summary: p.summary || "",
         target_role: p.target_role || "",
+        cgpa: p.cgpa || "",
+        experience: p.experience || "",
       });
       setResumeStatus("parsed");
     } catch (e: any) {
@@ -373,6 +380,8 @@ export default function Onboarding() {
         projects: p.projects || [],
         summary: p.summary || "",
         target_role: role,
+        cgpa: "",
+        experience: "",
       });
       setJdStatus("done");
     } catch (e: any) {
@@ -412,6 +421,8 @@ export default function Onboarding() {
         resumeSummary: parsedExtras?.summary || "",
         resumeSkills: parsedExtras?.skills || [],
         resumeProjects: parsedExtras?.projects || [],
+        resumeCgpa: parsedExtras?.cgpa || "",
+        resumeExperience: parsedExtras?.experience || "",
         // Carry the off-campus invite link so the finished candidate lands in
         // the INVITING recruiter's own pool (and the invite can be marked done).
         ...(inviteCtx
@@ -436,6 +447,8 @@ export default function Onboarding() {
             resumeSummary: parsedExtras?.summary || "",
             resumeSkills: parsedExtras?.skills || [],
             resumeProjects: parsedExtras?.projects || [],
+            resumeCgpa: parsedExtras?.cgpa || "",
+            resumeExperience: parsedExtras?.experience || "",
             updatedAt: new Date().toISOString(),
           },
           { merge: true }
@@ -1257,7 +1270,9 @@ export default function Onboarding() {
                           router.push(track === "exam" ? `/exam/${examId}/dnla` : `/student/${candidateId}/interview/technical`);
                         }}
                       >
-                        {track === "exam" ? "Begin Track 02" : "Begin Technical Interview"}
+                        {track === "exam"
+                          ? "Begin Track 02"
+                          : `Begin ${isTechnicalRole(selectedRole) ? "Technical" : "Skills"} Interview`}
                         <ArrowRightIcon className="w-5 h-5 transition-transform group-hover:translate-x-1" aria-hidden="true" />
                       </Button>
                     </motion.div>

@@ -73,5 +73,16 @@ After deploy (push to main → App Hosting auto-builds):
 - Commits: never add Co-Authored-By/Claude footers.
 - Funnel is technical interview → DNLA questionnaire → behavioural interview ("final" is an
   alias of behavioural everywhere — never resurrect a separate final round).
-- DNLA provider integration is HELD (their tan/create 500s); don't enable DNLA_API_KEY
-  until it returns 200/403 and the key is rotated.
+- The BEHAVIOURAL round is framed on the DNLA report ONLY (client-mandated 2026-07-17) — NOT
+  on the AI/technical or skills round. Question source is `lib/dnla-behavioural-bank.ts` (the
+  real DNLA factor taxonomy from both licensed reports: ESK Social Competence 17 factors +
+  AZS Leadership adds Entrepreneurial + Cooperation; scale 1-7, optimum band 4-7). It is
+  driven by EACH student's OWN report: `questionBankDirective(role,mode,track,dnlaSummary)`
+  extracts their sub-benchmark ("development area") factors and the directive prioritises
+  them. Personas in `gemini/live-token` + `interview/voice` + `interview/start` are DNLA-
+  framed. Never point the behavioural round back at the generic STAR/skills bank.
+- DNLA provider API: server was fixed (tan/create no longer 500s — now 403). BLOCKED on the
+  ACCOUNT: the key in `.env.local` (`E2N…jl`, 26 chars) returns 403 "invalid api_key" — DNLA
+  deactivated it. Need DNLA to hand over an ACTIVATED key TOGETHER WITH the ESK price model
+  (Stefan → Max), then rotate it. Keep DNLA_API_KEY held until a call returns 200/403-billing
+  with the new key. `createTan` sends multipart form-data (DNLA-spec'd).

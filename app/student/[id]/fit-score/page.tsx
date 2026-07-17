@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { ScoreRing, Bar } from "@/components/score-ring";
 import { getStudent, SAMPLE_DNLA } from "@/lib/data";
 import { resumeFingerprint } from "@/lib/resume-hash";
+import { isTechnicalRole } from "@/lib/role-classification";
 import {
   PageShell,
   PageHeader,
@@ -218,7 +219,8 @@ function FitScorePageInner() {
 
   // Reattempt: a true restart. Clear every cached assessment artifact for this
   // candidate (interview transcripts + timestamps, fit-score report, workspace
-  // transcript keys) before navigating back to the DNLA stage, so stale results
+  // transcript keys) before navigating back to STEP ONE (Profile & Résumé), so
+  // the candidate re-runs the whole funnel from the start and stale results
   // never bleed into the new attempt.
   const reattempt = useCallback(() => {
     try {
@@ -239,8 +241,8 @@ function FitScorePageInner() {
     } catch {
       /* non-fatal: navigate even if cache clearing fails */
     }
-    router.push(`${flowBase}/${id}/dnla`);
-  }, [id, router, flowBase]);
+    router.push("/onboarding");
+  }, [id, router]);
 
   const readTranscripts = useCallback(() => {
     // Parse each round INDEPENDENTLY: one corrupted transcript must not discard
@@ -519,16 +521,12 @@ function FitScorePageInner() {
         } catch {
           /* fall through to local regenerate */
         }
-        const { technical, behavioural, final } = readTranscripts();
-        const userAnswers =
-          technical.filter((m) => m.role === "user").length +
-          behavioural.filter((m) => m.role === "user").length +
-          final.filter((m) => m.role === "user").length;
-        if (userAnswers > 0) {
-          void generate();
-        } else {
-          setStatus("idle");
-        }
+        // Do NOT auto-generate. Generation is a paid Gemini call, and firing it
+        // on every visit (which also happened whenever a stored report read as
+        // stale) burned cost and re-scored silently. Land on idle instead; the
+        // candidate triggers it explicitly via the "Generate now" / "Regenerate
+        // Report" button. Existing local/server reports above still hydrate free.
+        setStatus("idle");
       })();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -544,6 +542,10 @@ function FitScorePageInner() {
     ? (recruiterName || s.name)
     : (profile.fullName && String(profile.fullName).trim()) || s.name;
   const candidateFirst = candidateName.split(" ")[0];
+  // Round-1 is role-aware: "Technical" for a technical target role, "Skills" for
+  // a non-technical one (MBA/BA/BCom/sales/…). Drives the report's round-1 labels.
+  const round1IsTechnical = isTechnicalRole(profile.targetRole);
+  const round1Label = round1IsTechnical ? "Technical" : "Skills";
 
   return (
     <PageShell>
@@ -551,6 +553,7 @@ function FitScorePageInner() {
         initial="hidden"
         animate="visible"
         variants={containerVariants}
+        className="fs-print-report"
       >
         {/* Header */}
         <motion.div variants={itemVariants} className="mb-10">
@@ -593,13 +596,32 @@ function FitScorePageInner() {
                     <ArrowLeft /> {instituteView ? "Back to cohort" : "Back to pipeline"}
                   </Button>
                 ) : (
-                  <ButtonLink href={`${flowBase}/${s.id}`} variant="ghost" size="sm" aria-label="Back to student dashboard">
+                  <ButtonLink href="/dashboard" variant="ghost" size="sm" aria-label="Back to dashboard">
                     <ArrowLeft /> Back to Dashboard
                   </ButtonLink>
                 )}
               </div>
             }
           />
+
+          {/* Résumé facts pulled at parse time — CGPA/SGPA and total experience.
+              Shown only when the résumé actually contained them. */}
+          {(profile.resumeCgpa || profile.resumeExperience) && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {profile.resumeCgpa && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-800">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-ink-400">CGPA</span>
+                  {profile.resumeCgpa}
+                </span>
+              )}
+              {profile.resumeExperience && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-800">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-ink-400">Experience</span>
+                  {profile.resumeExperience}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Generation status banner */}
           <GenStatusBanner
@@ -659,15 +681,15 @@ function FitScorePageInner() {
                       size={188}
                       stroke={14}
                       label="Success Probability"
-                      sub={status === "generated" ? `Fit Score · ${report.fit_score}%` : "Awaiting report"}
+                      sub={status !== "generated" ? "Awaiting report" : report.fit_score === -1 ? "Fit Score · Pending" : `Fit Score · ${report.fit_score}%`}
                       tone={report.success_probability === -1 ? "muted" : report.success_probability >= 75 ? "success" : report.success_probability >= 55 ? "warn" : "danger"}
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3 lg:col-span-6 sm:grid-cols-3">
                     <HeadlineStat
-                      label="Technical Score"
+                      label={`${round1Label} Score`}
                       value={report.technical_score === -1 ? "Pending" : `${report.technical_score}%`}
-                      hint="Tech interview + coding"
+                      hint={round1IsTechnical ? "Tech interview + coding" : "Skills interview"}
                     />
                     <HeadlineStat
                       label="Behavioural Score"
@@ -693,8 +715,8 @@ function FitScorePageInner() {
                     <HeadlineStat
                       label="Verdict"
                       value={report.verdict}
-                      hint={`Threshold ${report.fit_score >= 70 ? "met" : "below 70"}`}
-                      tone={report.fit_score >= 70 ? "ok" : "warn"}
+                      hint={report.fit_score === -1 ? "Interview required" : `Threshold ${report.fit_score >= 70 ? "met" : "below 70"}`}
+                      tone={report.fit_score === -1 ? "default" : report.fit_score >= 70 ? "ok" : "warn"}
                     />
                   </div>
                   {!recruiterView && (
@@ -752,11 +774,13 @@ function FitScorePageInner() {
               </motion.div>
             )}
 
-            {/* COMPONENT 1 · TECHNICAL INTERVIEW */}
+            {/* COMPONENT 1 · ROUND-1 INTERVIEW (Technical or Skills) */}
             <RubricSection
               tag="Component 01"
-              title="Technical Interview features"
-              desc="Per PRD §9.1 · accuracy, depth, thinking quality, coding, and behavioural signals during the tech interview."
+              title={`${round1Label} Interview features`}
+              desc={round1IsTechnical
+                ? "Per PRD §9.1 · accuracy, depth, thinking quality, coding, and delivery signals during the technical interview."
+                : "Per PRD §9.1 · domain knowledge, depth, judgment, and delivery signals during the skills interview."}
               score={report.technical_score}
               groups={report.technical_breakdown}
             />
@@ -953,7 +977,7 @@ function FitScorePageInner() {
                 <Heading className="mt-3 sm:text-3xl">How your scores were derived</Heading>
                 <p className="mt-2 max-w-2xl text-sm text-ink-500">
                   Every score is grounded in your own answers and profile. Below is the stored
-                  evidence the scoring engine recorded for this report — per answer, and per
+                  evidence the scoring engine recorded for this report, per answer, and per
                   resume dimension.
                 </p>
               </div>
@@ -967,7 +991,7 @@ function FitScorePageInner() {
                       <div className="flex items-center justify-between gap-4">
                         <div className="font-bold text-ink-900">Q{pq.q} · {pq.question || "Answer"}</div>
                         <Badge tone={pq.answerScore < 0 ? "neutral" : pq.answerScore >= 65 ? "success" : pq.answerScore >= 40 ? "warn" : "danger"}>
-                          {pq.answerScore < 0 ? "Clarification — not scored" : `${pq.answerScore}/100`}
+                          {pq.answerScore < 0 ? "Clarification, not scored" : `${pq.answerScore}/100`}
                         </Badge>
                       </div>
                       {pq.evidence && <p className="mt-1.5 text-ink-600">{pq.evidence}</p>}
@@ -978,7 +1002,7 @@ function FitScorePageInner() {
               {(audit.resumeRowEvidence?.length || 0) > 0 && (
                 <Card variant="default" className="rounded-xl2 overflow-hidden p-0">
                   <div className="border-b border-ink-200/40 bg-ink-50/60 px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-ink-500">
-                    Resume &amp; profile — evidence per dimension
+                    Resume &amp; profile evidence per dimension
                   </div>
                   {audit.resumeRowEvidence!.map((r) => (
                     <div key={r.row} className="grid grid-cols-12 gap-3 border-b border-ink-100 px-6 py-4 text-sm last:border-0">
@@ -1001,12 +1025,12 @@ function FitScorePageInner() {
                 <Heading className="mt-3 sm:text-3xl">Your Fit Score attempts</Heading>
                 <p className="mt-2 max-w-2xl text-sm text-ink-500">
                   Every generated report is kept. A new interview always produces a NEW
-                  report — previous ones stay available here for comparison.
+                  report. Previous ones stay available here for comparison.
                 </p>
                 {viewingAttempt && (
                   <div className="mt-3 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                     <span>
-                      Viewing the report generated on {viewingAttempt.ts ? new Date(viewingAttempt.ts).toLocaleString() : "an earlier date"} — not your latest result.
+                      Viewing the report generated on {viewingAttempt.ts ? new Date(viewingAttempt.ts).toLocaleString() : "an earlier date"}, not your latest result.
                     </span>
                     <Button
                       type="button"
@@ -1326,6 +1350,24 @@ function HeadlineStat({
 
 /* ----- Generation status banner ----- */
 
+// Human-readable "time since" — raw seconds (e.g. "10587s ago") ran off the end
+// of the banner. Steps up through min / hr / day / wk / mo / yr.
+function formatAgo(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 45) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} hr ago`;
+  const d = Math.round(h / 24);
+  if (d < 7) return `${d} day${d === 1 ? "" : "s"} ago`;
+  const w = Math.round(d / 7);
+  if (w < 5) return `${w} wk ago`;
+  const mo = Math.round(d / 30);
+  if (mo < 12) return `${mo} mo ago`;
+  return `${Math.round(d / 365)} yr ago`;
+}
+
 function GenStatusBanner({
   status,
   source,
@@ -1377,10 +1419,7 @@ function GenStatusBanner({
     );
   }
   if (status === "generated") {
-    const ago =
-      generatedAt != null
-        ? `${Math.max(1, Math.round((Date.now() - generatedAt) / 1000))}s ago`
-        : "just now";
+    const ago = generatedAt != null ? formatAgo(Date.now() - generatedAt) : "just now";
     // The "summary" source is a headline fallback (aggregate scores only), not a
     // full LLM generation - label it honestly rather than "generated by AI".
     const isSummary = source === "summary";
