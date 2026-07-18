@@ -60,6 +60,16 @@ export function useGeminiLive() {
   // talk over the AI and the AI's own voice can't leak back in. The mic resumes
   // once the AI's turn fully ends.
   const aiTurnActiveRef = useRef(false);
+  // True after we submit a candidate/director turn and until Gemini completes
+  // its corresponding interviewer turn. If the socket rotates in that window,
+  // session resumption restores context but does not always restart the
+  // interrupted generation by itself (confirmed in the deployed 15-minute
+  // duration test). Track that state so the resumed socket can safely nudge the
+  // interviewer to continue, without creating a duplicate question when the
+  // connection closed while it was simply waiting for the candidate.
+  const awaitingModelTurnRef = useRef(false);
+  const interruptedTurnRef = useRef(false);
+  const resumeKickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // External hard-mute: holds the candidate's mic closed regardless of turn state
   // (used to fully pause the live interviewer during a coding block).
   const forceMuteRef = useRef(false);
@@ -171,6 +181,12 @@ export function useGeminiLive() {
     intentionalCloseRef.current = false;
     sessionHandleRef.current = null;
     reconnectingRef.current = false;
+    awaitingModelTurnRef.current = false;
+    interruptedTurnRef.current = false;
+    if (resumeKickTimerRef.current) {
+      clearTimeout(resumeKickTimerRef.current);
+      resumeKickTimerRef.current = null;
+    }
 
     // Guard against a stale/duplicate socket (e.g. React dev double-invoke or a
     // rapid reconnect) so two live sessions can't race the connection state.
@@ -289,6 +305,7 @@ export function useGeminiLive() {
                 },
               })
             );
+            awaitingModelTurnRef.current = true;
           }
         };
 
@@ -311,6 +328,40 @@ export function useGeminiLive() {
             reconnectingRef.current = false;
             reconnectAttemptsRef.current = 0; // healthy connection → reset backoff
             if (!isReconnect) settle(true);
+            // Gemini may resume the session transport without resuming an AI
+            // generation that was cut off by the ~10-minute socket rotation.
+            // Give the server a short chance to continue naturally; if no model
+            // progress arrives, send one private director turn to regenerate the
+            // interrupted next question. The ref is set only when a model reply
+            // was actually pending, so reconnecting while awaiting the candidate
+            // cannot produce a duplicate question.
+            if (isReconnect && interruptedTurnRef.current) {
+              if (resumeKickTimerRef.current) clearTimeout(resumeKickTimerRef.current);
+              resumeKickTimerRef.current = setTimeout(() => {
+                resumeKickTimerRef.current = null;
+                if (
+                  intentionalCloseRef.current ||
+                  wsRef.current !== ws ||
+                  ws.readyState !== WebSocket.OPEN ||
+                  !interruptedTurnRef.current
+                ) return;
+                interruptedTurnRef.current = false;
+                awaitingModelTurnRef.current = true;
+                ws.send(
+                  JSON.stringify({
+                    clientContent: {
+                      turns: [{
+                        role: "user",
+                        parts: [{
+                          text: "[DIRECTOR: The connection resumed while your previous interviewer turn was interrupted. Continue from exactly where the interview stopped and ask exactly ONE next question based on the candidate's latest answer. Do not greet again, restart, repeat an already completed question, or mention the connection.]",
+                        }],
+                      }],
+                      turnComplete: true,
+                    },
+                  })
+                );
+              }, 1500);
+            }
             if (c.captureMic) {
               startMicrophone().catch(() => setError("Microphone access is required for the live interview."));
             }
@@ -319,6 +370,19 @@ export function useGeminiLive() {
 
           const sc = payload.serverContent;
         if (!sc) return;
+
+        // If Gemini did continue the interrupted generation on its own, cancel
+        // the delayed recovery nudge before it can create a second question.
+        if (
+          isReconnect &&
+          (sc.outputTranscription?.text || sc.modelTurn || sc.turnComplete)
+        ) {
+          interruptedTurnRef.current = false;
+          if (resumeKickTimerRef.current) {
+            clearTimeout(resumeKickTimerRef.current);
+            resumeKickTimerRef.current = null;
+          }
+        }
 
         // Streamed transcriptions (accumulate per side; commit on turn end).
         // The interviewer's text streams live into `partialAi` so the UI can
@@ -349,6 +413,7 @@ export function useGeminiLive() {
         }
 
         if (sc.turnComplete) {
+          awaitingModelTurnRef.current = false;
           const userText = userTurnRef.current.trim();
           const aiText = aiTurnRef.current.trim();
           userTurnRef.current = "";
@@ -379,6 +444,10 @@ export function useGeminiLive() {
         ws.onclose = () => {
           if (wsRef.current !== ws) return; // superseded by a newer socket — ignore
           setIsConnected(false);
+          if (resumeKickTimerRef.current) {
+            clearTimeout(resumeKickTimerRef.current);
+            resumeKickTimerRef.current = null;
+          }
           // Intentional teardown (disconnect()) → do not reconnect.
           if (intentionalCloseRef.current) { if (!isReconnect) settle(false); return; }
           // A close before the FIRST setupComplete = a failed connect (e.g. rejected
@@ -389,8 +458,14 @@ export function useGeminiLive() {
           // is cleared ONLY on turnComplete, which never arrived — so it stays true,
           // the mic gate (onaudioprocess) stays muted, and partialAi is frozen: the
           // UI is stuck on "interviewer is speaking… your mic is muted" forever.
-          // Clear the interrupted-turn state so the mic reopens and the candidate
-          // can respond once reconnected.
+          // Remember whether Gemini owed us a response before clearing the
+          // interrupted audio/transcription state. setupComplete uses this to
+          // recover the missing question after resumption.
+          interruptedTurnRef.current =
+            awaitingModelTurnRef.current ||
+            aiTurnActiveRef.current ||
+            aiTurnRef.current.trim().length > 0;
+          // Clear the interrupted-turn state so the mic reopens while reconnecting.
           aiTurnActiveRef.current = false;
           isPlaying.current = false;
           aiTurnRef.current = "";
@@ -430,6 +505,12 @@ export function useGeminiLive() {
     intentionalCloseRef.current = true; // stop any auto-reconnect on close
     sessionHandleRef.current = null;
     reconnectingRef.current = false;
+    awaitingModelTurnRef.current = false;
+    interruptedTurnRef.current = false;
+    if (resumeKickTimerRef.current) {
+      clearTimeout(resumeKickTimerRef.current);
+      resumeKickTimerRef.current = null;
+    }
     try { wsRef.current?.close(); } catch {}
     wsRef.current = null;
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -472,6 +553,7 @@ export function useGeminiLive() {
         },
       })
     );
+    awaitingModelTurnRef.current = true;
     setMessages((prev) => [...prev, { role: "user", text: trimmed }]);
     setPartialUser("");
     return true;
@@ -496,6 +578,7 @@ export function useGeminiLive() {
         },
       })
     );
+    awaitingModelTurnRef.current = true;
     return true;
   }, []);
 
