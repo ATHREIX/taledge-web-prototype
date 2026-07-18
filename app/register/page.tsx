@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { createUserWithEmailAndPassword, deleteUser, updateProfile, type User } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { useAuth } from "@/components/AuthProvider";
@@ -348,6 +348,7 @@ export default function RegisterPage() {
     setError("");
     setLoading(true);
     const cleanEmail = email.trim();
+    let newlyCreatedUser: User | null = null;
     try {
       const role: Role = selectedRole?.role ?? "recruiter";
       // SSO setup: the user is already authenticated (Google/Microsoft). Persist
@@ -371,6 +372,7 @@ export default function RegisterPage() {
         }
       } else {
         const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+        newlyCreatedUser = cred.user;
         uid = cred.user.uid;
         try {
           await updateProfile(cred.user, { displayName: name });
@@ -404,8 +406,14 @@ export default function RegisterPage() {
           // already holds; a fresh email sign-up writes the full doc.
           isSetup ? { merge: true } : {}
         );
-      } catch {
-        /* profile persistence is best-effort in demo */
+      } catch (profileError) {
+        // Never report a successful registration while Auth and Firestore are
+        // out of sync. Roll back only the brand-new password account; an existing
+        // SSO identity remains signed in so the user can retry profile setup.
+        if (newlyCreatedUser) {
+          try { await deleteUser(newlyCreatedUser); } catch { /* best-effort rollback */ }
+        }
+        throw new Error("Your account profile could not be saved. Please try again.", { cause: profileError });
       }
       go(4); // success screen
     } catch (err: any) {

@@ -711,8 +711,8 @@ export async function getUserRole(uid: string): Promise<string | null> {
  * interventions), so a pilot account can't view the dashboard yet 403 on every
  * button. Grants access ONLY on exact `adminUids` membership (or demo). The old
  * pilot fallback — any institute-ROLE account administering the default tenants —
- * was REMOVED: `users/{uid}.role` is client-writable, so it let any signed-in user
- * self-assign role:"institute" and read a tenant's cohort PII + invite tokens
+ * was REMOVED: historically `users/{uid}.role` was client-writable, so it let a
+ * signed-in user self-assign role:"institute" and read cohort PII + invite tokens
  * (candidate credentials → account takeover). Real institute admins must now be
  * bound via adminUids (scripts/bind-institute-admin). Fail-closed for everyone else.
  */
@@ -726,9 +726,8 @@ export async function getUserRole(uid: string): Promise<string | null> {
  * unbound institute accounts 404ing on their OWN workspace — the "university
  * login → click placement → thrown out" bug. Self-provisioning is safe where
  * the old fallback was not: the account only ever gets an empty tenant scoped
- * to itself (adminUids: [uid]), never another tenant's cohort/PII. users/…role
- * is client-writable, so the worst a self-assigned "institute" role yields is
- * an empty dashboard of your own.
+ * to itself (adminUids: [uid]), never another tenant's cohort/PII. Firestore
+ * rules make the selected stakeholder role immutable after signup.
  */
 export async function ensureOwnInstituteForAdmin(uid: string): Promise<Institute | null> {
   if (!uid) return null;

@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 /**
  * Edge middleware. Runs on every matched request BEFORE the route handler.
  *
  * IMPORTANT (Edge runtime): do NOT import server-only modules here
- * (no firebase-admin, no @/lib/server-auth, etc.). We read process.env
- * directly so this stays a small, dependency-free Edge bundle.
+ * (no firebase-admin, no @/lib/server-auth, etc.). Firebase JWT signatures are
+ * verified with WebCrypto/JWKS through the Edge-compatible `jose` package.
  *
  * Demo mode (default): AUTH_ENFORCED !== "true" -> fully open. We simply
  * call NextResponse.next() so seeded personas remain browsable WITHOUT login.
@@ -34,7 +35,6 @@ const PROTECTED_PAGE_PREFIXES = [
 ];
 
 // API endpoints that must stay reachable without auth even in enforced mode.
-//  - /api/gemini/live-token: ephemeral token that bootstraps the realtime session.
 //  - /api/invite: resolves an invite token to its job/cohort context; the route
 //    validates the token itself (invite/[token]/route.ts) — the token IS the credential.
 //  - /api/dnla/webhook: a server-to-server provider callback that carries no user
@@ -43,7 +43,6 @@ const PROTECTED_PAGE_PREFIXES = [
 //    unguessable, expiring token IS the credential (the route validates it and
 //    only returns consented candidates), so it must work without a Taledge login.
 const API_AUTH_EXEMPT = [
-  "/api/gemini/live-token",
   "/api/invite",
   "/api/dnla/webhook",
   "/api/shared",
@@ -58,45 +57,95 @@ const API_AUTH_EXEMPT = [
 // and only fetch data once a user is present).
 const PUBLIC_PAGE_PREFIXES = ["/recruiter/shared/"];
 
-// Cookie names that may carry a server-readable session credential.
-// (Demo build is client-side Firebase only; these are checked defensively so
-// a future cookie-based session flow works without touching middleware.)
-//  - firebaseIdToken: the mirrored Firebase ID token (AuthProvider / lib/session-cookie).
-//  - inviteToken: an account-less invited candidate's credential, persisted by the
-//    onboarding page so their downstream /student/candidate-inv-* + /exam navigations
-//    pass this coarse gate. getPrincipal still validates it per API request.
-const SESSION_COOKIE_NAMES = [
-  "session",
-  "__session",
-  "auth-token",
-  "firebaseIdToken",
-  "inviteToken",
-];
+const FIREBASE_JWKS = createRemoteJWKSet(
+  new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com")
+);
 
 /** The invite token an account-less candidate carries instead of a Firebase login. */
-function inviteCredential(req: NextRequest): boolean {
+function inviteCredential(req: NextRequest): string | null {
   const h = req.headers.get("x-invite-token") || req.headers.get("X-Invite-Token");
-  const t = h?.trim();
-  return !!(t && t.length > 0 && t.length <= 128);
+  const cookie = req.cookies.get("inviteToken")?.value;
+  const t = (h || cookie || "").trim();
+  return t && t.length <= 128 ? t : null;
 }
 
-function hasCredential(req: NextRequest): boolean {
+function bearerToken(req: NextRequest): string | null {
   const authHeader =
     req.headers.get("authorization") || req.headers.get("Authorization");
-  if (authHeader && authHeader.trim().length > 0) return true;
-
-  // An invited (account-less) candidate authenticates with the invite token the
-  // recruiter/university issued — api-client.ts attaches it as X-Invite-Token.
-  if (inviteCredential(req)) return true;
-
-  for (const name of SESSION_COOKIE_NAMES) {
-    const c = req.cookies.get(name);
-    if (c && c.value) return true;
-  }
-  return false;
+  const match = authHeader ? /^Bearer\s+(.+)$/i.exec(authHeader.trim()) : null;
+  return match?.[1]?.trim() || null;
 }
 
-export function middleware(req: NextRequest) {
+async function validFirebaseToken(token: string | null): Promise<boolean> {
+  if (!token) return false;
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim();
+  if (!projectId) return false;
+  try {
+    const { payload, protectedHeader } = await jwtVerify(token, FIREBASE_JWKS, {
+      algorithms: ["RS256"],
+      audience: projectId,
+      issuer: `https://securetoken.google.com/${projectId}`,
+    });
+    const now = Math.floor(Date.now() / 1000);
+    return (
+      protectedHeader.alg === "RS256" &&
+      typeof protectedHeader.kid === "string" &&
+      typeof payload.sub === "string" &&
+      payload.sub.length > 0 &&
+      payload.sub.length <= 128 &&
+      typeof payload.auth_time === "number" &&
+      payload.auth_time <= now
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validate the coarse page credential before any server component is allowed to
+ * render. API routes still perform Firebase Admin / invite-store verification in
+ * getPrincipal; this Edge check prevents an arbitrary non-empty cookie from
+ * opening SSR pages while keeping invite-only candidates on their own workspace.
+ */
+async function hasValidCredential(req: NextRequest, pathname: string): Promise<boolean> {
+  const firebaseToken = bearerToken(req) || req.cookies.get("firebaseIdToken")?.value || null;
+  if (await validFirebaseToken(firebaseToken)) return true;
+
+  const invite = inviteCredential(req);
+  if (!invite) return false;
+  // API handlers verify the invite against Firestore before returning data.
+  if (pathname.startsWith("/api/")) return true;
+  const workspace = `candidate-inv-${invite.slice(0, 10)}`;
+  return (
+    pathname === "/onboarding" ||
+    pathname.startsWith("/onboarding/") ||
+    pathname === `/student/${workspace}` ||
+    pathname.startsWith(`/student/${workspace}/`) ||
+    pathname === `/exam/${workspace}` ||
+    pathname.startsWith(`/exam/${workspace}/`)
+  );
+}
+
+function clearInvalidCredentialCookies(req: NextRequest, res: NextResponse): NextResponse {
+  if (req.cookies.has("firebaseIdToken")) res.cookies.delete("firebaseIdToken");
+  if (req.cookies.has("inviteToken")) res.cookies.delete("inviteToken");
+  return res;
+}
+
+function unauthenticatedApi(req: NextRequest): NextResponse {
+  return clearInvalidCredentialCookies(
+    req,
+    NextResponse.json({ ok: false, error: "Authentication required" }, { status: 401 })
+  );
+}
+
+function loginRedirect(req: NextRequest, pathname: string): NextResponse {
+  const loginUrl = new URL("/login", req.url);
+  loginUrl.searchParams.set("next", pathname + req.nextUrl.search);
+  return clearInvalidCredentialCookies(req, NextResponse.redirect(loginUrl));
+}
+
+export async function middleware(req: NextRequest) {
   // Default demo mode: completely open, zero blocking.
   if (process.env.AUTH_ENFORCED !== "true") {
     return NextResponse.next();
@@ -109,12 +158,7 @@ export function middleware(req: NextRequest) {
     if (API_AUTH_EXEMPT.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
       return NextResponse.next();
     }
-    if (!hasCredential(req)) {
-      return NextResponse.json(
-        { ok: false, error: "Authentication required" },
-        { status: 401 }
-      );
-    }
+    if (!(await hasValidCredential(req, pathname))) return unauthenticatedApi(req);
     return NextResponse.next();
   }
 
@@ -128,7 +172,7 @@ export function middleware(req: NextRequest) {
   const isProtectedPage = PROTECTED_PAGE_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
   );
-  if (isProtectedPage && !hasCredential(req)) {
+  if (isProtectedPage && !(await hasValidCredential(req, pathname))) {
     // An off-campus invite link (/onboarding?invite=<token>) carries the
     // candidate's credential in the query on its FIRST hard load — before the
     // onboarding page has persisted the inviteToken cookie. Let that first load
@@ -139,9 +183,7 @@ export function middleware(req: NextRequest) {
       const inv = req.nextUrl.searchParams.get("invite");
       if (inv && inv.length <= 128) return protectedResponse(req);
     }
-    const loginUrl = new URL("/login", req.url);
-    loginUrl.searchParams.set("next", pathname + req.nextUrl.search);
-    return NextResponse.redirect(loginUrl);
+    return loginRedirect(req, pathname);
   }
 
   // Protected pages are per-user and may render PII — never let a browser (or

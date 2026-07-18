@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateGeminiContent, getGeminiApiKey } from "@/lib/gemini";
-import { getPrincipal, unauthorized } from "@/lib/server-auth";
+import { getPrincipal, unauthorized, forbidden } from "@/lib/server-auth";
 import { getSession, updateSession } from "@/lib/session-store";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
@@ -65,6 +65,12 @@ export async function POST(req: NextRequest) {
     if (typeof imageBase64 !== "string" || imageBase64.length === 0) {
       return NextResponse.json({ ok: false, error: "No image provided" }, { status: 400 });
     }
+    if (typeof sessionId !== "string" || !sessionId || sessionId.length > 200) {
+      return NextResponse.json({ ok: false, error: "sessionId is required" }, { status: 400 });
+    }
+    const session = await getSession(sessionId);
+    if (!session) return NextResponse.json({ ok: false, error: "Session not found" }, { status: 404 });
+    if (session.ownerUid !== uid) return forbidden();
 
     /**
      * Persist the passing face check directly on the session (owner-scoped) so
@@ -73,17 +79,15 @@ export async function POST(req: NextRequest) {
      * which, if it raced or failed, left faceVerified=false and 403'd every
      * answer. Doing it here makes verification atomic with the check itself.
      */
-    const markFaceVerified = async () => {
-      if (typeof sessionId !== "string" || !sessionId) return;
+    const markFaceVerified = async (): Promise<boolean> => {
       try {
-        const session = await getSession(sessionId);
-        if (session && session.ownerUid === uid) {
-          await updateSession(sessionId, { faceVerified: true });
-        }
+        await updateSession(sessionId, { faceVerified: true });
+        return true;
       } catch (e) {
         logger.error("verify-face: failed to persist faceVerified", {
           message: String((e as any)?.message || e),
         });
+        return false;
       }
     };
     if (imageBase64.length > MAX_IMAGE_BASE64_LENGTH) {
@@ -191,7 +195,12 @@ The "verified" field MUST be a strict JSON boolean (true or false), never a stri
     }
 
     if (verified) {
-      await markFaceVerified();
+      if (!(await markFaceVerified())) {
+        return NextResponse.json(
+          { ok: false, verified: false, unavailable: true, error: "Could not persist verification." },
+          { status: 503 }
+        );
+      }
       return NextResponse.json({ ok: true, verified: true });
     }
     // GENUINE reject: the model returned a real verdict and there is no single

@@ -27,11 +27,23 @@ service cloud.firestore {
               'status', 'sourcedFrom', 'recruiterId', 'instituteId', 'jobId'];
     }
 
-    // Account profile: a user reads/writes only their own record. Identity
-    // fields (uid/email/role) are enforced server-side; client writes here are
-    // limited to the owner so a user can update their own profile fields.
+    // Account profile: self-signup may create one role-bearing record, but the
+    // identity and stakeholder role become immutable after creation. This keeps
+    // the open multi-persona registration flow while preventing role escalation.
     match /users/{uid} {
-      allow read, write: if isOwner(uid);
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid)
+                    && request.resource.data.uid == uid
+                    && request.resource.data.email == request.auth.token.email
+                    && (!request.resource.data.keys().hasAny(['role'])
+                        || request.resource.data.role in ['candidate', 'recruiter', 'coach', 'institute']);
+      allow update: if isOwner(uid)
+                    && !request.resource.data.diff(resource.data).affectedKeys()
+                          .hasAny(['uid', 'email', 'linkId'])
+                    && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
+                        || (!resource.data.keys().hasAny(['role'])
+                            && request.resource.data.role in ['candidate', 'recruiter', 'coach', 'institute']));
+      allow delete: if false;
     }
 
     // Candidate profiles: a user reads their own document; recruiters/institutes
@@ -106,6 +118,13 @@ service cloud.firestore {
                     && request.resource.data.ownerUid == request.auth.uid;
       // A coach reads ONLY the sessions assigned to them, never every tenant's.
       allow read: if hasRole('coach') && resource.data.coachId == request.auth.uid;
+    }
+
+    // Hidden coding-assessment tests are generated and consumed only by trusted
+    // server routes. Candidates must never be able to read expected outputs or
+    // replace the grading cases through the client SDK.
+    match /codeTestCases/{testId} {
+      allow read, write: if false;
     }
 
     // Everything else: explicit deny.

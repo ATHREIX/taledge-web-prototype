@@ -54,11 +54,7 @@ export function useGeminiLive() {
   // Bounded auto-reconnect after a mid-interview drop (the ~10-min Live socket
   // cap, a GoAway, or a transient close). Reset to 0 on a clean setupComplete.
   const reconnectAttemptsRef = useRef(0);
-  // Mirror `messages` so a HANDLE-LESS reconnect can re-seed the conversation into
-  // a fresh session — keeps context across the connection cap even when no
-  // resumption handle was captured (also prevents the ~10-min silent freeze).
-  const messagesRef = useRef<LiveMessage[]>([]);
-  const connCtxRef = useRef<{ apiKey: string; model: string; voice?: string; systemInstruction?: string; captureMic: boolean } | null>(null);
+  const connCtxRef = useRef<{ token: string; model: string; voice?: string; captureMic: boolean } | null>(null);
   // Half-duplex turn-taking: while the interviewer "has the floor" (generating
   // or its audio is still playing) we MUTE the candidate's mic so they can't
   // talk over the AI and the AI's own voice can't leak back in. The mic resumes
@@ -86,9 +82,6 @@ export function useGeminiLive() {
   // Accumulators for the in-flight turn's streamed transcription text.
   const aiTurnRef = useRef("");
   const userTurnRef = useRef("");
-  // Keep a ref copy of the transcript for reconnect re-seeding (see openSocket).
-  useEffect(() => { messagesRef.current = messages; }, [messages]);
-
   /** Schedule one 24kHz PCM chunk back-to-back and (re)arm the end-of-speech timer. */
   const playAudioChunk = useCallback((pcm: Int16Array) => {
     if (!outputContextRef.current) {
@@ -189,7 +182,7 @@ export function useGeminiLive() {
     // 1) Mint the ephemeral token server-side. A failure here is terminal for
     //    Live. Gemini Live is the only interviewer path; on connect failure the
     //    caller surfaces a retryable error (no silent degrade).
-    let apiKey: string, model: string, voice: string | undefined, systemInstruction: string | undefined;
+    let token: string, model: string, voice: string | undefined;
     try {
       const res = await authedFetch("/api/gemini/live-token", {
         method: "POST",
@@ -197,17 +190,17 @@ export function useGeminiLive() {
         body: JSON.stringify(context),
       });
       const data = await res.json();
-      if (!res.ok || !data?.ok || !data?.apiKey) {
+      if (!res.ok || !data?.ok || typeof data?.token !== "string" || !data.token.startsWith("auth_tokens/")) {
         setError("Could not start the live interviewer. Please retry.");
         return false;
       }
-      ({ apiKey, model, voice, systemInstruction } = data);
+      ({ token, model, voice } = data);
     } catch {
       setError("Could not connect to the live interviewer.");
       return false;
     }
 
-    connCtxRef.current = { apiKey, model, voice, systemInstruction, captureMic };
+    connCtxRef.current = { token, model, voice, captureMic };
     // Fresh interview → clear any prior teardown flag and zero the reconnect
     // backoff, so a previous session can't suppress this one's auto-reconnect.
     intentionalCloseRef.current = false;
@@ -242,7 +235,7 @@ export function useGeminiLive() {
         const c = connCtxRef.current!;
         let ws: WebSocket;
         try {
-          const url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(c.apiKey)}`;
+          const url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained?access_token=${c.token}`;
           ws = new WebSocket(url);
         } catch {
           if (!isReconnect) { setError("Could not connect to the live interviewer."); settle(false); }
@@ -263,7 +256,9 @@ export function useGeminiLive() {
                     voiceConfig: { prebuiltVoiceConfig: { voiceName: c.voice || "Aoede" } },
                   },
                 },
-                systemInstruction: { parts: [{ text: c.systemInstruction || "You are a professional interviewer." }] },
+                // The server locked the effective model, voice, system prompt,
+                // transcription and resumption setup into the ephemeral token.
+                // Gemini ignores browser attempts to override that setup.
                 inputAudioTranscription: {},
                 outputAudioTranscription: {},
                 // Lift the ~15-min audio session cap via a server-side sliding window.
@@ -294,24 +289,6 @@ export function useGeminiLive() {
                 },
               })
             );
-          } else if (!sessionHandleRef.current && messagesRef.current.length) {
-            // Reconnected with NO resumption handle (none was captured before the
-            // drop). Server-side context is gone, so RE-SEED the recent transcript
-            // into the fresh session and nudge the model to continue — otherwise it
-            // has no idea an interview is in progress and the round freezes silently.
-            const turns = messagesRef.current.slice(-24).map((m) => ({
-              role: m.role === "ai" ? "model" : "user",
-              parts: [{ text: m.text }],
-            }));
-            turns.push({
-              role: "user",
-              parts: [
-                {
-                  text: "[DIRECTOR: The live connection dropped and reconnected. Silently CONTINUE the same interview from the conversation above — ask your next single question, building on the candidate's last answer. Do NOT greet again, do NOT restart, and do NOT mention the reconnection.]",
-                },
-              ],
-            });
-            ws.send(JSON.stringify({ clientContent: { turns, turnComplete: true } }));
           }
         };
 
@@ -423,11 +400,14 @@ export function useGeminiLive() {
           setPartialAi("");
           setPartialUser("");
 
-          // Otherwise this is a MID-INTERVIEW close — the ~10-min Live connection
-          // cap, a GoAway, or a transient drop. ALWAYS attempt to resume: do NOT
-          // gate on having a resumption handle (a handle-less session used to just
-          // freeze here, silently, with no error). openSocket(true) resumes with
-          // the handle if present, else re-seeds the transcript (see onopen).
+          // Otherwise this is a MID-INTERVIEW close. A single-use ephemeral token
+          // may reconnect only through Gemini session resumption; without a handle
+          // a fresh session would be rejected (and must not reuse the token).
+          if (!sessionHandleRef.current) {
+            reconnectingRef.current = false;
+            setError("The secure live session could not be resumed. Please retry the interview.");
+            return;
+          }
           // Bounded retries with backoff; on final failure surface an error so the
           // page's retry card renders instead of the interview hanging forever.
           reconnectAttemptsRef.current += 1;

@@ -5,6 +5,9 @@ import { logger } from "@/lib/logger";
 import { isProd } from "@/lib/flags";
 import { getGeminiApiKey, generateGeminiJson } from "@/lib/gemini";
 import { runCode, isSupportedLanguage, normalizeOutput } from "@/lib/code-exec";
+import { createHash } from "node:crypto";
+import { adminDb, isAdminConfigured } from "@/lib/firebase-admin";
+import { COLLECTIONS } from "@/lib/firestore/schema";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -15,22 +18,59 @@ const MAX_TESTS = 3;
 
 type TestCase = { input: string; expected: string };
 
-// In-process cache of generated test cases, keyed by question. Keeps the hidden
-// expected outputs server-side and makes repeated runs grade against the SAME
-// tests (deterministic), without regenerating on every submission.
+// Local cache for demo/dev and as a resilient fallback. Production additionally
+// persists the same hidden cases in Firestore so every App Hosting instance grades
+// a question against one shared, deterministic test set.
 const testCache = new Map<string, { at: number; ioContract: string; tests: TestCase[] }>();
 const TEST_TTL = 30 * 60 * 1000;
+const TEST_COLLECTION = COLLECTIONS.codeTestCases;
 
 function hashKey(s: string): string {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
-  return String(h >>> 0);
+  return createHash("sha256").update(s, "utf8").digest("hex");
+}
+
+async function loadCachedTests(key: string): Promise<{ ioContract: string; tests: TestCase[] } | null> {
+  const local = testCache.get(key);
+  if (local && Date.now() - local.at < TEST_TTL) {
+    return { ioContract: local.ioContract, tests: local.tests };
+  }
+  if (!isAdminConfigured || !adminDb) return null;
+  try {
+    const snap = await adminDb.collection(TEST_COLLECTION).doc(key).get();
+    const data = snap.data() as { at?: unknown; ioContract?: unknown; tests?: unknown } | undefined;
+    if (!data || typeof data.at !== "number" || Date.now() - data.at >= TEST_TTL) return null;
+    const ioContract = typeof data.ioContract === "string" ? data.ioContract : "";
+    const tests = Array.isArray(data.tests)
+      ? data.tests
+          .filter((t): t is TestCase => !!t && typeof t.input === "string" && typeof t.expected === "string")
+          .slice(0, MAX_TESTS)
+      : [];
+    if (!ioContract || tests.length === 0) return null;
+    testCache.set(key, { at: data.at, ioContract, tests });
+    return { ioContract, tests };
+  } catch (error) {
+    logger.warn("code-grade cache read failed; using local cache", { detail: String(error) });
+    return null;
+  }
+}
+
+async function saveCachedTests(key: string, ioContract: string, tests: TestCase[]): Promise<void> {
+  const at = Date.now();
+  testCache.set(key, { at, ioContract, tests });
+  if (!isAdminConfigured || !adminDb) return;
+  try {
+    await adminDb.collection(TEST_COLLECTION).doc(key).set({ at, ioContract, tests });
+  } catch (error) {
+    // Grading remains available on this instance if Firestore has a transient
+    // issue; the warning makes cross-instance fallback visible operationally.
+    logger.warn("code-grade cache write failed; using local cache", { detail: String(error) });
+  }
 }
 
 async function generateTests(apiKey: string, question: string): Promise<{ ioContract: string; tests: TestCase[] }> {
   const key = hashKey(question);
-  const cached = testCache.get(key);
-  if (cached && Date.now() - cached.at < TEST_TTL) return { ioContract: cached.ioContract, tests: cached.tests };
+  const cached = await loadCachedTests(key);
+  if (cached) return cached;
 
   const prompt = `You are designing automated test cases for a coding-interview question so a candidate's program can be auto-graded by comparing its stdout to an expected output.
 
@@ -66,7 +106,7 @@ Rules:
     : [];
 
   if (tests.length === 0) throw Object.assign(new Error("No test cases generated."), { status: 422 });
-  testCache.set(key, { at: Date.now(), ioContract, tests });
+  await saveCachedTests(key, ioContract, tests);
   return { ioContract, tests };
 }
 

@@ -7,6 +7,7 @@ import { DEMO_MODE } from "@/lib/flags";
 import { normalizeDifficulty, difficultyDirective } from "@/lib/interview-difficulty";
 import { questionBankDirective } from "@/lib/interview-question-bank";
 import { isTechnicalRole } from "@/lib/role-classification";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -199,13 +200,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Gemini Live service is not configured." }, { status: 503 });
   }
 
-  // Handing the raw key to the browser is acceptable ONLY for the local
-  // prototype/demo. In an enforced (production) deployment we normally refuse
-  // rather than leak the key. PILOT ESCAPE HATCH: LIVE_INTERVIEW_ENABLED=true
-  // opts into the Live path in production too — the key becomes visible to
-  // LOGGED-IN users (this route is auth- + rate-limited), which is an accepted
-  // trade-off for a controlled pilot. Flip the flag off to re-disable. The
-  // proper fix remains a server-side WS proxy or valid ephemeral tokens.
+  // Production uses a short-lived, single-use token. The long-lived Gemini key
+  // never crosses this server boundary.
   const liveEnabled = DEMO_MODE || process.env.LIVE_INTERVIEW_ENABLED === "true";
   if (!liveEnabled) {
     return NextResponse.json(
@@ -221,23 +217,78 @@ export async function POST(req: NextRequest) {
     /* body is optional */
   }
 
-  // Ephemeral tokens are the secure way to authenticate the browser's Live
-  // socket, but the `auth_tokens` REST endpoint mints identity-less tokens that
-  // the Live API rejects (close code 1008, "unregistered caller") for this
-  // key/project — and it does not accept the `liveConnectConstraints` lock that
-  // would give a token an identity. The key itself IS Live-capable when used
-  // directly, so we hand the raw key to the client to connect with `?key=`.
-  //
-  // ⚠️ SECURITY TRADE-OFF: this returns GEMINI_API_KEY to the browser, where it
-  // is visible to the user. This is acceptable for a LOCAL PROTOTYPE/DEMO — the
-  // route is still behind auth + rate limiting — but is NOT safe for public
-  // production. Before shipping, switch to a server-side WebSocket proxy (key
-  // stays server-side) or a project that can mint valid ephemeral tokens.
-  return NextResponse.json({
-    ok: true,
-    apiKey, // used by the client as the Live WebSocket `?key=` credential
-    model: GEMINI_LIVE_MODEL,
-    voice: process.env.GEMINI_TTS_VOICE || DEFAULT_LIVE_VOICE,
-    systemInstruction: buildSystemInstruction(body),
-  });
+  const voice = process.env.GEMINI_TTS_VOICE || DEFAULT_LIVE_VOICE;
+  const systemInstruction = buildSystemInstruction(body);
+  const now = Date.now();
+  try {
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1alpha/auth_tokens",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          uses: 1,
+          // The interview hard ceiling is 17 minutes. Keep only a small margin,
+          // while allowing session resumption across Gemini's socket rollover.
+          expireTime: new Date(now + 20 * 60_000).toISOString(),
+          newSessionExpireTime: new Date(now + 60_000).toISOString(),
+          // Lock every security/cost-sensitive setup field to the server-authored
+          // values. sessionResumption is deliberately NOT masked so the browser
+          // can supply Gemini's server-issued handle after the socket rollover.
+          fieldMask:
+            "model,generationConfig,systemInstruction,inputAudioTranscription,outputAudioTranscription,contextWindowCompression",
+          bidiGenerateContentSetup: {
+            model: GEMINI_LIVE_MODEL.startsWith("models/")
+              ? GEMINI_LIVE_MODEL
+              : `models/${GEMINI_LIVE_MODEL}`,
+            generationConfig: {
+              responseModalities: ["AUDIO"],
+              speechConfig: {
+                languageCode: "en-US",
+                voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } },
+              },
+            },
+            systemInstruction: { parts: [{ text: systemInstruction }] },
+            inputAudioTranscription: {},
+            outputAudioTranscription: {},
+            contextWindowCompression: { slidingWindow: {} },
+          },
+        }),
+        signal: AbortSignal.timeout(15_000),
+      }
+    );
+    const data = (await response.json().catch(() => ({}))) as {
+      name?: string;
+      error?: { message?: string };
+    };
+    if (!response.ok || !data.name?.startsWith("auth_tokens/")) {
+      logger.error("live-token: ephemeral token mint failed", {
+        uid,
+        status: response.status,
+        detail: data.error?.message?.slice(0, 200),
+      });
+      return NextResponse.json(
+        { ok: false, error: "Live interviewer authentication is temporarily unavailable." },
+        { status: 502 }
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      token: data.name,
+      model: GEMINI_LIVE_MODEL,
+      voice,
+      expiresInSeconds: 20 * 60,
+      websocketVersion: "v1alpha",
+    });
+  } catch (error) {
+    logger.error("live-token: ephemeral token mint error", { uid, detail: String(error) });
+    return NextResponse.json(
+      { ok: false, error: "Live interviewer authentication is temporarily unavailable." },
+      { status: 502 }
+    );
+  }
 }

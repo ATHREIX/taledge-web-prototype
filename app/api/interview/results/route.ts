@@ -24,6 +24,15 @@ function clampScore(n: any, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, Math.round(v)));
 }
 
+function breakdownAverage(groups: { rows?: [string, number][] }[]): number | null {
+  const values = groups
+    .flatMap((group) => (Array.isArray(group.rows) ? group.rows : []))
+    .map((row) => Number(row?.[1]))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+  if (!values.length) return null;
+  return clampScore(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
 export async function POST(req: NextRequest) {
   const principal = await getPrincipal(req);
   if (!principal) return unauthorized();
@@ -170,10 +179,36 @@ Return EXACTLY this JSON shape (no markdown fences, no commentary):
         : [],
     };
 
+    // This endpoint scores ONE completed round. The full Fit Score endpoint has
+    // resume, DNLA and every interview round, so it is the only authoritative
+    // source for platform-wide technical/behavioural/fit/success headlines. Do
+    // not expose a second competing "fit_score" from this narrower evidence set.
+    const relevantBreakdown =
+      session.mode === "technical"
+        ? generated.technical_breakdown
+        : generated.behavioural_breakdown;
+    const roundScore =
+      breakdownAverage(relevantBreakdown) ??
+      (session.mode === "technical"
+        ? generated.technical_score
+        : generated.behavioural_score);
+
     return NextResponse.json({
       ok: true,
       sessionId: session.sessionId,
-      generated,
+      generated: {
+        round_score: roundScore,
+        round: session.mode,
+        verdict: generated.verdict,
+        narrative: generated.narrative,
+        technical_breakdown: generated.technical_breakdown,
+        resume_breakdown: generated.resume_breakdown,
+        behavioural_breakdown: generated.behavioural_breakdown,
+        cross_flags: generated.cross_flags,
+      },
+      scoreScope: "single-round",
+      provisional: true,
+      authoritativeFitScoreEndpoint: "/api/generate-fit-score",
       source: model,
       meta: { turnCount: session.turnIndex, transcriptLength: session.transcript.length },
     });

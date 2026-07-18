@@ -398,7 +398,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Identity gate: in enforced-auth (production) the candidate must have passed
-    // face verification (recorded on the session via /api/interview/proctor)
+    // face verification (recorded only by /api/interview/verify-face)
     // before the interview will advance. Demo mode skips this so it stays usable.
     if (AUTH_ENFORCED && !session.faceVerified) {
       return NextResponse.json(

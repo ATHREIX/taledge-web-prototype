@@ -38,6 +38,7 @@ export const COLLECTIONS = {
   interviewSessions: "interviewSessions",
   scoringAudits: "scoringAudits",
   rateLimits: "rateLimits",
+  codeTestCases: "codeTestCases",
 
   // ── Reserved: SEEDED by scripts/seed.ts for demo data, but NOT read by the
   //    current app (no runtime .collection() access). Kept so the seed script

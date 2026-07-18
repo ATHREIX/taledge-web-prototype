@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, updateSession, incrementProctorViolations, MAX_PROCTOR_VIOLATIONS } from "@/lib/session-store";
+import { getSession, incrementProctorViolations, MAX_PROCTOR_VIOLATIONS } from "@/lib/session-store";
 import { getPrincipal, unauthorized, forbidden } from "@/lib/server-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
@@ -18,7 +18,7 @@ const MAX_REASON = 300;
 
 type Body = {
   sessionId?: string;
-  event?: "violation" | "verified";
+  event?: "violation";
   reason?: string;
 };
 
@@ -40,8 +40,11 @@ export async function POST(req: NextRequest) {
   if (typeof body.sessionId !== "string" || !body.sessionId) {
     return NextResponse.json({ error: "sessionId required" }, { status: 400 });
   }
-  if (body.event !== "violation" && body.event !== "verified") {
-    return NextResponse.json({ error: "event must be 'violation' or 'verified'" }, { status: 400 });
+  if (body.event !== "violation") {
+    return NextResponse.json(
+      { error: "Only server-observed verification can mark a face as verified." },
+      { status: 400 }
+    );
   }
   const reason =
     typeof body.reason === "string" ? body.reason.slice(0, MAX_REASON) : "unspecified";
@@ -50,12 +53,7 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 });
   if (session.ownerUid !== uid) return forbidden();
 
-  if (body.event === "verified") {
-    await updateSession(body.sessionId, { faceVerified: true });
-    return NextResponse.json({ ok: true, faceVerified: true });
-  }
-
-  // event === "violation" — ATOMIC increment in the store (a racy read+write
+  // ATOMIC increment in the store (a racy read+write
   // here previously let concurrent reports both read N and write N+1, dropping
   // violations so a cheater could slip past MAX_VIOLATIONS).
   const result = await incrementProctorViolations(body.sessionId);

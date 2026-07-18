@@ -502,12 +502,6 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   // separately so the candidate never loses their typed/spoken response).
   const [sendError, setSendError] = useState<string | null>(null);
 
-  // True when this round REUSED the session's already-verified face reference
-  // (Face-ID once per session). The per-round server session still needs its
-  // "verified" proctor flag, posted as soon as the session id is available.
-  const faceReusedRef = useRef(false);
-  const verifiedPostedRef = useRef(false);
-
   const videoRef = useRef<HTMLVideoElement>(null);
   // Dedicated <video> for the Face-ID verify dialog. It shares the SAME
   // MediaStream as the background proctoring feed (a stream can drive multiple
@@ -718,17 +712,6 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           // otherwise the voice endpoint 403s every answer. The `sessionId` state
           // is still set later in startInterview() to flip the "Live" UI.
           sessionIdRef.current = data.sessionId;
-          // If this round already skipped Face-ID by reusing the session's verified
-          // reference (Face-ID once per session) before the preload finished, mark
-          // this fresh server session verified now so the voice route won't 403.
-          if (faceReusedRef.current && !verifiedPostedRef.current) {
-            verifiedPostedRef.current = true;
-            authedFetch("/api/interview/proctor", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ sessionId: data.sessionId, event: "verified" }),
-            }).catch(() => {});
-          }
           return;
         }
         // Reached the server but it declined to start the session (rate limit,
@@ -2027,45 +2010,9 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
   }
 
   const handleGoToVerify = () => {
-    // Face-ID ONCE per browser session. If this candidate already enrolled a
-    // verified reference in an earlier round (sessionStorage), reuse it and skip
-    // the manual Face-ID capture instead of re-verifying identity before EVERY
-    // round. The per-round server session still requires its faceVerified flag
-    // (the voice route 403s without it), so POST "verified" for this round's
-    // (already preloaded) session. Only skip when we also have the preloaded
-    // sessionId to mark; otherwise fall back to the normal Face-ID step.
-    try {
-      const saved = sessionStorage.getItem(`taledge:faceRef:${id}`);
-      if (saved) {
-        // Reuse the enrolled reference and SKIP the manual Face-ID entirely — do
-        // NOT gate on the preloaded session id (it may not be ready yet, which is
-        // exactly why Face-ID kept re-appearing every round). The per-round server
-        // session gets its "verified" flag either now (if preloaded) or the moment
-        // the preload finishes (see preloadInterviewSession).
-        referenceImageRef.current = saved;
-        faceReusedRef.current = true;
-        if (sessionIdRef.current) {
-          verifiedPostedRef.current = true;
-          authedFetch("/api/interview/proctor", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sessionId: sessionIdRef.current, event: "verified" }),
-          }).catch(() => {});
-        }
-        setVerificationResult({ status: "success" });
-        // Actually START the interview. The manual Face-ID path reaches the live
-        // interview via the "Identity verified — Start interview" button
-        // (handleStartInterview, which sets hasStarted + connects). The skip has no
-        // such button, so it MUST call it directly — otherwise the round lands on
-        // "Complete the proctoring setup" and never connects (the 2nd-interview
-        // hang). This runs inside the "Continue to Face ID" click gesture, so
-        // fullscreen is still permitted.
-        handleStartInterview();
-        return;
-      }
-    } catch {
-      /* sessionStorage blocked → fall through to the manual Face-ID step */
-    }
+    // Each new server interview session requires a fresh server-observed check.
+    // A prior client-side frame is not an authentication credential and cannot
+    // be reused to mark a different session verified.
     setSetupStep("verify");
   };
 
@@ -2218,8 +2165,8 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
           //   { ok, verified:false, unavailable:true }     → service down (NOT the
           //                                                   candidate's fault)
           //   { ok, verified:false, unavailable:false }    → genuine reject
-          // A transient outage must not permanently lock out a real candidate, so
-          // we retry a few times and, if it's STILL unavailable, soft-pass.
+          // A transient outage is retried, but production fails closed: a service
+          // outage cannot be converted into a client-asserted verification.
           type VerifyResponse = { ok?: boolean; verified?: boolean; unavailable?: boolean; reason?: string };
           const MAX_VERIFY_ATTEMPTS = 3;
           let vData: VerifyResponse = {};
@@ -2249,37 +2196,11 @@ export default function InterviewPage({ params }: { params: Promise<{ id: string
             // Enrol this verified frame as the identity reference. Every later
             // identity check compares the live camera against THIS person.
             referenceImageRef.current = base64Image;
-            // Persist the verified reference for THIS browser session so later
-            // rounds can skip the manual Face-ID step (see handleGoToVerify) — the
-            // candidate shouldn't re-verify their identity before every round.
-            try {
-              sessionStorage.setItem(`taledge:faceRef:${id}`, base64Image);
-            } catch {
-              /* sessionStorage blocked → later rounds fall back to manual verify */
-            }
-            // Record the successful face check on the server session so the
-            // voice endpoint can require verification before serving questions.
-            if (sessionIdRef.current) {
-              authedFetch("/api/interview/proctor", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ sessionId: sessionIdRef.current, event: "verified" }),
-              }).catch(() => {});
-            }
           } else if (unavailable) {
-            // SOFT-PASS: still unavailable after every retry. The identity service
-            // is down, which is not the candidate's fault, so we let them proceed
-            // rather than dead-end a real candidate on an infra hiccup. We flag the
-            // session as unavailable (see the amber notice + button in the footer)
-            // so it reads as "verification unavailable — proceed", NOT a clean pass.
-            // Enrol the captured frame anyway so later identity-drift checks have a
-            // baseline to compare against. We deliberately do NOT POST a "verified"
-            // proctor event here — the candidate was never actually verified.
-            referenceImageRef.current = base64Image;
             setVerificationResult({
-              status: "success",
+              status: "error",
               unavailable: true,
-              message: "Verification is temporarily unavailable. Proceeding, session flagged for review.",
+              message: "Verification is temporarily unavailable. Please retry in a moment.",
             });
           } else {
             // GENUINE reject (no face / multiple faces / etc.) → hard fail, keep the
