@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrincipal, unauthorized } from "@/lib/server-auth";
 import { getLatestDnlaForCandidate } from "@/lib/dnla-store";
+import { isDnlaConfigured } from "@/lib/dnla-client";
+import { isDnlaTestModeConfigured } from "@/lib/dnla-test-tans";
 
 export const runtime = "nodejs";
 
@@ -19,10 +21,21 @@ export async function GET(req: NextRequest) {
   }
 
   const session = await getLatestDnlaForCandidate(principal.uid, candidateId);
-  if (!session) return NextResponse.json({ ok: true, status: "none" });
+  const testMode = isDnlaTestModeConfigured();
+  const available = testMode || isDnlaConfigured();
+  if (!session) {
+    return NextResponse.json({
+      ok: true,
+      status: "none",
+      available,
+      mode: testMode ? "pre-issued-test" : "live",
+    });
+  }
 
   return NextResponse.json({
     ok: true,
+    available: true,
+    mode: session.source === "pre-issued-test" ? "pre-issued-test" : "live",
     status: session.status, // "pending" | "complete" | "error" | "none"
     startUrl: session.startUrl,
     finishedAt: session.finishedAt ?? null,

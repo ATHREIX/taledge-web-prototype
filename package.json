@@ -15,7 +15,8 @@
     "check:sync": "node scripts/check-sync.mjs",
     "loadtest": "k6 run loadtest/platform.test.js",
     "loadtest:smoke": "SCENARIO=smoke k6 run loadtest/platform.test.js",
-    "loadtest:stress": "SCENARIO=stress k6 run loadtest/platform.test.js"
+    "loadtest:stress": "SCENARIO=stress k6 run loadtest/platform.test.js",
+    "test:dnla": "tsx --test tests/dnla-test-tans.test.ts"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
