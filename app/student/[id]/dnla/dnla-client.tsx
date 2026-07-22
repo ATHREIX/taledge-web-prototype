@@ -159,7 +159,8 @@ function DnlaLivePanel({
   onStart: () => void;
   onOpen: () => void;
 }) {
-  const { phase, error, starting, startUrl } = live;
+  const { phase, error, starting, startUrl, mode } = live;
+  const isTestMode = mode === "pre-issued-test";
   if (phase === "loading" || phase === "complete") return null;
 
   if (phase === "pending") {
@@ -221,14 +222,22 @@ function DnlaLivePanel({
     <Card className="mb-6 border-brand-200/70 bg-brand-50/40">
       <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <Eyebrow className="text-brand-500">DNLA behavioural assessment</Eyebrow>
+          <Eyebrow className="text-brand-500">
+            {isTestMode ? "Temporary DNLA test flow" : "DNLA behavioural assessment"}
+          </Eyebrow>
           <Heading as="h2" className="mt-1 text-lg sm:text-xl">
-            {phase === "not-configured" ? "Assessment not available yet" : "Start your DNLA assessment"}
+            {phase === "not-configured"
+              ? "Assessment not available yet"
+              : isTestMode
+                ? "Start with a pre-issued test TAN"
+                : "Start your DNLA assessment"}
           </Heading>
           <p className="mt-2 max-w-xl text-sm leading-6 text-ink-600">
             {phase === "not-configured"
               ? "The DNLA provider isn't configured on this deployment yet. Sample scores are shown below in the meantime."
-              : "DNLA is a licensed psychometric assessment (Germany). Starting opens the questionnaire in a new tab; your competency profile is scored and shown here when you finish."}
+              : isTestMode
+                ? "This branch reserves one unused test TAN and opens DNLA's login screen in a new tab. Finish the questionnaire there; TalEdge will keep checking for the provider result."
+                : "DNLA is a licensed psychometric assessment (Germany). Starting opens the questionnaire in a new tab; your competency profile is scored and shown here when you finish."}
           </p>
         </div>
         {phase !== "not-configured" && (
@@ -239,7 +248,7 @@ function DnlaLivePanel({
             onClick={onStart}
             disabled={starting}
           >
-            {starting ? "Starting…" : "Start assessment"}
+            {starting ? "Starting…" : isTestMode ? "Start test assessment" : "Start assessment"}
           </Button>
         )}
       </CardHeader>
@@ -257,7 +266,8 @@ export default function DnlaClient({ student }: { student: Student }) {
   // activated (NEXT_PUBLIC_DNLA_ENABLED=true), show ONLY the clearly-labelled
   // sample profile and hide the "Start assessment" CTA — otherwise a candidate
   // clicks Start and dead-ends on a 503 (reads as "DNLA is broken").
-  const dnlaEnabled = process.env.NEXT_PUBLIC_DNLA_ENABLED === "true";
+  const dnlaEnabled =
+    process.env.NEXT_PUBLIC_DNLA_ENABLED === "true" || live.available;
 
   // Shared by both tracks; keep navigation within the current namespace
   // (/exam for competitive-exam aspirants, /student for placement candidates).
@@ -423,6 +433,8 @@ export default function DnlaClient({ student }: { student: Student }) {
               <Badge tone="danger">Assessment error</Badge>
             ) : live.phase === "loading" ? (
               <Badge tone="neutral">Checking status…</Badge>
+            ) : live.mode === "pre-issued-test" && live.available ? (
+              <Badge tone="brand">Test TAN available</Badge>
             ) : (
               <Badge tone="warn">Sample data · provider pending</Badge>
             )}

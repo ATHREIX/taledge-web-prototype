@@ -31,6 +31,8 @@ export interface DnlaSession {
   status: DnlaSessionStatus;
   /** DNLA-hosted questionnaire URL the candidate is sent to. */
   startUrl: string;
+  /** Whether the TAN was created live or claimed from the temporary test pool. */
+  source?: "created" | "pre-issued-test";
   /** DNLA internal numeric session id — learned from the completion webhook. */
   resultId?: string | null;
   /** Normalized, axis-mapped scores once complete (feeds the Fit Score). */
@@ -49,6 +51,31 @@ const DIR = path.join(os.tmpdir(), "taledge-dnla");
 const FILE = path.join(DIR, "dnla.json");
 
 const useFirestore = () => isAdminConfigured && !!adminDb;
+
+function newSession(params: {
+  tan: string;
+  ownerUid: string;
+  candidateId: string;
+  startUrl: string;
+  source?: DnlaSession["source"];
+}): DnlaSession {
+  const now = Date.now();
+  return {
+    tan: params.tan,
+    ownerUid: params.ownerUid,
+    candidateId: params.candidateId,
+    status: "pending",
+    startUrl: params.startUrl,
+    source: params.source ?? "created",
+    resultId: null,
+    normalized: null,
+    error: null,
+    createdAt: now,
+    updatedAt: now,
+    finishedAt: null,
+    expiresAt: now + TTL_MS,
+  };
+}
 
 /* ----------------------------- file fallback ----------------------------- */
 function loadAll(): Record<string, DnlaSession> {
@@ -71,21 +98,7 @@ export async function createDnlaSession(params: {
   candidateId: string;
   startUrl: string;
 }): Promise<DnlaSession> {
-  const now = Date.now();
-  const session: DnlaSession = {
-    tan: params.tan,
-    ownerUid: params.ownerUid,
-    candidateId: params.candidateId,
-    status: "pending",
-    startUrl: params.startUrl,
-    resultId: null,
-    normalized: null,
-    error: null,
-    createdAt: now,
-    updatedAt: now,
-    finishedAt: null,
-    expiresAt: now + TTL_MS,
-  };
+  const session = newSession(params);
   if (useFirestore()) {
     try {
       await adminDb!.collection(COLLECTION).doc(params.tan).set(session);
@@ -96,6 +109,80 @@ export async function createDnlaSession(params: {
   }
   const all = loadAll();
   all[params.tan] = session;
+  saveAll(all);
+  return session;
+}
+
+/**
+ * Atomically reserve one pre-issued TAN for a candidate. A pending reservation
+ * is idempotently returned to the same candidate; a TAN recorded for anyone
+ * else (or already completed/errored) is never reused.
+ */
+export async function claimPreIssuedDnlaSession(params: {
+  candidates: Array<{ tan: string; startUrl: string }>;
+  ownerUid: string;
+  candidateId: string;
+}): Promise<DnlaSession | null> {
+  const allowed = new Set(params.candidates.map((candidate) => candidate.tan));
+
+  if (useFirestore()) {
+    try {
+      return await adminDb!.runTransaction(async (tx) => {
+        const refs = params.candidates.map((candidate) =>
+          adminDb!.collection(COLLECTION).doc(candidate.tan)
+        );
+        const snapshots = await Promise.all(refs.map((ref) => tx.get(ref)));
+
+        const existing = snapshots
+          .filter((snapshot) => snapshot.exists)
+          .map((snapshot) => snapshot.data() as DnlaSession)
+          .find(
+            (session) =>
+              session.status === "pending" &&
+              session.ownerUid === params.ownerUid &&
+              session.candidateId === params.candidateId &&
+              allowed.has(session.tan)
+          );
+        if (existing) return existing;
+
+        const availableIndex = snapshots.findIndex((snapshot) => !snapshot.exists);
+        if (availableIndex < 0) return null;
+
+        const session = newSession({
+          ...params.candidates[availableIndex],
+          ownerUid: params.ownerUid,
+          candidateId: params.candidateId,
+          source: "pre-issued-test",
+        });
+        tx.set(refs[availableIndex], session);
+        return session;
+      });
+    } catch (e) {
+      logger.error("[dnla-store] Firestore test TAN claim failed", { err: String(e) });
+      throw e;
+    }
+  }
+
+  const all = loadAll();
+  const pending = Object.values(all).find(
+    (session) =>
+      session.status === "pending" &&
+      session.ownerUid === params.ownerUid &&
+      session.candidateId === params.candidateId &&
+      allowed.has(session.tan)
+  );
+  if (pending) return pending;
+
+  const available = params.candidates.find((candidate) => !all[candidate.tan]);
+  if (!available) return null;
+
+  const session = newSession({
+    ...available,
+    ownerUid: params.ownerUid,
+    candidateId: params.candidateId,
+    source: "pre-issued-test",
+  });
+  all[available.tan] = session;
   saveAll(all);
   return session;
 }

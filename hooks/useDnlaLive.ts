@@ -62,6 +62,8 @@ export function useDnlaLive(candidateId: string) {
   const [startUrl, setStartUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
+  const [available, setAvailable] = useState(false);
+  const [mode, setMode] = useState<"live" | "pre-issued-test">("live");
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const aliveRef = useRef(true);
@@ -75,6 +77,8 @@ export function useDnlaLive(candidateId: string) {
   const applyStatus = useCallback((d: any) => {
     if (!aliveRef.current) return;
     const status = String(d?.status || "none");
+    setAvailable(d?.available === true);
+    setMode(d?.mode === "pre-issued-test" ? "pre-issued-test" : "live");
     setStartUrl(typeof d?.startUrl === "string" ? d.startUrl : null);
     if (status === "complete") {
       setData({
@@ -165,6 +169,7 @@ export function useDnlaLive(candidateId: string) {
         const d = await r.json().catch(() => ({}));
         if (r.status === 503) {
           // Provider not configured on this deployment.
+          setAvailable(false);
           setPhase("not-configured");
           return null;
         }
@@ -174,6 +179,8 @@ export function useDnlaLive(candidateId: string) {
           return null;
         }
         setStartUrl(d.startUrl);
+        setAvailable(true);
+        setMode(d?.mode === "pre-issued-test" ? "pre-issued-test" : "live");
         setPhase("pending");
         return d.startUrl as string;
       } catch (e: any) {
@@ -187,7 +194,7 @@ export function useDnlaLive(candidateId: string) {
     [candidateId]
   );
 
-  return { phase, data, startUrl, error, starting, start, refresh };
+  return { phase, data, startUrl, error, starting, available, mode, start, refresh };
 }
 
 export type DnlaLive = ReturnType<typeof useDnlaLive>;
